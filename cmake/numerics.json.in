@@ -1,0 +1,10 @@
+{
+  "compiler_id": "@CMAKE_CXX_COMPILER_ID@",
+  "compiler_version": "@CMAKE_CXX_COMPILER_VERSION@",
+  "cxx_standard": 20,
+  "cxx_extensions": false,
+  "fp_policy": "@MMATHEN_FP_POLICY@",
+  "build_type": "@CMAKE_BUILD_TYPE@",
+  "system": "@CMAKE_SYSTEM_NAME@",
+  "processor": "@CMAKE_SYSTEM_PROCESSOR@"
+}
