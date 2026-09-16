@@ -74,8 +74,16 @@ jobs:
           name: numerics-${{ matrix.os }}-${{ matrix.config }}-${{ matrix.cxx || 'msvc' }}
           path: build/numerics.json
 
+  # Any sanitizer finding must fail this job. UBSan's default is to print a
+  # report and continue with exit code 0, so findings are made fatal twice:
+  # -fno-sanitize-recover=all at compile time (CMakeLists.txt) and
+  # halt_on_error=1 at run time. The examples run here too, not only ctest,
+  # and their output is scanned for sanitizer reports as a third gate.
   sanitize:
     runs-on: ubuntu-24.04
+    env:
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      ASAN_OPTIONS: detect_leaks=1
     steps:
       - uses: actions/checkout@v4
       - name: Configure (ASan+UBSan, GCC 13)
@@ -90,4 +98,28 @@ jobs:
         shell: bash
       - name: Test
         run: ctest --test-dir build-san --output-on-failure
+        shell: bash
+      - name: Run examples under sanitizers
+        run: |
+          set -euo pipefail
+          # Expected set: the foreach(example ...) list in CMakeLists.txt, so a
+          # new example cannot silently skip this gate.
+          expected=$(sed -n '/foreach(example/,/)/p' CMakeLists.txt |
+                     sed 's/foreach(example//; s/).*//' | tr -s ' ' '\n' |
+                     grep -v '^$' | sort)
+          count=$(printf '%s\n' "$expected" | wc -l)
+          echo "expecting $count examples"
+          work=$(mktemp -d)
+          for name in $expected; do
+            exe="$GITHUB_WORKSPACE/build-san/$name"
+            test -x "$exe" || { echo "::error::missing example $name"; exit 1; }
+            echo "::group::$name"
+            (cd "$work" && "$exe") 2>&1 | tee "$work/$name.log"
+            echo "::endgroup::"
+          done
+          if grep -lE "runtime error|AddressSanitizer|LeakSanitizer" "$work"/*.log; then
+            echo "::error::sanitizer report in example output"
+            exit 1
+          fi
+          echo "all $count examples exited 0 with no sanitizer reports"
         shell: bash

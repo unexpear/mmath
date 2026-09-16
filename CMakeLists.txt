@@ -30,7 +30,10 @@ function(mmathen_dev_settings target)
       -fno-fast-math -ffp-contract=off)
     if(MMATHEN_SANITIZE)
       target_compile_options(${target} PRIVATE
-        -fsanitize=address,undefined -fno-omit-frame-pointer)
+        -fsanitize=address,undefined -fno-omit-frame-pointer
+        # UBSan otherwise prints a report and continues with exit code 0
+        # (verified), which a passing ctest would hide: every finding aborts.
+        -fno-sanitize-recover=all)
       target_link_options(${target} PRIVATE -fsanitize=address,undefined)
     endif()
   endif()
