@@ -41,10 +41,20 @@ jobs:
       - name: Install Clang 18 (Linux/Clang jobs)
         if: matrix.cxx == 'clang++-18'
         run: sudo apt-get update && sudo apt-get install -y clang-18
+      # MSVC's cl.exe is not on PATH in a plain bash step on windows-2022
+      # (no developer environment), and cl has no --version flag: the first
+      # hosted run failed here with exit 127 before building. Windows prints
+      # the Visual Studio version via vswhere instead; the exact MSVC version
+      # is recorded by CMake's configure step and in numerics.json.
       - name: Toolchain versions
         run: |
           cmake --version
-          ${{ matrix.cc || 'cl' }} --version 2>&1 | head -n 3
+          if [ -n "${{ matrix.cxx }}" ]; then
+            ${{ matrix.cxx }} --version | head -n 3
+          else
+            "/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe" \
+              -latest -property catalog_productDisplayVersion
+          fi
         shell: bash
       - name: Configure
         run: >
