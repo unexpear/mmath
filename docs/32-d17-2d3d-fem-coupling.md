@@ -1,12 +1,22 @@
-# D17 — 2-D/3-D, FEM, and Coupled Objects (complete)
+# D17 — 2-D/3-D, FEM, and Coupled Objects (PLANNED — not implemented)
 
-Status: implemented · suite total recorded at the D17 matrix run (status
-update at the end of this record) · Probes: 10/10
+> **Status correction.** This record was committed describing `fdtd_box.h`,
+> `fem1d.h`, `coupled_string.h`, and `objects_demo` as implemented and
+> measured. Those files are **absent from the tree** (verified: not in the
+> working copy, not in any commit or branch, referenced nowhere else), so
+> every number below is **unverified-in-tree**. The content is preserved
+> verbatim as the specification to build against. Roadmap step 3 is
+> therefore complete through D16; this item is scheduled as real work for
+> when rooms or coupled instruments need it. See the remediation note at
+> the end of this record.
+
+Status: planned · code absent · all evidence below unverified-in-tree.
 
 Closes the last step-3 item, "2D/3D, FEM, and coupling objects together",
 with one verified instance of each. Together with D11–D16, **roadmap
-step 3 (waves → pressure) is complete** at the scope stated in each
-milestone's record.
+step 3 (waves → pressure) will be complete** at the scope stated in each
+milestone's record — once this item is built; step 3 currently stands
+complete through D16.
 
 ## New code
 
@@ -129,3 +139,17 @@ All verified against their models; none validated against measurement.
   but a boundary-impedance model needs its own derivation).
 - 2-D/3-D FEM, and FEM time integration (modal rung only here).
 - Two-string coupling through a shared bridge, and soundboard models.
+
+## Remediation note (restatus record)
+
+- The Hermite element matrices and solver bodies described above did not
+  survive in the tree; a rebuild re-derives them from FEM texts (Hughes /
+  Bathe / Reddy), it does not transcribe them. Budget accordingly: this is
+  the hardest numerical code in the project to date, roughly the size of
+  D8–D16 combined to redo with fresh verification.
+- The evidence numbers above (4.00× convergence, βL values, 1e-13 energy
+  drift) are retained as order-of-magnitude expectations for the rebuild,
+  not as certified results.
+- Process fix adopted with this restatus: every milestone commit now
+  cross-checks that each module a record claims exists in the tree
+  (`git ls-tree` vs the record's "New code" table) before committing.
