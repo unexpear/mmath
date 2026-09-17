@@ -51,6 +51,13 @@ namespace mmathen {
 
 enum class Boundary { Fixed, Free };
 
+// D13 — how a STIFF system's end is held (only meaningful when stiffness > 0).
+//   Hinged  (on a Fixed boundary): u = 0, u_xx = 0   (simply supported)
+//   Clamped (on a Fixed boundary): u = 0, u_x = 0
+//   Free    (on a Free boundary):  u_xx = 0, kappa^2 u_xxx - c^2 u_x = 0
+//           (zero moment and zero net shear, tension included)
+enum class StiffEnd { Hinged, Clamped, Free };
+
 // D9 — optional loss: u_tt + 2*sigma0*u_t = c^2 u_xx + 2*sigma1*u_txx, the
 // frequency-dependent loss form common in physical-modeling synthesis
 // (Bilbao, Numerical Sound Synthesis, 2009, lossy string). Constants here are
@@ -79,9 +86,11 @@ struct WaveSystem1D {
   // supported) ends: u = 0 and u_xx = 0, so mode shapes stay sin(n pi x/L)
   // and w_n^2 = c^2 k_n^2 + kappa^2 k_n^4, i.e. exactly D1's
   // f_n = n f0 sqrt(1 + B n^2) with f0 = c/2L and B = kappa^2 pi^2/(c^2 L^2).
-  // Clamped ends (Fletcher's extra (1 + 2 sqrt(B)/pi + ...) factor) and
-  // stiff free ends are deferred and rejected.
+  // D13 extends this to clamped and free stiff ends (stiffLeft/Right below):
+  // their modes come from the boundary determinant, not the closed form.
   double stiffness = 0.0;
+  StiffEnd stiffLeft = StiffEnd::Hinged;
+  StiffEnd stiffRight = StiffEnd::Hinged;
 };
 
 inline constexpr std::size_t kMaxModalTerms = std::size_t{1} << 20;
@@ -94,7 +103,8 @@ inline constexpr std::size_t kMaxModalTerms = std::size_t{1} << 20;
   const double c = speed.value();
   if (!std::isfinite(l) || !(l > 0.0) || !std::isfinite(c) || !(c > 0.0))
     return R::failure(QuantityError::InvalidArgument);
-  return R::success(WaveSystem1D{length, speed, left, right, LossModel{}, 0.0});
+  return R::success(WaveSystem1D{length, speed, left, right, LossModel{}, 0.0,
+                                 StiffEnd::Hinged, StiffEnd::Hinged});
 }
 
 // The same object with bending stiffness kappa attached (replacing any
@@ -109,6 +119,28 @@ inline constexpr std::size_t kMaxModalTerms = std::size_t{1} << 20;
                       system.right != Boundary::Fixed))
     return R::failure(QuantityError::DomainError);
   system.stiffness = kappa;
+  system.stiffLeft = StiffEnd::Hinged;
+  system.stiffRight = StiffEnd::Hinged;
+  return R::success(system);
+}
+
+// Stiffness with explicit end conditions. Hinged/Clamped require a Fixed
+// boundary on that side and Free requires a Free boundary (DomainError
+// otherwise); kappa must be finite and > 0 (InvalidArgument) — clamped or
+// free stiff ends without stiffness are not a model.
+[[nodiscard]] inline Result<WaveSystem1D, QuantityError> withStiffness(
+    WaveSystem1D system, double kappa, StiffEnd left, StiffEnd right) {
+  using R = Result<WaveSystem1D, QuantityError>;
+  if (!std::isfinite(kappa) || !(kappa > 0.0))
+    return R::failure(QuantityError::InvalidArgument);
+  auto fits = [](Boundary b, StiffEnd e) {
+    return e == StiffEnd::Free ? b == Boundary::Free : b == Boundary::Fixed;
+  };
+  if (!fits(system.left, left) || !fits(system.right, right))
+    return R::failure(QuantityError::DomainError);
+  system.stiffness = kappa;
+  system.stiffLeft = left;
+  system.stiffRight = right;
   return R::success(system);
 }
 
@@ -260,15 +292,154 @@ inline double dampedModeFactor(double omega, double sigma, double t) {
 }
 }  // namespace detail
 
+namespace detail {
+// True when the closed-form sin/cos modes apply: no stiffness, or hinged at
+// both ends (D10).
+inline bool closedFormModes(const WaveSystem1D& s) {
+  return s.stiffness == 0.0 || (s.stiffLeft == StiffEnd::Hinged &&
+                                s.stiffRight == StiffEnd::Hinged);
+}
+
+// Boundary determinant of the stiff operator at trial wavenumber beta > 0.
+// X(x) = a1 e^{-alpha x} + a2 e^{-alpha (L-x)} + a3 cos(beta x) + a4 sin(beta x)
+// solves kappa^2 X'''' - c^2 X'' = w^2 X with alpha^2 = beta^2 + c^2/kappa^2
+// and w^2 = kappa^2 beta^4 + c^2 beta^2. The decaying-exponential basis
+// (instead of cosh/sinh) keeps every entry bounded. Rows are the two
+// conditions at each end, derivative order k scaled by 1/beta^k.
+inline double stiffEndDeterminant(const WaveSystem1D& s, double beta) {
+  const double l = s.length.value();
+  const double c = s.speed.value();
+  const double kap = s.stiffness;
+  const double alpha = std::sqrt(beta * beta + c * c / (kap * kap));
+  // k-th derivative of each basis function at x, divided by beta^k.
+  auto column = [&](double x, int k, double out[4]) {
+    const double r = alpha / beta;
+    double pk = 1.0;
+    for (int i = 0; i < k; ++i) pk *= r;
+    const double sign = (k % 2 == 0) ? 1.0 : -1.0;
+    out[0] = sign * pk * std::exp(-alpha * x);
+    out[1] = pk * std::exp(-alpha * (l - x));
+    const double ph = beta * x + 0.5 * constants::pi * k;
+    out[2] = std::cos(ph);
+    out[3] = std::sin(ph);
+  };
+  auto rows = [&](StiffEnd end, double x, double r1[4], double r2[4]) {
+    double a[4], b[4];
+    switch (end) {
+      case StiffEnd::Hinged:
+        column(x, 0, r1);
+        column(x, 2, r2);
+        break;
+      case StiffEnd::Clamped:
+        column(x, 0, r1);
+        column(x, 1, r2);
+        break;
+      case StiffEnd::Free:
+        column(x, 2, r1);
+        // (kappa^2 X''' - c^2 X') / (kappa^2 beta^3)
+        column(x, 3, a);
+        column(x, 1, b);
+        for (int i = 0; i < 4; ++i)
+          r2[i] = a[i] - c * c / (kap * kap * beta * beta) * b[i];
+        break;
+    }
+  };
+  double m[4][4];
+  rows(s.stiffLeft, 0.0, m[0], m[1]);
+  rows(s.stiffRight, l, m[2], m[3]);
+  // Gaussian elimination with partial pivoting; det sign tracks swaps.
+  double det = 1.0;
+  for (int col = 0; col < 4; ++col) {
+    int piv = col;
+    for (int r = col + 1; r < 4; ++r)
+      if (std::fabs(m[r][col]) > std::fabs(m[piv][col])) piv = r;
+    if (m[piv][col] == 0.0) return 0.0;
+    if (piv != col) {
+      for (int k = 0; k < 4; ++k) std::swap(m[piv][k], m[col][k]);
+      det = -det;
+    }
+    det *= m[col][col];
+    for (int r = col + 1; r < 4; ++r) {
+      const double f = m[r][col] / m[col][col];
+      for (int k = col; k < 4; ++k) m[r][k] -= f * m[col][k];
+    }
+  }
+  return det;
+}
+}  // namespace detail
+
+// First `count` elastic mode wavenumbers beta_n of a stiff system, for ANY
+// end conditions, from sign changes of the boundary determinant (scan step
+// pi/(64 L), then bisection to machine resolution). Roots below pi/(4L)
+// are rigid-body or roundoff artefacts of beta -> 0 and are skipped (every
+// elastic mode of these end pairs lies above that, including the beam
+// limits 1.875/L cantilever and 3.927/L pinned-free). Requires stiffness > 0
+// and 1 <= count <= 4096 (InvalidArgument); RangeError if the scan runs out.
+[[nodiscard]] inline Result<std::vector<double>, QuantityError>
+stiffModeWavenumbers(const WaveSystem1D& system, int count) {
+  using R = Result<std::vector<double>, QuantityError>;
+  if (!(system.stiffness > 0.0) || count < 1 || count > 4096)
+    return R::failure(QuantityError::InvalidArgument);
+  const double l = system.length.value();
+  const double step = constants::pi / (64.0 * l);
+  std::vector<double> roots;
+  double b0 = 0.25 * constants::pi / l;
+  double d0 = detail::stiffEndDeterminant(system, b0);
+  const double limit = (static_cast<double>(count) + 4.0) * constants::pi / l;
+  while (static_cast<int>(roots.size()) < count && b0 < limit) {
+    const double b1 = b0 + step;
+    const double d1 = detail::stiffEndDeterminant(system, b1);
+    if (d0 == 0.0) {
+      roots.push_back(b0);
+    } else if ((d0 < 0.0) != (d1 < 0.0)) {
+      double lo = b0, hi = b1, dlo = d0;
+      for (int it = 0; it < 200; ++it) {
+        const double mid = 0.5 * (lo + hi);
+        if (!(mid > lo) || !(mid < hi)) break;
+        const double dm = detail::stiffEndDeterminant(system, mid);
+        if ((dm < 0.0) == (dlo < 0.0)) {
+          lo = mid;
+          dlo = dm;
+        } else {
+          hi = mid;
+        }
+      }
+      roots.push_back(0.5 * (lo + hi));
+    }
+    b0 = b1;
+    d0 = d1;
+  }
+  if (static_cast<int>(roots.size()) < count)
+    return R::failure(QuantityError::RangeError);
+  return R::success(std::move(roots));
+}
+
 // Frequency of mode n >= 1 (the Free-Free constant mode does not oscillate
 // and is not a resonance: n = 0 is InvalidArgument for every system).
 // Lossless: c*k_n/2pi. Lossy: the damped frequency sqrt(w_n^2 - sigma_n^2)/2pi;
 // a critically or overdamped mode does not oscillate: DomainError.
+// Clamped/free stiff ends (D13): w_n from the determinant root beta_n; only
+// sigma0 loss separates by mode there (sigma1 > 0 is DomainError).
 [[nodiscard]] inline Result<FrequencyHz, QuantityError> modeFrequency(
     const WaveSystem1D& system, int n) {
   using R = Result<FrequencyHz, QuantityError>;
   if (n < 1) return R::failure(QuantityError::InvalidArgument);
   const auto nn = static_cast<std::size_t>(n);
+  if (!detail::closedFormModes(system)) {
+    if (system.loss.sigma1 != 0.0)
+      return R::failure(QuantityError::DomainError);
+    auto betas = stiffModeWavenumbers(system, n);
+    if (!betas.ok()) return R::failure(betas.error());
+    const double b = betas.value().back();
+    const double c = system.speed.value();
+    const double kb2 = system.stiffness * b * b;
+    const double w = std::sqrt(kb2 * kb2 + c * c * b * b);
+    const double s0 = system.loss.sigma0;
+    if (s0 == 0.0) return R::success(FrequencyHz{w / constants::twoPi});
+    if (!(s0 < w)) return R::failure(QuantityError::DomainError);
+    return R::success(
+        FrequencyHz{std::sqrt(w * w - s0 * s0) / constants::twoPi});
+  }
   const double omega = detail::modeOmega(system, nn);
   if (!std::isfinite(omega)) return R::failure(QuantityError::RangeError);
   if (system.loss.lossless()) return R::success(FrequencyHz{omega / constants::twoPi});
@@ -283,6 +454,12 @@ inline double dampedModeFactor(double omega, double sigma, double t) {
     const WaveSystem1D& system, int n) {
   using R = Result<double, QuantityError>;
   if (n < 1) return R::failure(QuantityError::InvalidArgument);
+  if (!detail::closedFormModes(system)) {
+    // Only sigma0 separates by mode for clamped/free stiff ends.
+    if (system.loss.sigma1 != 0.0)
+      return R::failure(QuantityError::DomainError);
+    return R::success(system.loss.sigma0);
+  }
   const double s = detail::modeDecay(system, static_cast<std::size_t>(n));
   if (!std::isfinite(s)) return R::failure(QuantityError::RangeError);
   return R::success(s);
@@ -440,6 +617,10 @@ class ModalSolution {
     using R = Result<ModalSolution, QuantityError>;
     if (terms < 1 || terms > kMaxModalTerms)
       return R::failure(QuantityError::InvalidArgument);
+    // Closed-form sin/cos modes only: clamped/free stiff ends would need
+    // numerical mode shapes and projections (not built).
+    if (!detail::closedFormModes(shape.system()))
+      return R::failure(QuantityError::DomainError);
     std::vector<Term> ts;
     ts.reserve(terms);
     for (std::size_t n = 1; n <= terms; ++n) {

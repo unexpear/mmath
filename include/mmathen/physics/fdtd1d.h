@@ -24,9 +24,12 @@
 // one tridiagonal (Thomas) solve per step, O(M), diagonally dominant for
 // every r >= 0. Second order in dt and dx. Stability, derived here by von
 // Neumann with D -> -p, p in [0,4]: the amplification polynomial
-//   (1+s+rp) z^2 - (2 - lam^2 p) z + (1-s+rp),  s = sigma0*dt
-// has both roots in the unit disk iff lam^2 p <= 4, i.e. lam <= 1 — the
-// lossless condition, unchanged by any sigma0, sigma1 >= 0. (The explicit
+//   (1+s+rp) z^2 - (2 - lam^2 p) z + (1-s-rp),  s = sigma0*dt
+// (the u^{n-1} terms -(1-s) - r D -> -(1-s) + rp; D9 first wrote +rp in the
+// constant term — corrected in D12, when FDTD decay was measured against
+// this polynomial and disagreed). Jury: |1-s-rp| <= 1+s+rp always, and
+// |b| <= a + c = 2 iff lam^2 p <= 4, i.e. lam <= 1 — the lossless
+// condition, unchanged by any sigma0, sigma1 >= 0. (The explicit
 // backward-difference variant would instead need lam^2 + 4*sigma1*dt/dx^2
 // <= 1 and is first order in time for the sigma1 term; not used.) Zero
 // initial velocity gives u_tt(0) = c^2 u_xx, so the Taylor start is the
@@ -41,12 +44,31 @@
 // lam^2 p + mu^2 p^2 <= 4 on p in [0,4], i.e.
 //   lam^2 + 4 mu^2 <= 1
 // (equivalently dx^2 >= (c^2 dt^2 + sqrt(c^4 dt^4 + 16 kappa^2 dt^2))/2, the
-// form given by Bilbao). With loss the Jury condition becomes
-// lam^2 p + mu^2 p^2 <= 4 + 2 r p, so the same condition suffices. It is
+// form given by Bilbao). With loss a + c = 2 still, so the Jury condition
+// is again exactly lam^2 p + mu^2 p^2 <= 4 (D10 first stated "<= 4 + 2rp",
+// from the D9 sign error; corrected in D12). It is
 // enforced at creation (DomainError), never run past. Numerical dispersion
 // flattens high stiff partials at coarse grids; second-order convergence is
 // verified, per-partial tuning error at audio rates is not claimed.
 // Discrete energy adds kappa^2/(2 dx^4) sum D u^{n+1} * D u^n.
+//
+// D13 — clamped and free stiff ends use an extended array with two ghost
+// nodes per side, filled each step from centered second-order boundary
+// conditions (index -1, -2 left; M+1, M+2 right, mirrored):
+//   Hinged : u_0 = 0, u_{-1} = -u_1, u_{-2} = -u_2
+//   Clamped: u_0 = 0, u_{-1} = +u_1 (u_x = 0), u_{-2} = +u_2 (unused)
+//   Free   : u_xx = 0            -> u_{-1} = 2 u_0 - u_1
+//            k^2 u_xxx = c^2 u_x -> u_{-2} = u_2 - 2u_1 + 2u_{-1}
+//                                          - q (u_1 - u_{-1}),  q = c^2 dx^2/k^2
+//            right end:             u_{M+2} = 2u_{M+1} - 2u_{M-1} + u_{M-2}
+//                                          + q (u_{M+1} - u_{M-1})
+// Tension and bending use the ghost-filled D and D^2 at every unknown node
+// (a free end node is an unknown). With sigma1 loss the implicit D u^{n+1}
+// row at a free node is empty (D u = 0 there by the boundary condition), so
+// that row is (1+s) u_0. These rows are NOT derived from an energy
+// identity; their stability under lam^2 + 4 mu^2 <= 1 is established by
+// long runs in the tests, and their accuracy by FFT-measured partials
+// converging to the determinant roots (wave1d.h).
 //
 // Stateful processor under the reserved contract (D5 precedent): all
 // buffers allocated at creation, step() allocation-free and O(M), reset()
@@ -61,6 +83,7 @@
 #include <vector>
 
 #include "../core/result.h"
+#include "../math/constants.h"
 #include "../units/physical_units.h"
 #include "wave1d.h"
 
@@ -101,6 +124,11 @@ class Fdtd1D {
       return u[j + 1] + u[j - 1];
     };
     const bool stiff = sys.stiffness != 0.0;
+    if (stiff && (sys.stiffLeft != StiffEnd::Hinged ||
+                  sys.stiffRight != StiffEnd::Hinged)) {
+      stepStiffEnds();
+      return;
+    }
     if (stiff) computeBiharmonic();
     if (!sys.loss.lossless() && steps_ > 0) {
       stepLossy(neighbors);
@@ -204,6 +232,118 @@ class Fdtd1D {
     ++steps_;
   }
 
+  // Ghost-filled copy of u into ext (ext[j + 2] = u[j], j = -2 .. M+2).
+  void fillGhosts(const std::vector<double>& u, std::vector<double>& ext) const {
+    const std::size_t m = u.size() - 1;
+    const WaveSystem1D& sys = shape_.system();
+    const double c = sys.speed.value();
+    const double q = c * c * dx_ * dx_ / (sys.stiffness * sys.stiffness);
+    for (std::size_t j = 0; j <= m; ++j) ext[j + 2] = u[j];
+    switch (sys.stiffLeft) {
+      case StiffEnd::Hinged:
+        ext[2] = 0.0;
+        ext[1] = -u[1];
+        ext[0] = -u[2];
+        break;
+      case StiffEnd::Clamped:
+        ext[2] = 0.0;
+        ext[1] = u[1];
+        ext[0] = u[2];
+        break;
+      case StiffEnd::Free: {
+        const double g1 = 2.0 * u[0] - u[1];
+        ext[1] = g1;
+        ext[0] = u[2] - 2.0 * u[1] + 2.0 * g1 - q * (u[1] - g1);
+        break;
+      }
+    }
+    switch (sys.stiffRight) {
+      case StiffEnd::Hinged:
+        ext[m + 2] = 0.0;
+        ext[m + 3] = -u[m - 1];
+        ext[m + 4] = -u[m - 2];
+        break;
+      case StiffEnd::Clamped:
+        ext[m + 2] = 0.0;
+        ext[m + 3] = u[m - 1];
+        ext[m + 4] = u[m - 2];
+        break;
+      case StiffEnd::Free: {
+        const double g1 = 2.0 * u[m] - u[m - 1];
+        ext[m + 3] = g1;
+        ext[m + 4] = 2.0 * g1 - 2.0 * u[m - 1] + u[m - 2] + q * (g1 - u[m - 1]);
+        break;
+      }
+    }
+  }
+
+  // Lossless or lossy step for clamped/free stiff ends (header comment).
+  void stepStiffEnds() {
+    const std::size_t m = cur_.size() - 1;
+    const WaveSystem1D& sys = shape_.system();
+    const double lam2 = courant_ * courant_;
+    const double mu2 = stiffMu() * stiffMu();
+    const std::size_t j0 = sys.stiffLeft == StiffEnd::Free ? 0 : 1;
+    const std::size_t j1 = sys.stiffRight == StiffEnd::Free ? m : m - 1;
+    fillGhosts(cur_, extCur_);
+    // lap at ext index i (node i - 2), for i = 1 .. M+3.
+    auto lapExt = [&](const std::vector<double>& e, std::size_t i) {
+      return e[i + 1] - 2.0 * e[i] + e[i - 1];
+    };
+    for (std::size_t j = j0; j <= j1; ++j) {
+      const std::size_t i = j + 2;
+      const double lap = lapExt(extCur_, i);
+      const double bih =
+          lapExt(extCur_, i + 1) - 2.0 * lap + lapExt(extCur_, i - 1);
+      lap_[j] = lap;
+      biharm_[j] = bih;
+    }
+    const bool lossy = !sys.loss.lossless() && steps_ > 0;
+    if (!lossy) {
+      for (std::size_t j = j0; j <= j1; ++j) {
+        next_[j] = steps_ == 0
+                       ? cur_[j] + 0.5 * (lam2 * lap_[j] - mu2 * biharm_[j])
+                       : 2.0 * cur_[j] - prev_[j] + lam2 * lap_[j] -
+                             mu2 * biharm_[j];
+      }
+    } else {
+      const double sl = sys.loss.sigma0 * dt_;
+      const double r = sys.loss.sigma1 * dt_ / (dx_ * dx_);
+      fillGhosts(prev_, extPrev_);
+      for (std::size_t j = j0; j <= j1; ++j) {
+        const double lapPrev = lapExt(extPrev_, j + 2);
+        next_[j] = 2.0 * cur_[j] + lam2 * lap_[j] - mu2 * biharm_[j] -
+                   (1.0 - sl) * prev_[j] - r * lapPrev;
+      }
+      // Rows: interior (1+s+2r) with -r neighbours; a free end node's D u
+      // is zero by its boundary condition, so its row is just (1+s).
+      auto isFreeNode = [&](std::size_t j) {
+        return (j == 0 && sys.stiffLeft == StiffEnd::Free) ||
+               (j == m && sys.stiffRight == StiffEnd::Free);
+      };
+      auto diag = [&](std::size_t j) {
+        return isFreeNode(j) ? 1.0 + sl : 1.0 + sl + 2.0 * r;
+      };
+      auto sub = [&](std::size_t j) { return isFreeNode(j) ? 0.0 : -r; };
+      auto sup = [&](std::size_t j) { return isFreeNode(j) ? 0.0 : -r; };
+      workC_[j0] = j0 == j1 ? 0.0 : sup(j0) / diag(j0);
+      workD_[j0] = next_[j0] / diag(j0);
+      for (std::size_t j = j0 + 1; j <= j1; ++j) {
+        const double denom = diag(j) - sub(j) * workC_[j - 1];
+        workC_[j] = j == j1 ? 0.0 : sup(j) / denom;
+        workD_[j] = (next_[j] - sub(j) * workD_[j - 1]) / denom;
+      }
+      next_[j1] = workD_[j1];
+      for (std::size_t j = j1; j > j0; --j)
+        next_[j - 1] = workD_[j - 1] - workC_[j - 1] * next_[j];
+    }
+    if (sys.stiffLeft != StiffEnd::Free) next_[0] = 0.0;
+    if (sys.stiffRight != StiffEnd::Free) next_[m] = 0.0;
+    std::swap(prev_, cur_);
+    std::swap(cur_, next_);
+    ++steps_;
+  }
+
   [[nodiscard]] double stiffMu() const {
     return shape_.system().stiffness * dt_ / (dx_ * dx_);
   }
@@ -237,6 +377,8 @@ class Fdtd1D {
     workD_.assign(intervals + 1, 0.0);
     lap_.assign(intervals + 1, 0.0);
     biharm_.assign(intervals + 1, 0.0);
+    extCur_.assign(intervals + 5, 0.0);
+    extPrev_.assign(intervals + 5, 0.0);
   }
 
   InitialShape shape_;
@@ -251,8 +393,151 @@ class Fdtd1D {
   std::vector<double> workD_;
   std::vector<double> lap_;     // stiffness scratch (preallocated)
   std::vector<double> biharm_;
+  std::vector<double> extCur_;   // ghost-filled copies (D13, preallocated)
+  std::vector<double> extPrev_;
   std::uint64_t steps_ = 0;
 };
+
+// D12 — exact discrete dispersion of the schemes above, per mode.
+//
+// On this grid the continuous mode shapes are EXACT eigenvectors of the
+// discrete operators: D phi_n = -p phi_n with p = 4 sin^2(k_n dx/2) for
+// sin (Fixed left) and cos (Free left, mirror ghost) families alike, and
+// D^2 phi_n = p^2 phi_n under hinged ghosts. Substituting u^n = z^n phi_n:
+//   lossless:  z + 1/z = 2 - lam^2 p - mu^2 p^2
+//              -> cos(w dt) = 1 - (lam^2 p + mu^2 p^2)/2
+//   lossy:     (1+s+rp) z^2 - (2 - lam^2 p - mu^2 p^2) z + (1-s-rp) = 0
+//              -> |z| = sqrt((1-s-rp)/(1+s+rp)),
+//                 cos(w dt) = (2 - lam^2 p - mu^2 p^2) / (2 sqrt((1+s+rp)(1-s-rp)))
+// so each mode's numerical frequency w/2pi and decay rate -ln|z|/dt follow
+// in closed form. Ideal string at lam = 1: cos(w dt) = cos(k dx), w = c k
+// exactly (D8's exactness). Verified in the tests three ways: a single-mode
+// run stays proportional to phi_n at every node; FFT-measured frequency
+// equals this prediction (not the continuous one); measured decay equals the
+// predicted numerical decay. The start step does not change these (it only
+// sets the mode's amplitude/phase).
+struct DiscreteMode {
+  FrequencyHz frequency;
+  double decayRate;  // 1/s, amplitude e^{-rate t}
+};
+
+// Mode n of an FDTD grid (same validation as Fdtd1D::create). Valid modes:
+// n in [1, M-1] for Fixed-Fixed (n = M is the zero grid function), n in
+// [1, M] otherwise; else InvalidArgument. A mode whose discrete roots are
+// real (non-oscillating on this grid) is DomainError.
+[[nodiscard]] inline Result<DiscreteMode, QuantityError> fdtdDiscreteMode(
+    const WaveSystem1D& system, std::size_t intervals, double courant, int n) {
+  using R = Result<DiscreteMode, QuantityError>;
+  if (intervals < 2 || intervals > kMaxGridIntervals)
+    return R::failure(QuantityError::InvalidArgument);
+  if (!std::isfinite(courant) || !(courant > 0.0))
+    return R::failure(QuantityError::InvalidArgument);
+  if (courant > 1.0) return R::failure(QuantityError::DomainError);
+  const bool fixedFixed =
+      system.left == Boundary::Fixed && system.right == Boundary::Fixed;
+  const auto maxMode = static_cast<long long>(fixedFixed ? intervals - 1
+                                                         : intervals);
+  if (n < 1 || static_cast<long long>(n) > maxMode)
+    return R::failure(QuantityError::InvalidArgument);
+  const double c = system.speed.value();
+  const double dx = system.length.value() / static_cast<double>(intervals);
+  const double dt = courant * dx / c;
+  const double mu = system.stiffness * dt / (dx * dx);
+  if (system.stiffness != 0.0 && courant * courant + 4.0 * mu * mu > 1.0)
+    return R::failure(QuantityError::DomainError);
+  // Exact eigenvectors exist only for closed-form (sin/cos) modes; clamped
+  // and free stiff ends have no such discrete dispersion relation here.
+  if (!detail::closedFormModes(system))
+    return R::failure(QuantityError::DomainError);
+  const double k = detail::modeWavenumber(system, static_cast<std::size_t>(n));
+  const double sh = std::sin(0.5 * k * dx);
+  const double p = 4.0 * sh * sh;
+  const double s = system.loss.sigma0 * dt;
+  const double r = system.loss.sigma1 * dt / (dx * dx);
+  const double a = 1.0 + s + r * p;
+  const double cc = 1.0 - s - r * p;
+  const double b = 2.0 - courant * courant * p - mu * mu * p * p;
+  const double denom = 2.0 * std::sqrt(a * cc);
+  if (!(cc > 0.0) || !(std::fabs(b) < denom))
+    return R::failure(QuantityError::DomainError);
+  const double theta = std::acos(b / denom);
+  const double rho = std::sqrt(cc / a);
+  return R::success(DiscreteMode{FrequencyHz{theta / (constants::twoPi * dt)},
+                                 -std::log(rho) / dt});
+}
+
+// Pitch error of FDTD mode n against the continuous model's (damped) mode
+// frequency, in cents: 1200 log2(f_grid / f_model). Validation as above plus
+// modeFrequency's (a non-oscillating continuous mode is DomainError).
+[[nodiscard]] inline Result<double, QuantityError> fdtdPitchErrorCents(
+    const WaveSystem1D& system, std::size_t intervals, double courant, int n) {
+  using R = Result<double, QuantityError>;
+  auto grid = fdtdDiscreteMode(system, intervals, courant, n);
+  if (!grid.ok()) return R::failure(grid.error());
+  auto model = modeFrequency(system, n);
+  if (!model.ok()) return R::failure(model.error());
+  return R::success(1200.0 * std::log2(grid.value().frequency.value() /
+                                       model.value().value()));
+}
+
+// D14 — fine pitch tuning of FDTD between grid points ("pre-warping").
+//
+// An audio-rate grid has dt = 1/fs and dx = L/M with integer M, so the
+// grid's partials land where D12's dispersion relation puts them, not on
+// the model's pitch. Solving that relation backwards for the Courant number
+// makes ONE chosen mode n exact. With mu = kappa dt/dx^2 and the loss terms
+// fixed by dt and dx (s = sigma0 dt, r = sigma1 dt/dx^2, a = 1+s+rp,
+// c = 1-s-rp), the target w = 2 pi f_n(model) needs
+//   lam^2 = (2 - mu^2 p^2 - 2 cos(w dt) sqrt(a c)) / p
+// (lossless: a = c = 1). The warped system is the same object with
+// c' = lam dx fs, so it runs at exactly dt = 1/fs. Other modes keep D12's
+// dispersion error, now relative to an exact mode n. DomainError if the
+// required lam is not in (0, 1] or breaks lam^2 + 4 mu^2 <= 1, or if the
+// system has no closed-form modes (clamped/free stiff ends).
+struct PrewarpedGrid {
+  WaveSystem1D system;  // wave speed replaced by c' = lam dx fs
+  double courant;
+};
+
+[[nodiscard]] inline Result<PrewarpedGrid, QuantityError> fdtdPrewarpForPitch(
+    const WaveSystem1D& system, std::size_t intervals, SampleRateHz rate,
+    int n) {
+  using R = Result<PrewarpedGrid, QuantityError>;
+  const double fs = rate.value();
+  if (!std::isfinite(fs) || !(fs > 0.0) || intervals < 2 ||
+      intervals > kMaxGridIntervals)
+    return R::failure(QuantityError::InvalidArgument);
+  if (!detail::closedFormModes(system))
+    return R::failure(QuantityError::DomainError);
+  const bool fixedFixed =
+      system.left == Boundary::Fixed && system.right == Boundary::Fixed;
+  const auto maxMode = static_cast<long long>(fixedFixed ? intervals - 1
+                                                         : intervals);
+  if (n < 1 || static_cast<long long>(n) > maxMode)
+    return R::failure(QuantityError::InvalidArgument);
+  auto target = modeFrequency(system, n);
+  if (!target.ok()) return R::failure(target.error());
+  const double dt = 1.0 / fs;
+  const double dx = system.length.value() / static_cast<double>(intervals);
+  const double k = detail::modeWavenumber(system, static_cast<std::size_t>(n));
+  const double sh = std::sin(0.5 * k * dx);
+  const double p = 4.0 * sh * sh;
+  const double mu = system.stiffness * dt / (dx * dx);
+  const double sl = system.loss.sigma0 * dt;
+  const double r = system.loss.sigma1 * dt / (dx * dx);
+  const double a = 1.0 + sl + r * p;
+  const double cc = 1.0 - sl - r * p;
+  if (!(cc > 0.0)) return R::failure(QuantityError::DomainError);
+  const double w = constants::twoPi * target.value().value();
+  const double lam2 =
+      (2.0 - mu * mu * p * p - 2.0 * std::cos(w * dt) * std::sqrt(a * cc)) / p;
+  if (!(lam2 > 0.0) || lam2 > 1.0 || lam2 + 4.0 * mu * mu > 1.0)
+    return R::failure(QuantityError::DomainError);
+  const double lam = std::sqrt(lam2);
+  WaveSystem1D warped = system;
+  warped.speed = SpeedMetersPerSecond{lam * dx * fs};
+  return R::success(PrewarpedGrid{warped, lam});
+}
 
 struct StableGrid {
   std::size_t intervals;

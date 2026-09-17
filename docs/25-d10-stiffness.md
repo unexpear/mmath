@@ -47,8 +47,13 @@ which is bounded iff λ²p + μ²p² ≤ 4, i.e.
     λ² + 4μ² ≤ 1
 
 This is equivalent to Bilbao's Δx² ≥ (c²Δt² + √(c⁴Δt⁴ + 16κ²Δt²))/2. With
-loss the Jury condition relaxes to λ²p + μ²p² ≤ 4 + 2rp, so the same
-condition suffices. It is enforced in `Fdtd1D::create` (`DomainError`).
+loss a + c = 2 still, so the Jury condition is again exactly
+λ²p + μ²p² ≤ 4: the same condition.
+
+> **Correction (found in D12).** This record first said the lossy
+> condition "relaxes to λ²p + μ²p² ≤ 4 + 2rp". That inherited D9's sign
+> error in the polynomial's constant term (see the correction in
+> `24-d9-loss.md`). The enforced limit λ² + 4μ² ≤ 1 was right either way. It is enforced in `Fdtd1D::create` (`DomainError`).
 
 **No exact Courant-1 grid exists for a stiff string**, so D8's
 `gridIntervalsForRate` cannot apply. `stableGridForRate` instead returns

@@ -51,9 +51,19 @@ amplitude).
     s = σ₀Δt,  r = σ₁Δt/Δx²,  D = second difference with the D8 ghosts
 
 Von Neumann analysis with D → −p, p ∈ [0, 4] gives the amplification
-polynomial `(1+s+rp)z² − (2−λ²p)z + (1−s+rp)`. The Jury conditions reduce
+polynomial `(1+s+rp)z² − (2−λ²p)z + (1−s−rp)`. The Jury conditions reduce
 to `λ²p ≤ 4`, i.e. **λ ≤ 1 for any σ₀, σ₁ ≥ 0**, the same condition as the
-lossless scheme. The explicit variant with a backward difference on the σ₁
+lossless scheme.
+
+> **Correction (found in D12).** This record first gave the constant term
+> as `(1−s+rp)`. The u^{n−1} terms are −(1−s)·u^{n−1} − r·D·u^{n−1}, and
+> with D → −p the second becomes **+rp**, so the constant is `1−s−rp`.
+> D12 caught it when FDTD decay rates, measured by FFT, disagreed with a
+> prediction built on the wrong polynomial (mode 2: predicted 2.000/s,
+> measured 2.560/s, continuous model 2.561/s). The stability conclusion is
+> unchanged: with the corrected term a + c = 2 and |c| ≤ a always, so the
+> condition is still exactly λ²p ≤ 4. No D9 code or test depended on the
+> wrong term. The explicit variant with a backward difference on the σ₁
 term would need `λ² + 4σ₁Δt/Δx² ≤ 1` and is only first order in time for
 that term, so it is not used. Energy balance: with the D8 discrete energy,
 the step changes it by `−sΣw² − rΣ(δw)² ≤ 0` (w = u^{n+1} − u^{n−1}), so

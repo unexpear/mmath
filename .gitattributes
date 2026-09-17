@@ -1,0 +1,3 @@
+# Normalize line endings on checkin so MSVC/Windows and WSL/Linux checkouts
+# don't produce CRLF churn in diffs. Binaries and existing artifacts excluded.
+* text=auto

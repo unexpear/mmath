@@ -30,6 +30,12 @@ MVP: Phases 0–2 + 2.5 · C++20 · zero-dep core · strict units
 | 23 | `23-d8-wave-solvers.md` | D8 record: 1-D wave object on analytical, modal, FDTD, waveguide solvers |
 | 24 | `24-d9-loss.md` | D9 record: frequency-dependent loss, T60 fit, implicit lossy FDTD |
 | 25 | `25-d10-stiffness.md` | D10 record: hinged stiffness, D1 Fletcher agreement, stiff FDTD stability |
+| 26 | `26-d11-fft.md` | D11 record: FFT, windows, derivative-root sinusoid estimator |
+| 27 | `27-d12-pitch-error.md` | D12 record: exact FDTD dispersion, FFT-measured pitch/decay error, D9 sign fix |
+| 28 | `28-d13-stiff-ends.md` | D13 record: clamped/free stiff ends, boundary determinant, beam roots, ghost-row FDTD |
+| 29 | `29-d14-fine-tuning.md` | D14 record: FDTD pre-warping, Thiran fractional delay, exact loop poles |
+| 30 | `30-d15-waveguide-loss-dispersion.md` | D15 record: tuned waveguide loss and dispersion filters, per-partial error report |
+| 31 | `31-d16-measured-data.md` | D16 record: sourced piano-wire data, validation annex vs Young 1952 measurement |
 | — | `FOUNDATION.md` | **Canonical** base decisions (accepted/proposed/deferred) |
 | — | `NUMERICS.md` | **Canonical** precision, determinism tiers, tolerances |
 | — | `VALIDATION.md` | **Canonical** verification vs validation, evidence rules |

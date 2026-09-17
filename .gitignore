@@ -1,3 +1,6 @@
 build*/
 cmake-build-*/
 *.user
+# Rendered/test audio artifacts must never be committed (demos and tests
+# write WAVs to their working directory).
+*.wav

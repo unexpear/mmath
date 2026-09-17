@@ -31,10 +31,11 @@ namespace mmathen {
 
 class Waveguide1D {
  public:
-  // intervals M in [2, kMaxGridIntervals]. Lossy systems need loop filters
-  // matched to the loss model and stiff systems need dispersion filters
-  // (neither built: deferred) — DomainError, rather than silently running
-  // the ideal object.
+  // intervals M in [2, kMaxGridIntervals]. Lossy and stiff systems need loop
+  // filters matched to the model; those live in TunedWaveguide
+  // (tuned_waveguide.h, D14/D15), whose partials are approximations with
+  // reported errors. This exact rung refuses them: DomainError, rather than
+  // silently running the ideal object.
   [[nodiscard]] static Result<Waveguide1D, QuantityError> create(
       InitialShape shape, std::size_t intervals) {
     using R = Result<Waveguide1D, QuantityError>;
