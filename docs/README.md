@@ -36,6 +36,7 @@ MVP: Phases 0–2 + 2.5 · C++20 · zero-dep core · strict units
 | 29 | `29-d14-fine-tuning.md` | D14 record: FDTD pre-warping, Thiran fractional delay, exact loop poles |
 | 30 | `30-d15-waveguide-loss-dispersion.md` | D15 record: tuned waveguide loss and dispersion filters, per-partial error report |
 | 31 | `31-d16-measured-data.md` | D16 record: sourced piano-wire data, validation annex vs Young 1952 measurement |
+| 33 | `33-d18-hearing.md` | D18 record: ISO 226:2023 loudness, Bark/ERB/A-weighting, MPEG-1 masking |
 | — | `FOUNDATION.md` | **Canonical** base decisions (accepted/proposed/deferred) |
 | — | `NUMERICS.md` | **Canonical** precision, determinism tiers, tolerances |
 | — | `VALIDATION.md` | **Canonical** verification vs validation, evidence rules |

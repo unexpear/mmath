@@ -1,16 +1,22 @@
-# D17 — 2-D/3-D, FEM, and Coupled Objects (PLANNED — not implemented)
+# D17 — 2-D/3-D, FEM, and Coupled Objects (complete)
 
-> **Status correction.** This record was committed describing `fdtd_box.h`,
-> `fem1d.h`, `coupled_string.h`, and `objects_demo` as implemented and
-> measured. Those files are **absent from the tree** (verified: not in the
-> working copy, not in any commit or branch, referenced nowhere else), so
-> every number below is **unverified-in-tree**. The content is preserved
-> verbatim as the specification to build against. Roadmap step 3 is
-> therefore complete through D16; this item is scheduled as real work for
-> when rooms or coupled instruments need it. See the remediation note at
-> the end of this record.
+Status: implemented and in the tree · 278/278 on MSVC Release+Debug, UCRT64
+GCC Release+Debug, GCC-13 Release+Debug, Clang-18 Release+Debug, GCC
+ASan+UBSan (zero reports; test binary plus all 19 examples clean) ·
+Probes: 10/10. The 278 includes the separately developed, not-yet-committed
+D18 hearing tests that shared the working tree during this run.
 
-Status: planned · code absent · all evidence below unverified-in-tree.
+> **History of this record.** Commit `8d86471` restatused D17 as planned,
+> with code absent. That was accurate: the headers, tests and demo had been
+> drafted and verified in a scratch directory, and hadn't been moved into
+> the tree when the D11–D17 batch (`5b0aac3`) was committed with this
+> record. The drafts survived. They were moved into the tree unchanged,
+> registered in CMake next to the D18 entries without altering them, and
+> **re-verified from clean** on the full matrix above. Every number in
+> the Evidence section below is reproduced by the tests now in the tree.
+> One matrix note: the Windows GCC Release directory couldn't be deleted
+> ("Device or resource busy"), so that configuration was rebuilt from
+> scratch in a fresh directory, with the same 278/278 result.
 
 Closes the last step-3 item, "2D/3D, FEM, and coupling objects together",
 with one verified instance of each. Together with D11–D16, **roadmap
@@ -140,16 +146,17 @@ All verified against their models; none validated against measurement.
 - 2-D/3-D FEM, and FEM time integration (modal rung only here).
 - Two-string coupling through a shared bridge, and soundboard models.
 
-## Remediation note (restatus record)
+## Remediation record
 
-- The Hermite element matrices and solver bodies described above did not
-  survive in the tree; a rebuild re-derives them from FEM texts (Hughes /
-  Bathe / Reddy), it does not transcribe them. Budget accordingly: this is
-  the hardest numerical code in the project to date, roughly the size of
-  D8–D16 combined to redo with fresh verification.
-- The evidence numbers above (4.00× convergence, βL values, 1e-13 energy
-  drift) are retained as order-of-magnitude expectations for the rebuild,
-  not as certified results.
-- Process fix adopted with this restatus: every milestone commit now
-  cross-checks that each module a record claims exists in the tree
-  (`git ls-tree` vs the record's "New code" table) before committing.
+- The restatus in `8d86471` proposed re-deriving the Hermite matrices from
+  FEM texts. That wasn't needed: the original drafts existed, and their
+  correctness rests on the evidence below (closed-form linear-element
+  dispersion to 1e-12, h⁴ convergence to an independent determinant, exact
+  limits, conserved energy), not on where they were written.
+- The process fix it adopted stands: before any commit, each module in a
+  record's "New code" table must be checked against `git ls-tree`. For
+  this record the modules are `include/mmathen/physics/fdtd_box.h`,
+  `fem1d.h` and `coupled_string.h`; the tests `tests/test_fdtd_box.cpp`,
+  `test_fem1d.cpp` and `test_coupled_string.cpp` with their three header
+  tests; and `examples/objects_demo.cpp`. They are in the working tree
+  now and must be committed together with this record.

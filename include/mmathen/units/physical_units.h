@@ -54,6 +54,8 @@ struct Density {};
 struct Humidity {};
 struct Attenuation {};
 struct Decibel {};
+struct Phon {};
+struct Sone {};
 struct Reflection {};
 struct Transmission {};
 }  // namespace tags
@@ -87,6 +89,10 @@ using DensityKgPerM3 = Quantity<double, DimDensity, tags::Density>;
 using RelativeHumidity = Quantity<double, DimDimensionless, tags::Humidity>;
 using AttenuationDbPerM = Quantity<double, DimAttenuation, tags::Attenuation>;
 using Decibels = Quantity<double, DimDimensionless, tags::Decibel>;
+// D18 additions: loudness level (phons, 1 phon = 1 dB SPL at 1 kHz) and
+// perceived loudness (sones, doubling every 10 phon above 40).
+using Phons = Quantity<double, DimDimensionless, tags::Phon>;
+using Sones = Quantity<double, DimDimensionless, tags::Sone>;
 using ReflectionCoefficient =
     Quantity<double, DimDimensionless, tags::Reflection>;
 using TransmissionCoefficient =

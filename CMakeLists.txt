@@ -113,6 +113,10 @@ if(BUILD_TESTING)
     tests/test_materials.cpp
     tests/test_stiff_ends.cpp
     tests/test_tuned_waveguide.cpp
+    tests/test_fdtd_box.cpp
+    tests/test_fem1d.cpp
+    tests/test_coupled_string.cpp
+    tests/test_hearing.cpp
     tests/headers/th_result.cpp
     tests/headers/th_scalar.cpp
     tests/headers/th_constants.cpp
@@ -165,6 +169,12 @@ if(BUILD_TESTING)
     tests/headers/th_analysis_fft.cpp
     tests/headers/th_physics_materials.cpp
     tests/headers/th_physics_tuned_waveguide.cpp
+    tests/headers/th_physics_fdtd_box.cpp
+    tests/headers/th_physics_fem1d.cpp
+    tests/headers/th_physics_coupled_string.cpp
+    tests/headers/th_hearing_loudness.cpp
+    tests/headers/th_hearing_scales.cpp
+    tests/headers/th_hearing_masking.cpp
   )
   target_link_libraries(mmathen_tests PRIVATE mmathen_core Catch2::Catch2WithMain)
   mmathen_dev_settings(mmathen_tests)
@@ -212,7 +222,8 @@ if(MMATHEN_BUILD_EXAMPLES)
   foreach(example render_demo tuning_demo progression_demo timbre_demo
                   tempo_demo air_table stretch_demo modes_demo voice_demo
                   comma_demo dsp_demo wavetable_demo pm_demo
-                  solver_demo loss_demo stiff_demo pitch_error_demo)
+                   solver_demo loss_demo stiff_demo pitch_error_demo
+                   hearing_demo objects_demo)
     add_executable(${example} examples/${example}.cpp)
     target_link_libraries(${example} PRIVATE mmathen_core)
     mmathen_dev_settings(${example})
