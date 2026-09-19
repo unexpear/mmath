@@ -21,7 +21,8 @@
 //               [--tab eq|dyn|fx|set] [--eqmode graphic|parametric|match]
 //               [--preset N] [--comp] [--seek SEC] [--match ref.wav]
 //               [--shift SEMITONES] [--tempo PERCENT] [--method psola|pv]
-//               [--export out.wav] [--flat] [--truepeak]
+//               [--export out.wav] [--flat] [--truepeak] [--normalize]
+//               [--linear] [--method psola|pv|pghi|hybrid] [--tab repair]
 //               [file.wav]
 //   saves a PNG of the window after S seconds (after any background job has
 //   finished), plus out.png.txt with run statistics, and exits.
@@ -53,10 +54,15 @@
 #include <mmathen/analysis/analyzer.h>
 #include <mmathen/analysis/bs1770.h>
 #include <mmathen/analysis/pitch.h>
+#include <mmathen/analysis/pyin.h>
 #include <mmathen/analysis/spectrum.h>
+#include <mmathen/dsp/acge.h>
+#include <mmathen/dsp/denoise.h>
 #include <mmathen/dsp/equalizer.h>
+#include <mmathen/dsp/loudness_normalize.h>
 #include <mmathen/dsp/match_eq.h>
 #include <mmathen/dsp/time_pitch.h>
+#include <mmathen/dsp/tsm.h>
 #include <mmathen/music/pitch.h>
 #include <mmathen/physics/wave1d.h>
 #include <mmathen/plot/svg.h>
@@ -225,6 +231,18 @@ struct PBand {
   int slope = 1;  // 0..3 -> 12/24/36/48 dB/oct (Butterworth order 2/4/6/8)
 };
 
+// Delivery loudness presets (D33). Values are the services' published
+// normalization targets (AES TD1008) and the broadcast standards.
+struct ExportTarget {
+  const char* name;
+  double lufs;
+};
+constexpr ExportTarget kExportTargets[] = {
+    {"Streaming: -14 LUFS (Spotify, YouTube, Tidal, Amazon)", -14.0},
+    {"Apple Music: -16 LUFS", -16.0},
+    {"Broadcast EBU R128: -23 LUFS", -23.0},
+    {"Broadcast ATSC A/85: -24 LKFS", -24.0}};
+
 bool hasGain(PType t) {
   return t == PType::Peak || t == PType::LowShelf || t == PType::HighShelf;
 }
@@ -233,7 +251,7 @@ bool hasSlope(PType t) { return t == PType::LowCut || t == PType::HighCut; }
 // ------------------------------------------------------------ the app --
 
 struct Job {
-  enum Kind { None, Transform, MatchAnalysis, Export } kind = None;
+  enum Kind { None, Transform, MatchAnalysis, Export, Repair } kind = None;
   std::thread thread;
   std::atomic<bool> done{false};
   // Results (written by the worker before `done`, read after it).
@@ -270,7 +288,28 @@ struct App {
   bool autoHeadroom = true;
   float volumeDb = 0.0f;
   std::array<float, 16> gains{};
-  bool exactGains = true;
+  int graphicSolver = 0;  // 0 ACGE (D38), 1 solved centres (D25), 2 plain (D21)
+  int eqTarget = 0;       // 0 stereo, 1 mid, 2 side (D37)
+  // D37 dynamics additions.
+  DynamicEqBand deess{};
+  bool deessOn = false;
+  MultibandParams mb{};
+  bool mbOn = false;
+  float mbLowHz = 200.0f, mbHighHz = 2500.0f;
+  // D34 repair.
+  int denoiseMethod = 2;  // MMSE-LSA
+  float denoiseReduction = 15.0f;
+  std::optional<NoiseProfile> noiseProfile;
+  std::vector<float> undoTrack;
+  std::size_t undoFrames = 0;
+  bool selecting = false, haveBox = false;
+  double boxT0 = 0, boxT1 = 0, boxF0 = 0, boxF1 = 0, dragT = 0, dragF = 0;
+  float boxGainDb = -20.0f;
+  bool exportLinearPhase = false;
+  // D35 streaming tuner: the last frames' pYIN candidates.
+  std::vector<std::vector<PitchCandidate>> tuneCands;
+  std::vector<double> tuneTimes;
+  double tuneClock = 0.0;
   int preset = 0;
   bool applyPreset = false;
   std::array<PBand, 8> pbands{};
@@ -282,6 +321,9 @@ struct App {
   float matchAmount = 1.0f;
   float matchRelFloor = 50.0f;
   std::string lastExport;
+  bool exportNormalize = false;  // export = what you hear, unless asked
+  int exportTarget = 0;
+  float exportCeilingDb = -1.0f;
   std::vector<double> curveHz, curveDb;
   double eqMaxDb = 0.0;
   std::string eqNote;
@@ -365,11 +407,19 @@ struct App {
       const auto bands = octaveBandsFor(rate);
       std::vector<double> g(bands.size());
       for (std::size_t i = 0; i < g.size(); ++i) g[i] = static_cast<double>(gains[i]);
-      if (exactGains && !bands.empty()) {
+      if (graphicSolver == 0 && bands.size() >= 2) {
+        // D38: Välimäki-Liski accurate cascade GEQ (centres and midpoints).
+        auto d = designAcge(bands, g, fs);
+        if (d.ok()) {
+          eqNote = "ACGE (Valimaki-Liski): within ~1 dB at centres and midpoints";
+          return finishCurve(d.value().sections);
+        }
+      }
+      if (graphicSolver == 1 && !bands.empty()) {
         auto sol = solveGraphicEqGains(bands, g, fs, 15.0);
         if (sol.ok()) {
-          char buf[96];
-          std::snprintf(buf, sizeof buf, "solved: centres exact to %.3f dB (%d it.)",
+          char buf[128];
+          std::snprintf(buf, sizeof buf, "solved centres: residual %.3f dB (%d it.); may ripple between",
                         sol.value().residualDb, sol.value().iterations);
           eqNote = buf;
           g = sol.value().gainsDb;
@@ -416,7 +466,12 @@ struct App {
                     match->bands.size(), match->predictedErrorDb);
       eqNote = buf;
     }
-    // Exact response curve and its maximum (for auto headroom).
+    return finishCurve(std::move(s));
+  }
+
+  // Exact response curve of the sections and its maximum (auto headroom).
+  std::vector<BiquadCoeffs> finishCurve(std::vector<BiquadCoeffs> s) {
+    const SampleRateHz fs{rate};
     curveHz.clear();
     curveDb.clear();
     eqMaxDb = 0.0;
@@ -464,6 +519,11 @@ struct App {
     p.limOn = limOn;
     const double headroom = (autoHeadroom && eqOn) ? eqMaxDb : 0.0;
     p.volumeDb = static_cast<double>(volumeDb) - headroom;
+    p.eqTarget = eqTarget;
+    p.deess = deess;
+    p.deessOn = deessOn;
+    p.mb = mb;
+    p.mbOn = mbOn;
     return p;
   }
 
@@ -479,14 +539,63 @@ struct App {
     job = std::make_unique<Job>();
     job->kind = Job::Export;
     Job* j = job.get();
-    job->thread = std::thread([j, path, src = e().track, frames = e().trackFrames, fs = rate,
-                               p = makeParams()] {
+    NormalizeTarget target;
+    target.lufs = kExportTargets[std::clamp(exportTarget, 0, 3)].lufs;
+    target.truePeakDb = static_cast<double>(exportCeilingDb);
+    job->thread = std::thread([j, path, srcIn = e().track, frames = e().trackFrames, fs = rate,
+                               p0 = makeParams(), normalize = exportNormalize, target,
+                               linear = exportLinearPhase, mbLo = e().mbLowHz,
+                               mbHi = e().mbHighHz] {
+      EngineParams p = p0;
+      std::vector<float> src = srcIn;
+      // D37: linear-phase EQ replaces the EQ stage offline (same magnitude,
+      // symmetric FIR), latency-compensated, honouring the mid/side target.
+      std::string lpNote;
+      if (linear && p.eqOn && p.eqCount > 0) {
+        const std::vector<BiquadCoeffs> secs(p.eq.begin(), p.eq.begin() + p.eqCount);
+        constexpr std::size_t kTaps = 8191, kBlock = 8192;
+        auto fir = linearPhaseFromSections(secs, SampleRateHz{fs}, kTaps);
+        if (fir.ok()) {
+          auto filt = [&](std::vector<double>& x) {
+            auto c = FftConvolver::create(fir.value(), kBlock);
+            if (!c.ok()) return;
+            FftConvolver conv = std::move(c).value();
+            const std::size_t delay = kBlock + (kTaps - 1) / 2;
+            std::vector<double> buf(x.size() + delay, 0.0);
+            std::copy(x.begin(), x.end(), buf.begin());
+            conv.process(buf.data(), buf.data(), buf.size());
+            std::copy(buf.begin() + static_cast<std::ptrdiff_t>(delay), buf.end(), x.begin());
+          };
+          std::vector<double> a(frames), b(frames);
+          for (std::size_t i = 0; i < frames; ++i) {
+            a[i] = static_cast<double>(src[2 * i]);
+            b[i] = static_cast<double>(src[2 * i + 1]);
+          }
+          if (p.eqTarget == 0) {
+            filt(a);
+            filt(b);
+          } else {
+            midSideEncode(a.data(), b.data(), a.data(), b.data(), frames);
+            filt(p.eqTarget == 1 ? a : b);
+            midSideDecode(a.data(), b.data(), a.data(), b.data(), frames);
+          }
+          for (std::size_t i = 0; i < frames; ++i) {
+            src[2 * i] = static_cast<float>(a[i]);
+            src[2 * i + 1] = static_cast<float>(b[i]);
+          }
+          p.eqOn = false;
+          lpNote = "; linear-phase EQ (8191-tap FIR)";
+        }
+      }
       auto fail = [&](const char* why) {
         j->message = std::string("Export failed: ") + why;
         j->done.store(true);
       };
       app::Engine off;
       off.truePeakMode = p.lim.truePeak;
+      off.mbLowHz = mbLo;
+      off.mbHighHz = mbHi;
+      off.eqTargetCur = p.eqTarget;  // no fade-switch in an offline render
       auto ring = SpscRing::create(std::size_t{1} << 14);
       if (!ring.ok() || !off.buildProcessors(fs)) return fail("processors");
       off.ring = std::move(ring).value();
@@ -495,14 +604,13 @@ struct App {
       off.eqMix.setTarget(p.eqOn ? 1.0 : 0.0, 0);
       off.compMix.setTarget(p.compOn ? 1.0 : 0.0, 0);
       off.limMix.setTarget(p.limOn ? 1.0 : 0.0, 0);
+      off.deessMix.setTarget(p.deessOn ? 1.0 : 0.0, 0);
+      off.mbMix.setTarget(p.mbOn ? 1.0 : 0.0, 0);
       const std::size_t lat = off.lim->latencyFrames();
       auto wr = WavWriter::open(path, SampleRateHz{fs}, FrameCount{frames}, 2, 24);
       if (!wr.ok()) return fail("cannot open the file");
       auto writer = std::move(wr).value();
-      auto meterR = LoudnessMeter::create(SampleRateHz{fs}, 2);
-      if (!meterR.ok()) return fail("meter");
-      LoudnessMeter meter = std::move(meterR).value();
-      std::vector<double> drainBuf(std::size_t{1} << 14), out(2 * app::kChunk);
+      std::vector<double> drainBuf(std::size_t{1} << 14), all(2 * frames, 0.0);
       std::size_t skip = lat, written = 0;
       for (std::size_t pos = 0; pos < frames + lat; pos += app::kChunk) {
         const std::size_t n = std::min(app::kChunk, frames + lat - pos);
@@ -514,30 +622,44 @@ struct App {
         off.chain(n, true);
         while (off.ring->read(drainBuf.data(), drainBuf.size()) > 0) {
         }
-        std::size_t k = 0;
-        for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t i = 0; i < n && written < frames; ++i) {
           if (skip > 0) {
             --skip;
             continue;
           }
-          out[2 * k] = off.l[i];
-          out[2 * k + 1] = off.r[i];
-          ++k;
+          all[2 * written] = off.l[i];
+          all[2 * written + 1] = off.r[i];
+          ++written;
         }
-        k = std::min(k, frames - written);
-        if (k == 0) continue;
-        meter.push(out.data(), k);
-        if (!writer.write(out.data(), k)) return fail("write error");
-        written += k;
       }
+      // D33: optional delivery normalization of the rendered result.
+      std::string norm;
+      if (normalize) {
+        auto rep = normalizeLoudness(all, 2, SampleRateHz{fs}, target);
+        if (!rep.ok()) {
+          norm = " (normalization skipped: nothing to measure)";
+        } else {
+          char nb[160];
+          std::snprintf(nb, sizeof nb, "; normalized %+.1f dB%s%s", rep.value().gainDb,
+                        rep.value().limited ? " with true-peak limiting" : "",
+                        rep.value().reachedTarget ? "" : " (TARGET NOT REACHED under the ceiling)");
+          norm = nb;
+        }
+      }
+      auto meterR = LoudnessMeter::create(SampleRateHz{fs}, 2);
+      if (!meterR.ok()) return fail("meter");
+      LoudnessMeter meter = std::move(meterR).value();
+      meter.push(all.data(), frames);
+      if (!writer.write(all.data(), frames)) return fail("write error");
       if (!writer.close().ok()) return fail("could not finish the file");
-      char buf[400];
+      char buf[520];
       std::snprintf(buf, sizeof buf,
                     "Exported %s: %.2f s, integrated %.1f LUFS, true peak %.1f dBTP, "
-                    "%llu clipped samples",
-                    baseName(path).c_str(), static_cast<double>(written) / fs,
+                    "%llu clipped samples%s",
+                    baseName(path).c_str(), static_cast<double>(frames) / fs,
                     meter.integratedLufs(), meter.truePeakDbtp(),
-                    static_cast<unsigned long long>(off.clips.load()));
+                    static_cast<unsigned long long>(off.clips.load() + writer.overloads()),
+                    (lpNote + norm).c_str());
       j->message = buf;
       j->ok = true;
       j->done.store(true);
@@ -659,9 +781,12 @@ struct App {
       lastClips = c;
       clipLightUntil = now() + 1.0;
     }
-    // Tuner: YIN on the newest 4096 samples, 15 times a second.
+    // Tuner (D35): pYIN stage 1 on the newest 4096 samples, 15 times a
+    // second; stage 2 (Viterbi) over the last 24 frames (~1.6 s), so octave
+    // jumps and voicing flicker are smoothed like the offline tracker.
     if (now() >= nextTune && rate >= 8000.0) {
       nextTune = now() + 1.0 / 15.0;
+      tuneClock += 1.0 / 15.0;
       std::vector<double> frame(hist.size());
       double ss = 0.0;
       for (std::size_t i = 0; i < hist.size(); ++i) {
@@ -669,11 +794,21 @@ struct App {
         ss += frame[i] * frame[i];
       }
       tuneLevelDb = ss > 0.0 ? 10.0 * std::log10(ss / static_cast<double>(frame.size())) : -120.0;
-      PitchSearch s;
-      s.fMinHz = 50.0;
-      s.fMaxHz = std::min(1500.0, 0.45 * rate);
-      auto t = yinPitch(frame, SampleRateHz{rate}, s);
-      tune = t.ok() ? t.value() : PitchEstimate{};
+      PyinOptions po;
+      po.fMinHz = 50.0;
+      po.fMaxHz = std::min(1500.0, 0.45 * rate);
+      po.maxJumpBins = 60;  // updates are ~67 ms apart: allow larger moves
+      auto cand = pyinCandidates(frame, SampleRateHz{rate}, po);
+      if (cand.ok()) {
+        tuneCands.push_back(std::move(cand).value());
+        tuneTimes.push_back(tuneClock);
+        if (tuneCands.size() > 24) {
+          tuneCands.erase(tuneCands.begin());
+          tuneTimes.erase(tuneTimes.begin());
+        }
+        auto d = pyinDecode(tuneCands, tuneTimes, SampleRateHz{rate}, po);
+        tune = d.ok() ? d.value().back().estimate : PitchEstimate{};
+      }
     }
   }
 
@@ -928,18 +1063,23 @@ struct App {
     const double p = std::pow(2.0, static_cast<double>(shiftSemis) / 12.0);
     const double t = 100.0 / static_cast<double>(tempoPct);
     const bool usePsola = method == 0;
+    // 1 classic locked vocoder (D28), 2 PGHI (D36), 3 hybrid HPSS (D36).
+    const TsmMethod tsm = method == 2 ? TsmMethod::Pghi
+                          : method == 3 ? TsmMethod::Hybrid
+                                        : TsmMethod::ClassicLocked;
     Job* j = job.get();
-    job->thread = std::thread([j, src = original, frames = originalFrames, fs = originalRate, p, t, usePsola] {
+    job->thread = std::thread([j, src = original, frames = originalFrames, fs = originalRate, p, t,
+                               usePsola, tsm] {
       const SampleRateHz r{fs};
       auto run = [&](const std::vector<double>& x) -> Result<std::vector<double>, QuantityError> {
         if (usePsola) return psola(x, r, p, t);
         std::vector<double> y = x;
         if (std::fabs(t - 1.0) > 1e-9) {
-          auto st = phaseVocoderStretch(y, t);
+          auto st = timeStretch(y, t, tsm);
           if (!st.ok()) return st;
           y = std::move(st).value();
         }
-        if (std::fabs(p - 1.0) > 1e-9) return phaseVocoderPitchShift(y, r, p);
+        if (std::fabs(p - 1.0) > 1e-9) return pitchShift(y, r, p, tsm);
         return Result<std::vector<double>, QuantityError>::success(std::move(y));
       };
       std::vector<double> l(frames), rr(frames);
@@ -1018,8 +1158,15 @@ struct App {
         char name[200];
         std::snprintf(name, sizeof name, "%s [%+.1f st, %.0f%%, %s]", originalName.c_str(),
                       static_cast<double>(shiftSemis), static_cast<double>(tempoPct),
-                      method == 0 ? "PSOLA" : "vocoder");
+                      (method == 0 ? "PSOLA" : method == 1 ? "vocoder" : method == 2 ? "PGHI" : "hybrid"));
         if (installTrack(std::move(j.track), j.frames, j.rate, name)) status = std::string("Rendered: ") + name;
+      } else {
+        status = j.message;
+      }
+    } else if (j.kind == Job::Repair) {
+      if (j.ok) {
+        const std::string keep = trackName;
+        if (installTrack(std::move(j.track), j.frames, j.rate, keep)) status = "Repair: " + j.message;
       } else {
         status = j.message;
       }
@@ -1094,17 +1241,157 @@ struct App {
     }
     const float xp = xOfFrame(static_cast<double>(e().shownPos.load()));
     d->AddLine(ImVec2(xp, p0.y), ImVec2(xp, p1.y), IM_COL32(255, 255, 255, 230), 2.0f);
-    d->AddText(ImVec2(p0.x + 4.0f, p0.y + 2.0f), IM_COL32(255, 255, 255, 170), "whole track");
-    if (ImGui::IsItemHovered()) {
-      const ImVec2 m = ImGui::GetMousePos();
-      const double t = trackSeconds * static_cast<double>((m.x - p0.x) / size.x);
-      const double lo = 30.0, hi = std::min(20000.0, 0.5 * rate);
-      const double f = lo * std::pow(hi / lo, static_cast<double>((p1.y - m.y) / size.y));
+    d->AddText(ImVec2(p0.x + 4.0f, p0.y + 2.0f), IM_COL32(255, 255, 255, 170),
+               "whole track (click: seek; shift+drag: select a region to repair)");
+    const double lo = 30.0, hi = std::min(20000.0, 0.5 * rate);
+    auto tOf = [&](float x) {
+      return std::clamp(trackSeconds * static_cast<double>((x - p0.x) / size.x), 0.0, trackSeconds);
+    };
+    auto fOf = [&](float y) {
+      return lo * std::pow(hi / lo, std::clamp(static_cast<double>((p1.y - y) / size.y), 0.0, 1.0));
+    };
+    auto yOfF = [&](double f) {
+      return p1.y - size.y * static_cast<float>(std::log(f / lo) / std::log(hi / lo));
+    };
+    const ImVec2 m = ImGui::GetMousePos();
+    // D34 spectral repair: shift+drag selects a time x frequency box.
+    if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && ImGui::GetIO().KeyShift) {
+      selecting = true;
+      dragT = tOf(m.x);
+      dragF = fOf(m.y);
+    }
+    if (selecting) {
+      const double t = tOf(m.x), f = fOf(m.y);
+      boxT0 = std::min(dragT, t);
+      boxT1 = std::max(dragT, t);
+      boxF0 = std::min(dragF, f);
+      boxF1 = std::max(dragF, f);
+      haveBox = boxT1 - boxT0 > 0.01 && boxF1 / boxF0 > 1.05;
+      if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) selecting = false;
+    }
+    if (haveBox) {
+      const ImVec2 a(xOfFrame(boxT0 * rate), yOfF(boxF1)), b(xOfFrame(boxT1 * rate), yOfF(boxF0));
+      d->AddRectFilled(a, b, IM_COL32(255, 220, 120, 45));
+      d->AddRect(a, b, IM_COL32(255, 220, 120, 230), 0.0f, 0, 2.0f);
+    }
+    if (ImGui::IsItemHovered() && !selecting) {
+      const double t = tOf(m.x), f = fOf(m.y);
       char buf[96];
       std::snprintf(buf, sizeof buf, "%.2f s, %s  (click: seek, crossfaded)", t, hzText(f).c_str());
       tooltipAtMouse(buf);
-      if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) seek(t);
+      if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::GetIO().KeyShift) seek(t);
     }
+  }
+
+  // ============================================================= repair ==
+  void learnNoiseFromSelection() {
+    if (e().trackFrames == 0) return;
+    std::size_t a = 0, b = std::min<std::size_t>(e().trackFrames, static_cast<std::size_t>(rate));
+    if (markA >= 0 && markB > markA) {
+      a = static_cast<std::size_t>(markA);
+      b = static_cast<std::size_t>(markB);
+    }
+    std::vector<double> mono(b - a);
+    for (std::size_t i = a; i < b; ++i)
+      mono[i - a] = 0.5 * (static_cast<double>(e().track[2 * i]) + static_cast<double>(e().track[2 * i + 1]));
+    auto p = learnNoiseProfile(mono, 2048);
+    if (p.ok()) {
+      noiseProfile = std::move(p).value();
+      char buf[128];
+      std::snprintf(buf, sizeof buf, "Noise profile learned from %.2f s (%s).",
+                    static_cast<double>(b - a) / rate, markA >= 0 && markB > markA ? "A-B" : "first second");
+      status = buf;
+    } else {
+      status = "Noise profile: select at least 2048 samples of noise (A-B).";
+    }
+  }
+
+  // Offline repair of the current track on the worker (kind Transform
+  // installs the result; the previous track is kept for Undo).
+  void startRepair(bool denoiseJob) {
+    if (busy() || e().trackFrames == 0) return;
+    if (denoiseJob && !noiseProfile) {
+      status = "Learn a noise profile first.";
+      return;
+    }
+    if (!denoiseJob && !haveBox) {
+      status = "Shift+drag on the whole-track view to select a region first.";
+      return;
+    }
+    undoTrack = e().track;
+    undoFrames = e().trackFrames;
+    job = std::make_unique<Job>();
+    job->kind = Job::Repair;
+    Job* j = job.get();
+    const auto prof = noiseProfile ? *noiseProfile : NoiseProfile{};
+    const auto meth = static_cast<DenoiseMethod>(denoiseMethod);
+    const double red = static_cast<double>(denoiseReduction);
+    const double t0 = boxT0, t1 = boxT1, f0 = boxF0, f1 = boxF1, g = static_cast<double>(boxGainDb);
+    job->thread = std::thread([j, src = e().track, frames = e().trackFrames, fs = rate, prof, meth,
+                               red, t0, t1, f0, f1, g, denoiseJob] {
+      std::vector<double> ch[2] = {std::vector<double>(frames), std::vector<double>(frames)};
+      for (std::size_t i = 0; i < frames; ++i) {
+        ch[0][i] = static_cast<double>(src[2 * i]);
+        ch[1][i] = static_cast<double>(src[2 * i + 1]);
+      }
+      for (auto& c : ch) {
+        auto r = denoiseJob ? denoise(c, prof, meth, red)
+                            : spectralGainRegion(c, SampleRateHz{fs}, t0, t1, f0, f1, g);
+        if (!r.ok()) {
+          j->message = "Repair failed.";
+          j->done.store(true);
+          return;
+        }
+        c = std::move(r).value();
+      }
+      j->track.resize(2 * frames);
+      for (std::size_t i = 0; i < frames; ++i) {
+        j->track[2 * i] = static_cast<float>(ch[0][i]);
+        j->track[2 * i + 1] = static_cast<float>(ch[1][i]);
+      }
+      j->frames = frames;
+      j->rate = fs;
+      j->ok = true;
+      j->message = denoiseJob ? "noise reduced" : "region repaired";
+      j->done.store(true);
+    });
+    status = denoiseJob ? "Reducing noise..." : "Repairing region...";
+  }
+
+  void panelRepair() {
+    ImGui::SeparatorText("Noise reduction (D34)");
+    ImGui::TextWrapped("1. Set A-B around a stretch of noise only (or use the first second). "
+                       "2. Learn. 3. Apply to the track.");
+    ImGui::BeginDisabled(busy() || e().trackFrames == 0);
+    if (ImGui::Button("Learn noise profile")) learnNoiseFromSelection();
+    ImGui::SameLine();
+    ImGui::TextDisabled("%s", noiseProfile ? "profile ready" : "no profile");
+    static const char* methods[] = {"Spectral subtraction (Boll/Berouti)", "MMSE-STSA (Ephraim-Malah)",
+                                    "MMSE-LSA (Ephraim-Malah)"};
+    ImGui::Combo("Method", &denoiseMethod, methods, 3);
+    ImGui::SliderFloat("Reduction", &denoiseReduction, 3.0f, 40.0f, "%.0f dB max");
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("The gain floor: no bin is pulled down more than this.\n"
+                        "Lower values keep more natural texture (less 'musical noise').");
+    if (ImGui::Button("Apply noise reduction")) startRepair(true);
+    ImGui::SeparatorText("Spectral repair");
+    ImGui::TextWrapped("Shift+drag on the whole-track spectrogram to select a time x frequency "
+                       "box, then attenuate it (e.g. a cough, a squeak, a hum burst).");
+    if (haveBox)
+      ImGui::TextDisabled("box: %.2f-%.2f s, %.0f-%.0f Hz", boxT0, boxT1, boxF0, boxF1);
+    ImGui::SliderFloat("Gain in box", &boxGainDb, -60.0f, 0.0f, "%.0f dB");
+    if (ImGui::Button("Apply to box")) startRepair(false);
+    ImGui::SameLine();
+    if (ImGui::Button("Clear box")) haveBox = false;
+    ImGui::Separator();
+    ImGui::BeginDisabled(undoTrack.empty());
+    if (ImGui::Button("Undo last repair")) {
+      auto u = std::move(undoTrack);
+      undoTrack.clear();
+      if (installTrack(std::move(u), undoFrames, rate, trackName)) status = "Repair undone.";
+    }
+    ImGui::EndDisabled();
+    ImGui::EndDisabled();
   }
 
   void drawBars(ImVec2 size) {
@@ -1387,11 +1674,14 @@ struct App {
       for (std::size_t i = 0; i < gains.size(); ++i) gains[i] = i < 10 ? presets[preset][i] : 0.0f;
       paramsDirty = true;
     }
-    ImGui::SameLine();
-    if (ImGui::Checkbox("Exact", &exactGains)) paramsDirty = true;
+    static const char* solvers[] = {"ACGE (accurate cascade)", "Solved centres", "Plain"};
+    ImGui::SetNextItemWidth(width * 0.5f);
+    if (ImGui::Combo("Design", &graphicSolver, solvers, 3)) paramsDirty = true;
     if (ImGui::IsItemHovered())
-      ImGui::SetTooltip("Solve the section gains so the response AT each band centre equals\n"
-                        "its slider (removes the neighbouring bands' interaction).");
+      ImGui::SetTooltip("ACGE (Valimaki & Liski 2017): least-squares gains over centres AND\n"
+                        "midpoints, within ~1 dB everywhere (measured <= 0.76 dB).\n"
+                        "Solved centres (D25): exact at the centres, but can ripple up to\n"
+                        "5 dB between them. Plain: sliders straight to the sections.");
     const auto bands = octaveBandsFor(rate);
     const std::size_t n = bands.size();
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -1558,6 +1848,12 @@ struct App {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Lower the output by the EQ's largest boost (exact response maximum).");
     ImGui::SetNextItemWidth(width * 0.6f);
     if (ImGui::SliderFloat("Volume", &volumeDb, -30.0f, 12.0f, "%+.1f dB")) paramsDirty = true;
+    static const char* targets[] = {"Stereo", "Mid only", "Side only"};
+    ImGui::SetNextItemWidth(width * 0.4f);
+    if (ImGui::Combo("Apply EQ to", &eqTarget, targets, 3)) paramsDirty = true;
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Mid/side (D37): EQ the centre (M = (L+R)/2) or the width\n"
+                        "(S = (L-R)/2) only. Switching fades the EQ out and back in.");
     ImGui::Separator();
     if (eqMode == EqMode::Graphic) eqGraphic(width);
     if (eqMode == EqMode::Parametric) eqParametric();
@@ -1654,14 +1950,77 @@ struct App {
     sliderD("Ceiling", lim.ceilingDb, -12.0f, 0.0f, "%.1f dBFS");
     sliderD("Release##lim", lim.releaseMs, 5.0f, 500.0f, "%.0f ms", true);
     grBar("GR", limOn ? static_cast<double>(e().limGrDb.load()) : 0.0);
-    ImGui::TextDisabled("Sample peaks only; inter-sample peaks can exceed it.");
+    ImGui::TextDisabled(lim.truePeak ? "True-peak mode: inter-sample peaks held within ~0.2 dB."
+                                     : "Sample peaks only; inter-sample peaks can exceed it.");
+
+    ImGui::SeparatorText("De-esser (dynamic EQ band)");
+    ImGui::PushID("deess");
+    if (ImGui::Checkbox("On", &deessOn)) paramsDirty = true;
+    float f = static_cast<float>(deess.frequency.value());
+    if (ImGui::SliderFloat("Frequency", &f, 2000.0f, 12000.0f, "%.0f Hz", ImGuiSliderFlags_Logarithmic)) {
+      deess.frequency = FrequencyHz{std::min(static_cast<double>(f), 0.45 * rate)};
+      paramsDirty = true;
+    }
+    sliderD("Threshold", deess.thresholdDb, -60.0f, 0.0f, "%.1f dB");
+    sliderD("Ratio", deess.ratio, 1.0f, 20.0f, "%.1f : 1", true);
+    sliderD("Range", deess.rangeDb, 0.0f, 24.0f, "%.1f dB");
+    sliderD("Q", deess.q, 0.5f, 8.0f, "%.2f", true);
+    grBar("Cut", deessOn ? static_cast<double>(e().deessGrDb.load()) : 0.0);
+    ImGui::PopID();
+
+    ImGui::SeparatorText("Multiband compressor (3 bands, LR4)");
+    ImGui::PushID("mb");
+    if (ImGui::Checkbox("On", &mbOn)) paramsDirty = true;
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::SliderFloat("Low split", &mbLowHz, 60.0f, 600.0f, "%.0f Hz", ImGuiSliderFlags_Logarithmic);
+    if (ImGui::IsItemDeactivatedAfterEdit()) rebuildMultiband();
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(120.0f);
+    ImGui::SliderFloat("High split", &mbHighHz, 1000.0f, 8000.0f, "%.0f Hz", ImGuiSliderFlags_Logarithmic);
+    if (ImGui::IsItemDeactivatedAfterEdit()) rebuildMultiband();
+    static const char* bandNames[] = {"Low", "Mid", "High"};
+    for (std::size_t b = 0; b < 3; ++b) {
+      ImGui::PushID(static_cast<int>(b));
+      if (ImGui::Checkbox(bandNames[b], &mb.bandOn[b])) paramsDirty = true;
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(110.0f);
+      sliderD("Thr", mb.band[b].thresholdDb, -60.0f, 0.0f, "%.0f dB");
+      ImGui::SameLine();
+      ImGui::SetNextItemWidth(90.0f);
+      sliderD("Ratio", mb.band[b].ratio, 1.0f, 20.0f, "%.1f", true);
+      grBar("GR", mbOn ? static_cast<double>(e().mbGrDb[b].load()) : 0.0);
+      ImGui::PopID();
+    }
+    ImGui::TextDisabled("Bands sum to an exact all-pass when neutral (flat magnitude).");
+    ImGui::PopID();
+  }
+
+  // Multiband splits are structural (filter design), rebuilt under the lock.
+  void rebuildMultiband() {
+    if (!(mbHighHz > 1.5f * mbLowHz)) mbHighHz = 1.6f * mbLowHz;
+    SDL_AudioStream* st = e().mode.load() == kMic ? mic : play;
+    if (st) SDL_LockAudioStream(st);
+    e().mbLowHz = static_cast<double>(mbLowHz);
+    e().mbHighHz = static_cast<double>(mbHighHz);
+    MultibandParams mp = mb;
+    mp.lowSplitHz = e().mbLowHz;
+    mp.highSplitHz = std::min(e().mbHighHz, 0.4 * rate);
+    auto m = MultibandCompressor::create(mp, SampleRateHz{rate});
+    if (m.ok()) {
+      e().mb = std::move(m).value();
+      e().haveParams = false;
+    }
+    if (st) SDL_UnlockAudioStream(st);
+    paramsDirty = true;
   }
 
   void panelTransform() {
     ImGui::TextWrapped("Offline pitch shift / time stretch of the loaded track (the original is "
                        "kept; Revert restores it).");
-    ImGui::RadioButton("PSOLA (voice, solo instrument)", &method, 0);
-    ImGui::RadioButton("Phase vocoder (any material)", &method, 1);
+    ImGui::RadioButton("PSOLA (voice, solo instrument; pYIN marks)", &method, 0);
+    ImGui::RadioButton("Phase vocoder, classic (tones exact)", &method, 1);
+    ImGui::RadioButton("Phase vocoder, PGHI (sharper transients)", &method, 2);
+    ImGui::RadioButton("Hybrid: harmonic/percussive split", &method, 3);
     ImGui::SliderFloat("Pitch", &shiftSemis, -12.0f, 12.0f, "%+.1f semitones");
     ImGui::SliderFloat("Tempo", &tempoPct, 50.0f, 200.0f, "%.0f %%");
     ImGui::BeginDisabled(busy() || original.empty());
@@ -1674,10 +2033,18 @@ struct App {
     ImGui::EndDisabled();
     if (busy() && job->kind == Job::Transform) ImGui::TextDisabled("rendering...");
     ImGui::Separator();
-    ImGui::TextWrapped(method == 0 ? "PSOLA moves the harmonics but keeps each period's waveform, so "
-                                     "formants stay put (a natural voice). Needs one periodic source."
-                                   : "The phase vocoder works on any mix, but a shift moves the formants "
-                                     "too (the 'chipmunk' effect).");
+    static const char* notes[] = {
+        "PSOLA moves the harmonics but keeps each period's waveform, so formants stay put "
+        "(a natural voice). Needs one periodic source.",
+        "Classic vocoder with phase locking: tones exact (1e-6 Hz), but attacks smear "
+        "(29 % of a click's energy within 1 ms at x1.5, measured).",
+        "PGHI (Prusa & Holighaus): phase integrated along time AND frequency; attacks stay "
+        "compact (53 % within 1 ms at x1.5), tones within 4e-5.",
+        "Hybrid (Driedger et al.): harmonic part through PGHI, percussive part through short "
+        "overlap-add; on our click test it matches PGHI (77 % within 5 ms)."};
+    ImGui::TextWrapped("%s", notes[std::clamp(method, 0, 3)]);
+    if (method > 0)
+      ImGui::TextWrapped("Any vocoder pitch shift moves the formants too (the 'chipmunk' effect).");
   }
 
   void panelSettings() {
@@ -1703,6 +2070,24 @@ struct App {
       refreshOverviewPixels();
     }
     ImGui::SeparatorText("Export");
+    ImGui::Checkbox("Normalize loudness on export", &exportNormalize);
+    ImGui::BeginDisabled(!exportNormalize);
+    {
+      const char* names[4];
+      for (int i = 0; i < 4; ++i) names[i] = kExportTargets[i].name;
+      ImGui::Combo("Target", &exportTarget, names, 4);
+      ImGui::SliderFloat("True-peak ceiling", &exportCeilingDb, -6.0f, 0.0f, "%.1f dBTP");
+    }
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("Gain to the target integrated loudness (BS.1770-5), then the\n"
+                        "true-peak limiter at the ceiling if needed; the result reports\n"
+                        "honestly if the target cannot be reached under the ceiling.");
+    ImGui::Checkbox("Linear-phase EQ in export", &exportLinearPhase);
+    if (ImGui::IsItemHovered())
+      ImGui::SetTooltip("D37: the same EQ magnitude as an 8191-tap symmetric FIR (exact linear\n"
+                        "phase, no phase smear; pre-ringing instead). Export only: live\n"
+                        "playback stays minimum-phase. Latency is compensated.");
     ImGui::BeginDisabled(busy() || e().trackFrames == 0);
     if (ImGui::Button("Export processed WAV (24-bit stereo)...")) {
       static const SDL_DialogFileFilter filters[] = {{"WAV audio", "wav"}};
@@ -1811,7 +2196,7 @@ struct App {
     // Tuner, right-aligned.
     char tbuf[96] = "tuner: --";
     if (tune.voiced && tuneLevelDb > -55.0)
-      std::snprintf(tbuf, sizeof tbuf, "tuner: %s  %.1f Hz  (YIN %.2f)", noteText(tune.frequencyHz).c_str(),
+      std::snprintf(tbuf, sizeof tbuf, "tuner: %s  %.1f Hz  (pYIN %.2f)", noteText(tune.frequencyHz).c_str(),
                     tune.frequencyHz, tune.confidence);
     const float tw = ImGui::CalcTextSize(tbuf).x;
     ImGui::SameLine(std::max(ImGui::GetCursorPosX() + 10.0f, ImGui::GetWindowWidth() - tw - 16.0f));
@@ -1880,6 +2265,10 @@ struct App {
         panelTransform();
         ImGui::EndTabItem();
       }
+      if (tab("Repair", 4)) {
+        panelRepair();
+        ImGui::EndTabItem();
+      }
       if (tab("Settings", 3)) {
         panelSettings();
         ImGui::EndTabItem();
@@ -1924,7 +2313,8 @@ struct App {
 int main(int argc, char* argv[]) {
   std::string capturePath, openPath, matchPath, exportPath;
   double captureSeconds = 3.0, seekAt = -1.0;
-  bool mute = false, useMic = false, compArg = false, transformArg = false, flatArg = false, truePeakArg = false;
+  bool mute = false, useMic = false, compArg = false, transformArg = false, flatArg = false, truePeakArg = false,
+       normalizeArg = false, linearArg = false;
   int presetArg = -1, tabArg = -1, eqModeArg = -1, methodArg = -1;
   float shiftArg = 0.0f, tempoArg = 100.0f;
   for (int i = 1; i < argc; ++i) {
@@ -1938,7 +2328,7 @@ int main(int argc, char* argv[]) {
       presetArg = std::atoi(argv[++i]);
     } else if (a == "--tab" && more) {
       const std::string t = argv[++i];
-      tabArg = t == "dyn" ? 1 : t == "fx" ? 2 : t == "set" ? 3 : 0;
+      tabArg = t == "dyn" ? 1 : t == "fx" ? 2 : t == "set" ? 3 : t == "repair" ? 4 : 0;
     } else if (a == "--eqmode" && more) {
       const std::string t = argv[++i];
       eqModeArg = t == "parametric" ? 1 : t == "match" ? 2 : 0;
@@ -1953,9 +2343,14 @@ int main(int argc, char* argv[]) {
       tempoArg = static_cast<float>(std::atof(argv[++i]));
       transformArg = true;
     } else if (a == "--method" && more) {
-      methodArg = std::string(argv[++i]) == "pv" ? 1 : 0;
+      const std::string m = argv[++i];
+      methodArg = m == "pv" ? 1 : m == "pghi" ? 2 : m == "hybrid" ? 3 : 0;
     } else if (a == "--export" && more) {
       exportPath = argv[++i];
+    } else if (a == "--linear") {
+      linearArg = true;
+    } else if (a == "--normalize") {
+      normalizeArg = true;
     } else if (a == "--truepeak") {
       truePeakArg = true;
     } else if (a == "--flat") {
@@ -2048,6 +2443,8 @@ int main(int argc, char* argv[]) {
     a.compOn = false;
     a.limOn = false;
   }
+  a.exportNormalize = normalizeArg;
+  a.exportLinearPhase = linearArg;
   if (truePeakArg) {
     a.lim.truePeak = true;
     a.rebuildLimiter();

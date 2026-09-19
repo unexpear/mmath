@@ -89,6 +89,12 @@ MSVC Release, on the 4 s demo (three plucked strings):
 | Linux (WSL, GCC 13) | same scenario as the first row: 133 analysis frames, 0 clips, loudness −26.0 LUFS integrated; the UI renders identically |
 | Loudness readout (D31) | M/S/I/LRA/TP on the output; S reads "--" until 3 s have played |
 
+## Later additions
+
+D33–D38 added the Repair tab, de-esser, multiband, the ACGE graphic solver,
+mid/side EQ targets, PGHI/hybrid pitch/time, a pYIN tuner, and linear-phase
+and normalized export. See `39-d33-d38-repair-pitch-tsm-multiband.md`.
+
 ## Limits
 
 - The microphone path is built and wired, but on this machine Windows

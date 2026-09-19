@@ -147,6 +147,12 @@ if(BUILD_TESTING)
     tests/test_triple_buffer.cpp
     tests/test_bs1770.cpp
     tests/test_wav_writer.cpp
+    tests/test_loudness_normalize.cpp
+    tests/test_denoise.cpp
+    tests/test_pyin.cpp
+    tests/test_tsm.cpp
+    tests/test_multiband.cpp
+    tests/test_acge.cpp
     tests/test_realtime_io.cpp
     tests/headers/th_result.cpp
     tests/headers/th_scalar.cpp
@@ -219,6 +225,13 @@ if(BUILD_TESTING)
     tests/headers/th_core_triple_buffer.cpp
     tests/headers/th_analysis_bs1770.cpp
     tests/headers/th_sink_wav_writer.cpp
+    tests/headers/th_dsp_loudness_normalize.cpp
+    tests/headers/th_dsp_denoise.cpp
+    tests/headers/th_analysis_pyin.cpp
+    tests/headers/th_dsp_tsm.cpp
+    tests/headers/th_dsp_multiband.cpp
+    tests/headers/th_dsp_linear_phase.cpp
+    tests/headers/th_dsp_acge.cpp
     tests/headers/th_sink_wav_reader.cpp
     tests/headers/th_core_spsc_ring.cpp
     tests/headers/th_analysis_analyzer.cpp

@@ -39,6 +39,8 @@
 #include <mmathen/dsp/crossfade.h>
 #include <mmathen/dsp/dynamics.h>
 #include <mmathen/dsp/filters.h>
+#include <mmathen/dsp/linear_phase.h>
+#include <mmathen/dsp/multiband.h>
 
 namespace app {
 
@@ -60,6 +62,11 @@ struct EngineParams {
   LimiterParams lim{-1.0, kLimiterLookaheadMs, 80.0};
   bool limOn = true;
   double volumeDb = 0.0;
+  int eqTarget = 0;  // 0 stereo, 1 mid only, 2 side only (D37 mid/side)
+  DynamicEqBand deess{};
+  bool deessOn = false;
+  MultibandParams mb{};
+  bool mbOn = false;
 };
 
 // Fixed-length delay (the limiter-off path).
@@ -89,6 +96,9 @@ struct Engine {
   std::optional<Limiter> lim;
   DelayLine limDry[2];
   bool truePeakMode = false;  // limiter mode (sets its latency)
+  double mbLowHz = 200.0, mbHighHz = 2500.0;  // multiband splits (structural)
+  std::optional<DynamicEq> deess;
+  std::optional<MultibandCompressor> mb;
 
   // ---- shared with the UI -------------------------------------------
   std::atomic<int> mode{kNone};
@@ -98,7 +108,8 @@ struct Engine {
   std::atomic<long long> loopA{-1}, loopB{-1};
   std::atomic<unsigned> loopVersion{0};
   TripleBuffer<EngineParams> params;
-  std::atomic<float> compGrDb{0.0f}, limGrDb{0.0f};
+  std::atomic<float> compGrDb{0.0f}, limGrDb{0.0f}, deessGrDb{0.0f};
+  std::array<std::atomic<float>, 3> mbGrDb{};
   std::atomic<std::uint64_t> shownPos{0};
   std::atomic<std::uint64_t> clips{0};
   std::atomic<bool> ended{false};
@@ -109,7 +120,9 @@ struct Engine {
   bool haveParams = false;
   unsigned loopSeen = 0;
   GainRamp playRamp{0.0};
-  GainRamp eqMix{1.0}, compMix{0.0}, limMix{1.0};
+  GainRamp eqMix{1.0}, compMix{0.0}, limMix{1.0}, deessMix{0.0}, mbMix{0.0};
+  int eqTargetCur = 0;
+  bool targetPending = false;
   std::array<double, 2 * kChunk> inter{};
   std::array<double, kChunk> l{}, r{}, dl{}, dr{};
   std::array<double, 2 * kChunk> tap{};  // interleaved output for the UI
@@ -135,6 +148,14 @@ struct Engine {
     if (!c.ok() || !li.ok()) return false;
     comp = std::move(c).value();
     lim = std::move(li).value();
+    auto de = DynamicEq::create(DynamicEqBand{}, SampleRateHz{fs});
+    MultibandParams mp;
+    mp.lowSplitHz = mbLowHz;
+    mp.highSplitHz = std::min(mbHighHz, 0.4 * fs);
+    auto m = MultibandCompressor::create(mp, SampleRateHz{fs});
+    if (!de.ok() || !m.ok()) return false;
+    deess = std::move(de).value();
+    mb = std::move(m).value();
     for (auto& d : limDry) d.resize(lim->latencyFrames());
     haveParams = false;  // re-apply the current snapshot on the next block
     return true;
@@ -154,8 +175,21 @@ struct Engine {
       if (c) (void)c->setSections(cur.eq.data(), n);
     if (comp) (void)comp->setParams(cur.comp);
     if (lim) (void)lim->setParams(cur.lim);
+    if (deess) (void)deess->setBand(cur.deess);
+    if (mb) (void)mb->setBands(cur.mb);
     const std::size_t fade = ms(20.0);
-    if (eqMix.target() != (cur.eqOn ? 1.0 : 0.0))
+    if (deessMix.target() != (cur.deessOn ? 1.0 : 0.0))
+      deessMix.setTarget(cur.deessOn ? 1.0 : 0.0, fade);
+    if (mbMix.target() != (cur.mbOn ? 1.0 : 0.0))
+      mbMix.setTarget(cur.mbOn ? 1.0 : 0.0, fade);
+    // EQ target change (stereo/mid/side): fade the EQ out, switch while it
+    // is dry, fade back in (in chain()); no path is ever cut.
+    if (cur.eqTarget != eqTargetCur && !targetPending) {
+      targetPending = true;
+      eqMix.setTarget(0.0, ms(10.0));
+      return;
+    }
+    if (!targetPending && eqMix.target() != (cur.eqOn ? 1.0 : 0.0))
       eqMix.setTarget(cur.eqOn ? 1.0 : 0.0, fade);
     if (compMix.target() != (cur.compOn ? 1.0 : 0.0))
       compMix.setTarget(cur.compOn ? 1.0 : 0.0, fade);
@@ -168,13 +202,38 @@ struct Engine {
     if (!stereo)
       for (std::size_t i = 0; i < n; ++i) r[i] = l[i];
     const FrameCount count{static_cast<std::uint64_t>(n)};
-    // EQ, crossfaded on/off.
+    // Pending EQ target switch: happens only once the EQ path is dry.
+    if (targetPending && !eqMix.ramping() && eqMix.value() == 0.0) {
+      eqTargetCur = cur.eqTarget;
+      targetPending = false;
+      for (auto& c : eq) c->reset();
+      eqMix.setTarget(cur.eqOn ? 1.0 : 0.0, ms(10.0));
+    }
+    // EQ (stereo, or mid/side only), crossfaded on/off.
     dl = l;
     dr = r;
-    eq[0]->processBlock(l.data(), l.data(), count);
-    eq[1]->processBlock(r.data(), r.data(), count);
+    if (eqTargetCur == 0) {
+      eq[0]->processBlock(l.data(), l.data(), count);
+      eq[1]->processBlock(r.data(), r.data(), count);
+    } else {
+      midSideEncode(l.data(), r.data(), l.data(), r.data(), n);  // l = M, r = S
+      if (eqTargetCur == 1)
+        eq[0]->processBlock(l.data(), l.data(), count);
+      else
+        eq[1]->processBlock(r.data(), r.data(), count);
+      midSideDecode(l.data(), r.data(), l.data(), r.data(), n);
+    }
     for (std::size_t i = 0; i < n; ++i) {
       const double w = eqMix.next();
+      l[i] = dl[i] + (l[i] - dl[i]) * w;
+      r[i] = dr[i] + (r[i] - dr[i]) * w;
+    }
+    // De-esser (dynamic EQ band), crossfaded on/off.
+    dl = l;
+    dr = r;
+    deess->processStereo(l.data(), r.data(), l.data(), r.data(), count);
+    for (std::size_t i = 0; i < n; ++i) {
+      const double w = deessMix.next();
       l[i] = dl[i] + (l[i] - dl[i]) * w;
       r[i] = dr[i] + (r[i] - dr[i]) * w;
     }
@@ -184,6 +243,17 @@ struct Engine {
     comp->processStereo(l.data(), r.data(), l.data(), r.data(), count);
     for (std::size_t i = 0; i < n; ++i) {
       const double w = compMix.next();
+      l[i] = dl[i] + (l[i] - dl[i]) * w;
+      r[i] = dr[i] + (r[i] - dr[i]) * w;
+    }
+    // Multiband compressor, crossfaded on/off. Its neutral path is an
+    // all-pass (D37), so the dry/wet crossfade mixes two phase responses
+    // for 20 ms; stated, and inaudible in practice.
+    dl = l;
+    dr = r;
+    mb->processStereo(l.data(), r.data(), l.data(), r.data(), count);
+    for (std::size_t i = 0; i < n; ++i) {
+      const double w = mbMix.next();
       l[i] = dl[i] + (l[i] - dl[i]) * w;
       r[i] = dr[i] + (r[i] - dr[i]) * w;
     }
@@ -217,6 +287,9 @@ struct Engine {
     if (clipped != 0) clips.fetch_add(clipped, std::memory_order_relaxed);
     compGrDb.store(static_cast<float>(comp->gainReductionDb()),
                    std::memory_order_relaxed);
+    deessGrDb.store(static_cast<float>(deess->dynamicGainDb()), std::memory_order_relaxed);
+    for (std::size_t b = 0; b < 3; ++b)
+      mbGrDb[b].store(static_cast<float>(mb->gainReductionDb(b)), std::memory_order_relaxed);
     limGrDb.store(static_cast<float>(lim->gainReductionDb()),
                   std::memory_order_relaxed);
     // Whole stereo frames only: a split frame would swap the channels for
@@ -229,7 +302,7 @@ struct Engine {
   // SDL playback callback body.
   void playback(SDL_AudioStream* stream, int additional) {
     if (mode.load() != kFile || !reader || trackFrames == 0 || additional <= 0 ||
-        !eq[0] || !comp || !lim)
+        !eq[0] || !comp || !lim || !deess || !mb)
       return;
     applyParams();
     const long long s = seekTo.exchange(-1);
@@ -285,7 +358,7 @@ struct Engine {
           stream, micIn.data(), static_cast<int>(sizeof(float) * kChunk));
       if (bytes <= 0) break;
       const std::size_t n = static_cast<std::size_t>(bytes) / sizeof(float);
-      if (mode.load() != kMic || !eq[0] || !comp || !lim) continue;
+      if (mode.load() != kMic || !eq[0] || !comp || !lim || !deess || !mb) continue;
       applyParams();
       for (std::size_t i = 0; i < n; ++i) l[i] = static_cast<double>(micIn[i]);
       chain(n, false);

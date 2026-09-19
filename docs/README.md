@@ -43,6 +43,7 @@ MVP: Phases 0–2 + 2.5 · C++20 · zero-dep core · strict units
 | 36 | `36-d27-d28-pitch-time.md` | D27–D28 record: autocorrelation and YIN pitch, phase vocoder, TD-PSOLA |
 | 37 | `37-d22-d30-desktop-app.md` | D22/D29/D30 record: WAV reader, lock-free hand-offs, the SDL3 + ImGui desktop app |
 | 38 | `38-d31-loudness-true-peak.md` | D31/D32 record: BS.1770 loudness, 4× true peak, true-peak limiter mode, multichannel WAV writer and export |
+| 39 | `39-d33-d38-repair-pitch-tsm-multiband.md` | D33–D38 record: loudness normalization, noise reduction and spectral repair, pYIN, PGHI/hybrid TSM, multiband and dynamic EQ, linear-phase EQ, ACGE cross-check of D25 |
 | — | `FOUNDATION.md` | **Canonical** base decisions (accepted/proposed/deferred) |
 | — | `NUMERICS.md` | **Canonical** precision, determinism tiers, tolerances |
 | — | `VALIDATION.md` | **Canonical** verification vs validation, evidence rules |

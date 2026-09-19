@@ -31,7 +31,8 @@
 // including formants (the spectral envelope) — the "chipmunk" effect.
 //
 // TD-PSOLA (Moulines & Charpentier, Speech Communication 9, 1990):
-//   1. f0 track by YIN (D27), frames of 2048, hop 256; the period T(t) is
+//   1. f0 track by pYIN (D35; YIN in D28's first version), frames of 2048,
+//      hop 256; the period T(t) is
 //      interpolated between frames; unvoiced frames use a fixed 10 ms
 //      pseudo-period and are not pitch-shifted (no false periodicity);
 //   2. analysis pitch marks one period apart, each aligned to the largest
@@ -59,6 +60,7 @@
 
 #include "../analysis/fft.h"
 #include "../analysis/pitch.h"
+#include "../analysis/pyin.h"
 #include "../core/result.h"
 #include "../units/physical_units.h"
 #include "biquad.h"
@@ -250,7 +252,12 @@ struct PsolaOptions {
   PitchSearch s;
   s.fMinHz = o.fMinHz;
   s.fMaxHz = o.fMaxHz;
-  auto track = trackPitch(x, rate, 2048, 256, PitchMethod::Yin, s);
+  // D35: pYIN marks voicing more reliably than frame-wise YIN (no octave
+  // jumps, silence gated), which is what PSOLA's marks depend on.
+  PyinOptions po;
+  po.fMinHz = s.fMinHz;
+  po.fMaxHz = s.fMaxHz;
+  auto track = pyinTrack(x, rate, 2048, 256, po);
   if (!track.ok()) return R::failure(track.error());
   const auto& tr = track.value();
   const double tU = o.unvoicedPeriodSeconds * fs;

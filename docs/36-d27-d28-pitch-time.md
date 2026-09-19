@@ -44,7 +44,8 @@ searches are refused.
 - **Pitch shift** = stretch by p, then Catmull-Rom resampling by p.
   For p > 1 an 8th-order Butterworth at 0.45·fs/p is applied first. It
   moves formants: the "chipmunk" effect.
-- **TD-PSOLA** (Moulines & Charpentier 1990): YIN track, pitch marks
+- **TD-PSOLA** (Moulines & Charpentier 1990): YIN track (pYIN since
+  D35, which removes octave errors in the marks), pitch marks
   aligned to waveform peaks, synthesis marks every T/pitchRatio, Hann
   grains of 2T scaled by spacing/T. It keeps each period's waveform, so
   **formants stay put**. Unvoiced regions use a 10 ms pseudo-period and
