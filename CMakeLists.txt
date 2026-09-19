@@ -9,8 +9,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(BUILD_TESTING "Build the test suite (fetches pinned Catch2 v3)" ON)
 option(MMATHEN_BUILD_EXAMPLES "Build runnable examples" ON)
+option(MMATHEN_BUILD_APP
+  "Build the desktop spectrum/EQ app (fetches pinned SDL3 + Dear ImGui)" OFF)
 option(MMATHEN_SANITIZE
   "Build tests/examples with sanitizers (ASan+UBSan; GCC/Clang only)" OFF)
+
+option(MMATHEN_SANITIZE_THREAD
+  "Build tests/examples with ThreadSanitizer (GCC/Clang; not with ASan)" OFF)
+if(MMATHEN_SANITIZE_THREAD AND (MMATHEN_SANITIZE OR
+   CMAKE_CXX_COMPILER_ID STREQUAL "MSVC"))
+  message(FATAL_ERROR
+    "MMATHEN_SANITIZE_THREAD needs GCC/Clang and excludes MMATHEN_SANITIZE "
+    "(TSan and ASan cannot share a binary).")
+endif()
 
 if(MMATHEN_SANITIZE AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   message(FATAL_ERROR
@@ -35,6 +46,13 @@ function(mmathen_dev_settings target)
         # (verified), which a passing ctest would hide: every finding aborts.
         -fno-sanitize-recover=all)
       target_link_options(${target} PRIVATE -fsanitize=address,undefined)
+    endif()
+    if(MMATHEN_SANITIZE_THREAD)
+      # D29: the lock-free hand-offs (SpscRing, TripleBuffer) are checked by
+      # a data-race detector, not only by stress tests.
+      target_compile_options(${target} PRIVATE -fsanitize=thread
+        -fno-omit-frame-pointer)
+      target_link_options(${target} PRIVATE -fsanitize=thread)
     endif()
   endif()
 endfunction()
@@ -117,6 +135,19 @@ if(BUILD_TESTING)
     tests/test_fem1d.cpp
     tests/test_coupled_string.cpp
     tests/test_hearing.cpp
+    tests/test_spectrum.cpp
+    tests/test_svg.cpp
+    tests/test_equalizer.cpp
+    tests/test_filters.cpp
+    tests/test_dynamics.cpp
+    tests/test_match_eq.cpp
+    tests/test_crossfade.cpp
+    tests/test_pitch_detect.cpp
+    tests/test_time_pitch.cpp
+    tests/test_triple_buffer.cpp
+    tests/test_bs1770.cpp
+    tests/test_wav_writer.cpp
+    tests/test_realtime_io.cpp
     tests/headers/th_result.cpp
     tests/headers/th_scalar.cpp
     tests/headers/th_constants.cpp
@@ -175,8 +206,27 @@ if(BUILD_TESTING)
     tests/headers/th_hearing_loudness.cpp
     tests/headers/th_hearing_scales.cpp
     tests/headers/th_hearing_masking.cpp
+    tests/headers/th_analysis_spectrum.cpp
+    tests/headers/th_plot_svg.cpp
+    tests/headers/th_dsp_equalizer.cpp
+    tests/headers/th_dsp_filters.cpp
+    tests/headers/th_dsp_dynamics.cpp
+    tests/headers/th_dsp_match_eq.cpp
+    tests/headers/th_dsp_crossfade.cpp
+    tests/headers/th_dsp_overlap_add.cpp
+    tests/headers/th_analysis_pitch.cpp
+    tests/headers/th_dsp_time_pitch.cpp
+    tests/headers/th_core_triple_buffer.cpp
+    tests/headers/th_analysis_bs1770.cpp
+    tests/headers/th_sink_wav_writer.cpp
+    tests/headers/th_sink_wav_reader.cpp
+    tests/headers/th_core_spsc_ring.cpp
+    tests/headers/th_analysis_analyzer.cpp
   )
-  target_link_libraries(mmathen_tests PRIVATE mmathen_core Catch2::Catch2WithMain)
+  # std::thread in the SPSC stress test (D22).
+  find_package(Threads REQUIRED)
+  target_link_libraries(mmathen_tests PRIVATE mmathen_core Catch2::Catch2WithMain
+                        Threads::Threads)
   mmathen_dev_settings(mmathen_tests)
 
   include(CTest)
@@ -223,9 +273,50 @@ if(MMATHEN_BUILD_EXAMPLES)
                   tempo_demo air_table stretch_demo modes_demo voice_demo
                   comma_demo dsp_demo wavetable_demo pm_demo
                    solver_demo loss_demo stiff_demo pitch_error_demo
-                   hearing_demo objects_demo)
+                   hearing_demo objects_demo spectrum_demo)
     add_executable(${example} examples/${example}.cpp)
     target_link_libraries(${example} PRIVATE mmathen_core)
     mmathen_dev_settings(${example})
   endforeach()
+endif()
+
+# D22 desktop app: an optional consumer of the header-only core. OFF by
+# default, so the core, the tests and CI never fetch or build SDL/ImGui.
+# Both dependencies are pinned to immutable commits.
+if(MMATHEN_BUILD_APP)
+  include(FetchContent)
+  set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+  set(SDL_STATIC ON CACHE BOOL "" FORCE)
+  set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+  set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+  # The app does not use the X11 XTEST extension; without this SDL's
+  # configure fails on Linux hosts lacking libxtst-dev.
+  set(SDL_X11_XTEST OFF CACHE BOOL "" FORCE)
+  # SDL 3.4.16 (tag release-3.4.16).
+  FetchContent_Declare(SDL3
+    GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+    GIT_TAG fa2c02bb6e21974a89ea9824bc53c9932abe5f9c
+    GIT_SHALLOW TRUE)
+  # Dear ImGui v1.92.9b (tag v1.92.9b). No CMake project: sources below.
+  FetchContent_Declare(imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG f1cc2ae15e53a861a874c3034aae6798fde194ab
+    GIT_SHALLOW TRUE)
+  FetchContent_MakeAvailable(SDL3 imgui)
+
+  add_library(mmathen_imgui STATIC
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl3.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_sdlrenderer3.cpp)
+  # SYSTEM: third-party headers are outside this project's warning policy.
+  target_include_directories(mmathen_imgui SYSTEM PUBLIC
+    ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+  target_link_libraries(mmathen_imgui PUBLIC SDL3::SDL3-static)
+
+  add_executable(mmathen_app WIN32 app/spectrum_app.cpp)
+  target_link_libraries(mmathen_app PRIVATE mmathen_core mmathen_imgui)
+  mmathen_dev_settings(mmathen_app)
 endif()

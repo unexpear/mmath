@@ -89,6 +89,100 @@ inline bool finiteBiquad(const BiquadCoeffs& c) {
   return R::success(k);
 }
 
+// D21 — RBJ Audio EQ Cookbook equalizer sections (same source as above).
+// A = 10^(gainDb/40), w0 = 2*pi*f0/fs, alpha = sin(w0)/(2Q), c = cos(w0):
+//   peaking:   b = {1 + alpha A, -2c, 1 - alpha A}, a = {1 + alpha/A, -2c,
+//              1 - alpha/A}.  |H(f0)| = A^2 (exactly gainDb), |H(0)| =
+//              |H(fs/2)| = 1, and the -gainDb section is the exact inverse.
+//   low shelf: b0 = A((A+1) - (A-1)c + 2 sqrt(A) alpha),
+//              b1 = 2A((A-1) - (A+1)c), b2 = A((A+1) - (A-1)c - 2 sqrt(A) alpha),
+//              a0 = (A+1) + (A-1)c + 2 sqrt(A) alpha, a1 = -2((A-1) + (A+1)c),
+//              a2 = (A+1) + (A-1)c - 2 sqrt(A) alpha.   |H(0)| = A^2, |H(fs/2)| = 1.
+//   high shelf: the cookbook's mirror (c -> -c in the brackets, b1/a1 signs
+//              flipped): |H(0)| = 1, |H(fs/2)| = A^2.
+// Shelves take Q directly (Q = 1/sqrt(2) is the cookbook's maximally steep
+// shelf without overshoot). Requires 0 < f0 < fs/2, Q > 0, finite |gainDb|
+// <= 60 (a stated working range, not a stability bound). Gain 0 dB gives an
+// exact identity section.
+namespace detail {
+inline bool validEqArgs(double f0, double gainDb, double q, double fs) {
+  return std::isfinite(f0) && std::isfinite(gainDb) && std::isfinite(q) &&
+         std::isfinite(fs) && fs > 0.0 && f0 > 0.0 && f0 < fs / 2.0 &&
+         q > 0.0 && std::fabs(gainDb) <= 60.0;
+}
+}  // namespace detail
+
+[[nodiscard]] inline Result<BiquadCoeffs, QuantityError> makePeaking(
+    FrequencyHz center, double gainDb, double q, SampleRateHz rate) {
+  using R = Result<BiquadCoeffs, QuantityError>;
+  const double f0 = center.value();
+  const double fs = rate.value();
+  if (!detail::validEqArgs(f0, gainDb, q, fs))
+    return R::failure(QuantityError::InvalidArgument);
+  // Plain guard next to the division: MSVC's C4723 analysis does not see
+  // through the helper once constant arguments are inlined.
+  if (!(q > 0.0)) return R::failure(QuantityError::InvalidArgument);
+  const double a = std::pow(10.0, gainDb / 40.0);
+  const double w0 = 2.0 * std::numbers::pi * f0 / fs;
+  const double c = std::cos(w0);
+  const double alpha = std::sin(w0) / (2.0 * q);
+  const double a0 = 1.0 + alpha / a;
+  BiquadCoeffs k{(1.0 + alpha * a) / a0, -2.0 * c / a0, (1.0 - alpha * a) / a0,
+                 -2.0 * c / a0, (1.0 - alpha / a) / a0};
+  if (!detail::finiteBiquad(k)) return R::failure(QuantityError::RangeError);
+  return R::success(k);
+}
+
+[[nodiscard]] inline Result<BiquadCoeffs, QuantityError> makeLowShelf(
+    FrequencyHz corner, double gainDb, double q, SampleRateHz rate) {
+  using R = Result<BiquadCoeffs, QuantityError>;
+  const double f0 = corner.value();
+  const double fs = rate.value();
+  if (!detail::validEqArgs(f0, gainDb, q, fs))
+    return R::failure(QuantityError::InvalidArgument);
+  // Plain guard next to the division: MSVC's C4723 analysis does not see
+  // through the helper once constant arguments are inlined.
+  if (!(q > 0.0)) return R::failure(QuantityError::InvalidArgument);
+  const double a = std::pow(10.0, gainDb / 40.0);
+  const double w0 = 2.0 * std::numbers::pi * f0 / fs;
+  const double c = std::cos(w0);
+  const double alpha = std::sin(w0) / (2.0 * q);
+  const double sa = 2.0 * std::sqrt(a) * alpha;
+  const double a0 = (a + 1.0) + (a - 1.0) * c + sa;
+  BiquadCoeffs k{a * ((a + 1.0) - (a - 1.0) * c + sa) / a0,
+                 2.0 * a * ((a - 1.0) - (a + 1.0) * c) / a0,
+                 a * ((a + 1.0) - (a - 1.0) * c - sa) / a0,
+                 -2.0 * ((a - 1.0) + (a + 1.0) * c) / a0,
+                 ((a + 1.0) + (a - 1.0) * c - sa) / a0};
+  if (!detail::finiteBiquad(k)) return R::failure(QuantityError::RangeError);
+  return R::success(k);
+}
+
+[[nodiscard]] inline Result<BiquadCoeffs, QuantityError> makeHighShelf(
+    FrequencyHz corner, double gainDb, double q, SampleRateHz rate) {
+  using R = Result<BiquadCoeffs, QuantityError>;
+  const double f0 = corner.value();
+  const double fs = rate.value();
+  if (!detail::validEqArgs(f0, gainDb, q, fs))
+    return R::failure(QuantityError::InvalidArgument);
+  // Plain guard next to the division: MSVC's C4723 analysis does not see
+  // through the helper once constant arguments are inlined.
+  if (!(q > 0.0)) return R::failure(QuantityError::InvalidArgument);
+  const double a = std::pow(10.0, gainDb / 40.0);
+  const double w0 = 2.0 * std::numbers::pi * f0 / fs;
+  const double c = std::cos(w0);
+  const double alpha = std::sin(w0) / (2.0 * q);
+  const double sa = 2.0 * std::sqrt(a) * alpha;
+  const double a0 = (a + 1.0) - (a - 1.0) * c + sa;
+  BiquadCoeffs k{a * ((a + 1.0) + (a - 1.0) * c + sa) / a0,
+                 -2.0 * a * ((a - 1.0) + (a + 1.0) * c) / a0,
+                 a * ((a + 1.0) + (a - 1.0) * c - sa) / a0,
+                 2.0 * ((a - 1.0) - (a + 1.0) * c) / a0,
+                 ((a + 1.0) - (a - 1.0) * c - sa) / a0};
+  if (!detail::finiteBiquad(k)) return R::failure(QuantityError::RangeError);
+  return R::success(k);
+}
+
 // Poles of 1 + a1 z^-1 + a2 z^-2 inside the unit circle: |a2| < 1 and
 // |a1| < 1 + a2 (stability triangle for real second order). Non-finite
 // coefficients report false (a predicate, not a judgment).
@@ -141,6 +235,11 @@ class Biquad {
   }
 
   [[nodiscard]] const BiquadCoeffs& coeffs() const noexcept { return coeffs_; }
+
+  // Retune in place, keeping the delay-line state (x1, x2, y1, y2), so a
+  // live parameter change continues the signal instead of restarting the
+  // filter from rest. No allocation; the caller checks isStable first.
+  void setCoeffs(const BiquadCoeffs& coeffs) noexcept { coeffs_ = coeffs; }
 
   // Direct Form 1 into caller buffers (no allocation, bounded work, no
   // locks or I/O — realtime-suitable by construction). Buffers must be

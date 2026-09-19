@@ -36,7 +36,13 @@ MVP: Phases 0–2 + 2.5 · C++20 · zero-dep core · strict units
 | 29 | `29-d14-fine-tuning.md` | D14 record: FDTD pre-warping, Thiran fractional delay, exact loop poles |
 | 30 | `30-d15-waveguide-loss-dispersion.md` | D15 record: tuned waveguide loss and dispersion filters, per-partial error report |
 | 31 | `31-d16-measured-data.md` | D16 record: sourced piano-wire data, validation annex vs Young 1952 measurement |
+| 32 | `32-d17-2d3d-fem-coupling.md` | D17 record: 2-D/3-D FDTD boxes, 1-D FEM, string–bridge coupling |
 | 33 | `33-d18-hearing.md` | D18 record: ISO 226:2023 loudness, Bark/ERB/A-weighting, MPEG-1 masking |
+| 34 | `34-d19-d21-spectrum-svg-eq.md` | D19–D21 record: spectrum analyzer, SVG visualizer, parametric/graphic EQ |
+| 35 | `35-d23-d26-filters-dynamics-match-cuts.md` | D23–D26 record: Butterworth/LR filters, compressor, guaranteed limiter, match EQ, crossfades, overlap-add |
+| 36 | `36-d27-d28-pitch-time.md` | D27–D28 record: autocorrelation and YIN pitch, phase vocoder, TD-PSOLA |
+| 37 | `37-d22-d30-desktop-app.md` | D22/D29/D30 record: WAV reader, lock-free hand-offs, the SDL3 + ImGui desktop app |
+| 38 | `38-d31-loudness-true-peak.md` | D31/D32 record: BS.1770 loudness, 4× true peak, true-peak limiter mode, multichannel WAV writer and export |
 | — | `FOUNDATION.md` | **Canonical** base decisions (accepted/proposed/deferred) |
 | — | `NUMERICS.md` | **Canonical** precision, determinism tiers, tolerances |
 | — | `VALIDATION.md` | **Canonical** verification vs validation, evidence rules |

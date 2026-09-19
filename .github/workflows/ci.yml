@@ -123,3 +123,27 @@ jobs:
           fi
           echo "all $count examples exited 0 with no sanitizer reports"
         shell: bash
+
+  # D29: data-race detection for the lock-free hand-offs (SpscRing,
+  # TripleBuffer) and everything else in the suite. TSan cannot share a
+  # binary with ASan, so it is its own job; halt_on_error makes any report
+  # fatal. Examples are single-threaded and are covered by the job above.
+  tsan:
+    runs-on: ubuntu-24.04
+    env:
+      TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (TSan, Clang 18)
+        run: >
+          cmake -S . -B build-tsan
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
+          -DMMATHEN_SANITIZE_THREAD=ON -DMMATHEN_BUILD_EXAMPLES=OFF
+        shell: bash
+      - name: Build
+        run: cmake --build build-tsan
+        shell: bash
+      - name: Test
+        run: ctest --test-dir build-tsan --output-on-failure
+        shell: bash
