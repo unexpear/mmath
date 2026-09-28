@@ -1,0 +1,154 @@
+[
+  {
+    "file": "LICENSE",
+    "sha256": "d16a7c8e480e95aab83ffbe384d14f7d05107dfc8dfc7047a4cca29bdb779a43"
+  },
+  {
+    "file": "package.json",
+    "sha256": "089323667391484d68f6ae77c6c7c7270655d29e4495f04ec61f4544d00520ad"
+  },
+  {
+    "file": "README.md",
+    "sha256": "23691ef7fc221186b7396bb0b83ffced92bb725208af42356c8564260e6a9208"
+  },
+  {
+    "file": "cpp/CMakeLists.txt",
+    "sha256": "92046b7ceef1c65db2274186a10959b4b60409a905ee9f922e403e59e751c365"
+  },
+  {
+    "file": "cpp/include/AudioFrameDispatcher.hpp",
+    "sha256": "2a1c564efcf01abe9b4f5fa746b0def8e7b2ac598a7557b8765d17efabf929eb"
+  },
+  {
+    "file": "cpp/include/BiquadHpf.hpp",
+    "sha256": "f27338c0cdc6b88fc7a107d2a77b1f37f06c7bf43799c6ecd70d7752fe3639cf"
+  },
+  {
+    "file": "cpp/include/CepstrumPitchDetector.hpp",
+    "sha256": "65579f0f12a91f8723d774942d6c5610186e11798cfcd6b9037c145437a385b9"
+  },
+  {
+    "file": "cpp/include/EnsembleSelector.hpp",
+    "sha256": "e77faab42d9b3e06d6ae9a0dbb25ed4852323f9487307da685b1f5671b90f18c"
+  },
+  {
+    "file": "cpp/include/Fft.hpp",
+    "sha256": "1078ff7b19ec9c21247751e76e01c5f8197bb427500338a1f29567a12b818bc1"
+  },
+  {
+    "file": "cpp/include/InstrumentPresets.hpp",
+    "sha256": "77af8e9d5852a0a482615e1ed04d1cf97c9a97da272268c3ab717152d1fc52b9"
+  },
+  {
+    "file": "cpp/include/IPitchDetector.hpp",
+    "sha256": "f973d467f6cda1ed22a4bc67d4f8822052f02ec0f5a6dd67253405f4abbe3f1f"
+  },
+  {
+    "file": "cpp/include/NoteMapper.hpp",
+    "sha256": "5ca01585434c37d1e2eb9e26cc9926a4c98fa318dcf3305f38e60f68b244299d"
+  },
+  {
+    "file": "cpp/include/OnsetDetector.hpp",
+    "sha256": "33b43d233a317f95eeca1ce47977b6e905c998c7c4bd37fb4d603a0925e4b391"
+  },
+  {
+    "file": "cpp/include/Pipeline.hpp",
+    "sha256": "88caebc8f2292e932e6f6842b1ce78ecbb5fc1124e2e92f407f4faeadb5c96aa"
+  },
+  {
+    "file": "cpp/include/PitchResult.hpp",
+    "sha256": "48d4a37c3069885b502ba44f1f93d0e64a9af18dd80efc96805efef1aeaf0ac2"
+  },
+  {
+    "file": "cpp/include/PostProcessor.hpp",
+    "sha256": "654bef419431e65fb94e30d0ed32dd88b3ea5a01dc14d2fee057718bd739cbb9"
+  },
+  {
+    "file": "cpp/include/PyinPitchDetector.hpp",
+    "sha256": "f67cf615f576c31f54a4d433bad7d885078d049ba79f18337d74c72818c8a7e7"
+  },
+  {
+    "file": "cpp/include/RingBuffer.hpp",
+    "sha256": "028457db6f63e0fd990e7fb65ee42d8afbaa6b2e54e9f7be3524452c2a66b742"
+  },
+  {
+    "file": "cpp/include/SnrEstimator.hpp",
+    "sha256": "edd7bce84d893ee3bdeb823c0d9ff2c9efb90bcd304734c4247cc36129bedbf3"
+  },
+  {
+    "file": "cpp/include/StringMatcher.hpp",
+    "sha256": "4efe74740e79e5152ea656de45dd3c50893eb48e76460530bec4cc9d074d783c"
+  },
+  {
+    "file": "cpp/include/TunerEngine.hpp",
+    "sha256": "7443d728318e16fbc5deceae4a682b840f122a7f29e7ab4707ede3dc4ca90261"
+  },
+  {
+    "file": "cpp/include/TuningPresets.hpp",
+    "sha256": "0e13ada89a5c38cb48be0a2671f0adf70b9844289b23cf6999f3d3810250ee06"
+  },
+  {
+    "file": "cpp/include/Window.hpp",
+    "sha256": "65525510810bee8d7b078b6634b26e6ec44c87f15edab9e165c0a5ae502ee320"
+  },
+  {
+    "file": "cpp/include/YinPitchDetector.hpp",
+    "sha256": "a072f706db978e8028c102d384980e48055754bed44d21ff8e49203183ce2fea"
+  },
+  {
+    "file": "cpp/src/AudioFrameDispatcher.cpp",
+    "sha256": "cea56b852169f051f233434bc3a74836f8a2b0c29c8d87b806d2fb78325b5bd6"
+  },
+  {
+    "file": "cpp/src/BiquadHpf.cpp",
+    "sha256": "41d11a948c16859ef01c60abaa94565857aa076aae56f88dfb22527a6bbc7ff1"
+  },
+  {
+    "file": "cpp/src/CepstrumPitchDetector.cpp",
+    "sha256": "90f4418f715e01a73e869b653b3d0d5d389b69fbd4332915fc8508b5b130588d"
+  },
+  {
+    "file": "cpp/src/EnsembleSelector.cpp",
+    "sha256": "af419465e6cc718e9dd1eabffe5a6b3286eb1355ab6f022f1119c6c1ee0c0a86"
+  },
+  {
+    "file": "cpp/src/NoteMapper.cpp",
+    "sha256": "b3e3a28751ca034861c94a4157eb3bee2a1c02254de4aae1863bd9dc40420d45"
+  },
+  {
+    "file": "cpp/src/OnsetDetector.cpp",
+    "sha256": "fad9df712edbdf7829e92fd517a9551795f1b64ab63d41752ca98c612a44f159"
+  },
+  {
+    "file": "cpp/src/Pipeline.cpp",
+    "sha256": "3fd5683851d621f899899cd599b22c48d2c2970ed7581a30cc0daa8c3a0d9043"
+  },
+  {
+    "file": "cpp/src/PostProcessor.cpp",
+    "sha256": "8e18cc600d7a6336cf1e1452b6c7f38a336769011ddb30bd7404d1be2d68cc4d"
+  },
+  {
+    "file": "cpp/src/PyinPitchDetector.cpp",
+    "sha256": "06edb0628132b586633ab49eacac09c08b69aefc4e7a27d2902299c89ac829b3"
+  },
+  {
+    "file": "cpp/src/SnrEstimator.cpp",
+    "sha256": "95d2692e67abe89ed54491ae0733dd5f73d9a6fac11c2ba728969723e866af4a"
+  },
+  {
+    "file": "cpp/src/StringMatcher.cpp",
+    "sha256": "cc3cb3f28f84dcf0e6176ddcbcc0269f1f1f58069ebec800d58229557c4e989f"
+  },
+  {
+    "file": "cpp/src/TunerEngine.cpp",
+    "sha256": "8c6a2e0d739ccdd7bb883a112b1131b5b4d1fbc8d65aabc6aad5f7898bd62c40"
+  },
+  {
+    "file": "cpp/src/Window.cpp",
+    "sha256": "4640e78135ff9b303a279a54ace60443781e63cce9da309620cbf5ff1d1bbd0b"
+  },
+  {
+    "file": "cpp/src/YinPitchDetector.cpp",
+    "sha256": "2d813536710ad0775fab7dda2671e81733dd80c46892adf2476d0682a493adf0"
+  }
+]

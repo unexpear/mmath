@@ -3,8 +3,8 @@
 // playback) and a microphone.
 //
 // Optional build (MMATHEN_BUILD_APP): SDL3 for the window, audio devices and
-// file dialogs; Dear ImGui for the interface. Every number drawn or heard
-// comes from the header-only core:
+// file dialogs; Dear ImGui for the interface. The built-in processing uses
+// the header-only core and our local guitar recognition model:
 //   analysis: BandAnalyzer (bars), Spectrum/Spectrogram (line, heat maps),
 //             yinPitch (tuner)
 //   dsp:      graphic / parametric / match EQ designs (equalizer.h,
@@ -24,10 +24,16 @@
 //               [--export out.wav] [--flat] [--truepeak] [--normalize]
 //               [--linear] [--method psola|pv|pghi|hybrid] [--tab repair]
 //               [file.wav]
+//   mmathen_app --reference-demo reference-suite.tsv
 //   saves a PNG of the window after S seconds (after any background job has
 //   finished), plus out.png.txt with run statistics, and exits.
 
 #include "engine.h"
+#include "reference_demo.h"
+#include "precision_tuner.h"
+#include "tuner_panel.h"
+#include "audio_output.h"
+#include "desktop_style.h"
 
 #include <SDL3/SDL_main.h>
 #include <imgui.h>
@@ -271,6 +277,8 @@ struct App {
   SDL_AudioStream* play = nullptr;
   SDL_AudioStream* mic = nullptr;
   double rate = 48000.0;
+  double fileRate = 48000.0;
+  app::AudioOutput output;
 
   // Source.
   std::string trackName;
@@ -281,6 +289,9 @@ struct App {
   std::string originalName;
   bool loop = true;
   long long markA = -1, markB = -1;
+  app::ReferenceDemo referenceDemo;
+  bool referenceView = false;
+  int referenceKind = 0; // chords, isolated guitar pitch, speech
 
   // EQ.
   EqMode eqMode = EqMode::Graphic;
@@ -306,10 +317,9 @@ struct App {
   double boxT0 = 0, boxT1 = 0, boxF0 = 0, boxF1 = 0, dragT = 0, dragF = 0;
   float boxGainDb = -20.0f;
   bool exportLinearPhase = false;
-  // D35 streaming tuner: the last frames' pYIN candidates.
-  std::vector<std::vector<PitchCandidate>> tuneCands;
-  std::vector<double> tuneTimes;
-  double tuneClock = 0.0;
+  app::PrecisionTuner streamingTuner;
+  app::tuner::Panel tunerPanel;
+  bool tunerView = false;
   int preset = 0;
   bool applyPreset = false;
   std::array<PBand, 8> pbands{};
@@ -361,7 +371,8 @@ struct App {
   std::uint64_t lastClips = 0;
   double clipLightUntil = 0.0;
   std::vector<float> lineDb;
-  std::vector<double> hist = std::vector<double>(4096, 0.0);
+  std::vector<double> hist = std::vector<double>(app::precisionHistorySize(48000,app::PitchRange::Music), 0.0);
+  std::size_t samplesSinceTune = 0;
   std::size_t histPos = 0;
   double nextTune = 0.0;
   PitchEstimate tune;
@@ -385,7 +396,7 @@ struct App {
   std::string status = "Open a WAV file, drop one on the window, or load the demo.";
 
   // Dialog results (dialog callbacks may run on another thread).
-  enum class Pending { None, Open, Reference, ExportSvg, ExportWav };
+  enum class Pending { None, Open, Reference, ExportSvg, ExportWav, ReferenceSuite };
   std::mutex pendingMu;
   std::vector<std::pair<Pending, std::string>> pending;
 
@@ -524,6 +535,12 @@ struct App {
     p.deessOn = deessOn;
     p.mb = mb;
     p.mbOn = mbOn;
+    if (referenceView || tunerView) {
+      // Reference playback uses the original signal; retain all user controls
+      // so leaving this view restores their settings without changing them.
+      p.eqOn = p.compOn = p.limOn = p.deessOn = p.mbOn = false;
+      p.volumeDb = 0.0;
+    }
     return p;
   }
 
@@ -670,6 +687,9 @@ struct App {
   // ========================================================== analysis ==
   // meterChannels: 2 for files (the stereo output), 1 for the microphone.
   void setSourceRate(double fs, int meterChannels = 2) {
+    hist.assign(app::precisionHistorySize(fs,tunerPanel.pitchRange()), 0.0);
+    tunerPanel.calibration.reset();
+    resetTuner();
     rate = fs;
     frameSize = pow2Ceil(0.15 * fs);
     hop = frameSize / 8;
@@ -736,6 +756,25 @@ struct App {
     if (m.ok()) loudness = std::move(m).value();
   }
 
+  void resetTuner() {
+    streamingTuner.reset();
+    tune = {};
+    tuneLevelDb = -120;
+    std::fill(hist.begin(), hist.end(), 0);
+    histPos = 0;
+    nextTune = 0;
+    samplesSinceTune = 0;
+  }
+
+  void returnToFile() {
+    stopMic();
+    if (app::restoreFileSource(e(), play, fileRate)) {
+      setSourceRate(fileRate);
+      publish();
+      status = "Ready: " + trackName;
+    } else status = e().trackFrames == 0 ? "Open a WAV recording to begin." : std::string("Cannot restore file playback: ") + SDL_GetError();
+  }
+
   void pumpAudio(double dt) {
     double peak = 0.0, sumSq = 0.0;
     std::size_t total = 0;
@@ -781,34 +820,22 @@ struct App {
       lastClips = c;
       clipLightUntil = now() + 1.0;
     }
-    // Tuner (D35): pYIN stage 1 on the newest 4096 samples, 15 times a
-    // second; stage 2 (Viterbi) over the last 24 frames (~1.6 s), so octave
-    // jumps and voicing flicker are smoothed like the offline tracker.
+    // Keep the short pYIN acquisition window. Fine tracking uses a slightly
+    // longer, past-only context after four consistent readings.
+    samplesSinceTune += total;
     if (now() >= nextTune && rate >= 8000.0) {
       nextTune = now() + 1.0 / 15.0;
-      tuneClock += 1.0 / 15.0;
-      std::vector<double> frame(hist.size());
-      double ss = 0.0;
-      for (std::size_t i = 0; i < hist.size(); ++i) {
-        frame[i] = hist[(histPos + i) % hist.size()];
-        ss += frame[i] * frame[i];
+      if (samplesSinceTune > 0) {
+        std::vector<double> frame(hist.size());
+        for (std::size_t i = 0; i < hist.size(); ++i) frame[i] = hist[(histPos + i) % hist.size()];
+        tune = streamingTuner.process(frame, rate,tunerPanel.pitchRange());
+        tuneLevelDb = streamingTuner.levelDb;
+      } else {
+        // A repeated stale buffer must never complete calibration.
+        streamingTuner.reset(); tune = {}; tuneLevelDb = -120;
       }
-      tuneLevelDb = ss > 0.0 ? 10.0 * std::log10(ss / static_cast<double>(frame.size())) : -120.0;
-      PyinOptions po;
-      po.fMinHz = 50.0;
-      po.fMaxHz = std::min(1500.0, 0.45 * rate);
-      po.maxJumpBins = 60;  // updates are ~67 ms apart: allow larger moves
-      auto cand = pyinCandidates(frame, SampleRateHz{rate}, po);
-      if (cand.ok()) {
-        tuneCands.push_back(std::move(cand).value());
-        tuneTimes.push_back(tuneClock);
-        if (tuneCands.size() > 24) {
-          tuneCands.erase(tuneCands.begin());
-          tuneTimes.erase(tuneTimes.begin());
-        }
-        auto d = pyinDecode(tuneCands, tuneTimes, SampleRateHz{rate}, po);
-        tune = d.ok() ? d.value().back().estimate : PitchEstimate{};
-      }
+      samplesSinceTune = 0;
+      if (e().mode.load() == kMic) tunerPanel.calibration.observe(tune.frequencyHz,tune.voiced,tuneLevelDb);
     }
   }
 
@@ -906,6 +933,7 @@ struct App {
     e().loopVersion.fetch_add(1);
     trackName = name;
     trackSeconds = static_cast<double>(frames) / fs;
+    fileRate = fs;
     const bool rateChanged = fs != rate;
     sourceLtas = Spectrum{};
     match.reset();
@@ -953,10 +981,14 @@ struct App {
       status = baseName(path) + ": " + errorText(w.error());
       return;
     }
+    referenceView = false;
+    paramsDirty = true;
     loadWav(w.value(), baseName(path));
   }
 
   void loadDemo() {
+    referenceView = false;
+    paramsDirty = true;
     const WavData w = makeDemo();
     if (w.frames == 0) {
       status = "Demo synthesis failed.";
@@ -967,6 +999,7 @@ struct App {
 
   void seek(double seconds) {
     if (e().trackFrames == 0) return;
+    resetTuner();
     const auto f = static_cast<long long>(
         std::clamp(seconds * rate, 0.0, static_cast<double>(e().trackFrames - 1)));
     e().seekTo.store(f);  // the audio thread crossfades to it
@@ -2125,14 +2158,246 @@ struct App {
     status = w.ok() ? "Wrote " + p : "Cannot write " + p;
   }
 
+  void selectReference(int index) {
+    WavData w;
+    if (!referenceDemo.select(index, w)) return;
+    referenceView = true;
+    tunerView = false;
+    paramsDirty = true;
+    const auto& d = referenceDemo.data;
+    referenceKind = d.kind == "speech" ? 2 : d.mode == "pitch" ? 1 : 0;
+    loadWav(w, d.id);
+  }
+
+  void drawReferencePlot(double position, bool chordPlot) {
+    const auto& d = referenceDemo.data;
+    const auto& m = referenceDemo.measured;
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const ImVec2 size(std::max(240.0f, ImGui::GetContentRegionAvail().x), chordPlot ? 124.0f : 150.0f);
+    ImGui::InvisibleButton(chordPlot ? "reference-chords" : "reference-notes", size);
+    auto* draw = ImGui::GetWindowDrawList();
+    const float margin = ImGui::CalcTextSize("Fresh result").x + 22.0f;
+    const float left = origin.x + margin, width = size.x - margin - 11.0f;
+    auto x = [&](double t) { return left + static_cast<float>(t / d.duration) * width; };
+    const ImU32 refColor = IM_COL32(105, 212, 182, 255), actualColor = IM_COL32(115, 170, 255, 255);
+    draw->AddRectFilled(origin, ImVec2(origin.x + size.x, origin.y + size.y), IM_COL32(22, 29, 35, 255), 5);
+    for (int i = 0; i <= 5; ++i) {
+      const double time = d.duration * i / 5;
+      char label[24]; std::snprintf(label, sizeof label, "%.1fs", time);
+      draw->AddLine(ImVec2(x(time), origin.y + 6), ImVec2(x(time), origin.y + size.y - 20), IM_COL32(50, 61, 70, 255));
+      draw->AddText(ImVec2(std::min(x(time), origin.x + size.x - 45), origin.y + size.y - 17), IM_COL32(180, 191, 200, 255), label);
+    }
+    if (chordPlot) {
+      draw->AddText(ImVec2(origin.x + 7, origin.y + 14), refColor, "Reference");
+      draw->AddText(ImVec2(origin.x + 7, origin.y + 47), actualColor, "Fresh result");
+      draw->AddText(ImVec2(origin.x + 7, origin.y + 80), IM_COL32(200, 200, 200, 255), "Comparison");
+      for (const auto& c : d.chords) {
+        draw->AddRectFilled(ImVec2(x(c.start), origin.y + 11), ImVec2(x(c.end), origin.y + 35), refColor);
+        if (x(c.end) - x(c.start) > 68) {
+          draw->PushClipRect(ImVec2(x(c.start), origin.y + 11), ImVec2(x(c.end), origin.y + 35), true);
+          draw->AddText(ImVec2(x(c.start) + 3, origin.y + 15), IM_COL32(10, 30, 25, 255), c.label.c_str());
+          draw->PopClipRect();
+        }
+      }
+      const auto& cells = referenceDemo.result.comparisons;
+      for (std::size_t i = 0; i < cells.size();) {
+        const auto& c = cells[i];
+        double end = c.end;
+        std::size_t next = i + 1;
+        while (next < cells.size() && cells[next].actual == c.actual && cells[next].label == c.label && std::abs(cells[next].start - end) < 1e-8)
+          end = cells[next++].end;
+        draw->AddRectFilled(ImVec2(x(c.start), origin.y + 45), ImVec2(x(end) - .5f, origin.y + 68), actualColor);
+        if (x(end) - x(c.start) > 36) {
+          draw->PushClipRect(ImVec2(x(c.start), origin.y + 45), ImVec2(x(end), origin.y + 68), true);
+          draw->AddText(ImVec2(x(c.start) + 3, origin.y + 48), IM_COL32(10, 22, 40, 255), app::reference::actualName(c).c_str());
+          draw->PopClipRect();
+        }
+        i = next;
+      }
+      for (const auto& c : cells) {
+        const auto color = c.expected < 0 ? IM_COL32(97, 103, 111, 255) : c.expected == c.actual ? refColor : IM_COL32(226, 104, 102, 255);
+        draw->AddRectFilled(ImVec2(x(c.start), origin.y + 79), ImVec2(x(c.end) + .4f, origin.y + 95), color);
+      }
+    } else {
+      auto y = [&](double midi) { return origin.y + 126.0f - static_cast<float>((std::clamp(midi, 36.0, 96.0) - 36) / 60) * 112.0f; };
+      draw->AddText(ImVec2(origin.x + 7, origin.y + 10), refColor, "C7");
+      draw->AddText(ImVec2(origin.x + 7, origin.y + 62), actualColor, "Pitch");
+      draw->AddText(ImVec2(origin.x + 7, origin.y + 112), refColor, "C2");
+      for (const auto& n : d.notes)
+        draw->AddRectFilled(ImVec2(x(n.start), y(n.midi) - 2), ImVec2(x(n.end), y(n.midi) + 2), refColor);
+      for (const auto& p : m.pitch)
+        if (p.estimate.voiced) draw->AddCircleFilled(ImVec2(x(p.timeSeconds), y(69 + 12 * std::log2(p.estimate.frequencyHz / 440))), 1.5f, actualColor);
+    }
+    draw->AddLine(ImVec2(x(position), origin.y + 2), ImVec2(x(position), origin.y + size.y - 19), IM_COL32(255, 220, 125, 255), 2);
+    if (ImGui::IsItemHovered()) {
+      const double time = std::clamp(static_cast<double>((ImGui::GetIO().MousePos.x - left) / width) * d.duration, 0.0, d.duration);
+      ImGui::SetTooltip("%.3f s - click to seek", time);
+      if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) seek(time);
+    }
+  }
+
+  void drawReferenceDemo() {
+    auto& b = referenceDemo;
+    app::ui::heading("Reference recordings");
+    ImGui::BeginDisabled(b.busy());
+    if (ImGui::Button("Open reference suite...")) {
+      static const SDL_DialogFileFilter filter[] = {{"Reference suite", "tsv"}};
+      SDL_ShowOpenFileDialog(&App::onSuiteChosen, this, window, filter, 1, nullptr, false);
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine(); app::ui::caption("Expected notes and words, compared with the actual reading");
+    if (ImGui::CollapsingHeader("Saved collection results")) ImGui::TextWrapped("%s", b.summary.c_str());
+    if (!b.error.empty()) ImGui::TextColored(ImVec4(1, .55f, .5f, 1), "%s", b.error.c_str());
+    if (b.entries.empty()) {
+      ImGui::TextWrapped("Open reference-suite.tsv from the prepared audio collection. It contains real guitar recordings with chord/note labels and speech with published transcripts.");
+      return;
+    }
+    ImGui::Separator();
+    ImGui::BeginDisabled(b.busy());
+    const char* kinds[] = {"Guitar chords", "Guitar pitch", "Spoken words"};
+    for (int kind = 0; kind < 3; ++kind) {
+      if (kind) ImGui::SameLine();
+      if (ImGui::RadioButton(kinds[kind], referenceKind == kind)) {
+        for (std::size_t i = 0; i < b.entries.size(); ++i) {
+          const auto& entry = b.entries[i];
+          const int k = entry.kind == "speech" ? 2 : entry.mode == "pitch" ? 1 : 0;
+          if (kind == k) { selectReference(static_cast<int>(i)); break; }
+        }
+      }
+    }
+    ImGui::SetNextItemWidth(std::min(480.0f, ImGui::GetContentRegionAvail().x));
+    if (ImGui::BeginCombo("Recording", b.selected >= 0 ? b.data.id.c_str() : "Choose a recording")) {
+      for (std::size_t i = 0; i < b.entries.size(); ++i) {
+        const auto& entry = b.entries[i];
+        const int kind = entry.kind == "speech" ? 2 : entry.mode == "pitch" ? 1 : 0;
+        if (kind == referenceKind && ImGui::Selectable(entry.id.c_str(), b.selected == static_cast<int>(i))) selectReference(static_cast<int>(i));
+      }
+      ImGui::EndCombo();
+    }
+    ImGui::SameLine(); if (ImGui::Button("Run recognition again") && b.selected >= 0) selectReference(b.selected);
+    ImGui::EndDisabled();
+    if (b.selected < 0) return;
+    const auto& d = b.data;
+    const double position = static_cast<double>(e().shownPos.load()) / rate;
+    if (ImGui::Button(e().playing.load() ? "Pause" : "Play", ImVec2(80, 0))) setPlaying(!e().playing.load());
+    ImGui::SameLine(); if (ImGui::Button("Stop")) { setPlaying(false); seek(0); }
+    ImGui::SameLine();
+    if (ImGui::Button("Next mismatch")) {
+      double target = -1;
+      for (const auto& c : b.result.comparisons)
+        if (c.expected >= 0 && c.expected != c.actual) { if (target < 0) target = c.start; if (c.start > position + .1) { target = c.start; break; } }
+      if (target >= 0) seek(target);
+    }
+    ImGui::SameLine(); ImGui::Text("%.2f / %.2f s", position, d.duration);
+    float pos = static_cast<float>(position);
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::SliderFloat("##reference-position", &pos, 0, static_cast<float>(d.duration), "%.3f s")) seek(pos);
+    ImGui::TextWrapped("%s", d.stats.c_str());
+    if (d.mode == "chords") ImGui::TextWrapped("MMathEn recognizes chord quality and bass locally. The timeline score below compares major/minor only.");
+    if (b.busy()) ImGui::TextUnformatted("Analyzing the original WAV on a worker thread...");
+    else if (b.ready && d.kind != "speech") {
+      if (b.result.eligible > 0) ImGui::TextColored(ImVec4(.45f, .8f, 1, 1), "%s: %.1f%% %s on %.2f %s", b.measured.engine.c_str(), 100 * b.result.accuracy(), d.mode == "chords" ? "major/minor agreement" : "within 50 cents", b.result.eligible, d.mode == "chords" ? "supported seconds" : "eligible frames");
+      else ImGui::TextUnformatted("Fresh result: not scored - no supported reference segments.");
+    }
+    ImGui::Separator();
+    if (d.mode == "chords") {
+      const app::reference::Chord* expected = nullptr;
+      const app::reference::Comparison* actual = nullptr;
+      for (const auto& c : d.chords) if (position >= c.start && position < c.end) expected = &c;
+      for (const auto& c : b.result.comparisons) if (position >= c.start && position < c.end) actual = &c;
+      ImGui::Text("Reference: %s", expected ? expected->label.c_str() : "unannotated");
+      ImGui::SameLine(380 * app::ui::unit()); ImGui::Text("Fresh chord: %s", actual ? app::reference::actualName(*actual).c_str() : "uncovered / analyzing");
+      if (actual) ImGui::TextColored(actual->expected < 0 ? ImVec4(.7f, .7f, .7f, 1) : actual->expected == actual->actual ? ImVec4(.5f, 1, .75f, 1) : ImVec4(1, .55f, .5f, 1), "%s", actual->expected < 0 ? "UNSCORED: chord outside the major/minor vocabulary" : actual->expected == actual->actual ? "MATCH under major/minor rules" : "MISMATCH under major/minor rules");
+      drawReferencePlot(position, true);
+      if (ImGui::CollapsingHeader("Compare chord shapes / notes")) {
+        ImGui::TextWrapped("Example voicings in standard guitar tuning. The reference shape uses the supported major/minor reduction, so extensions may be omitted; finger positions are not measured.");
+        if (ImGui::BeginTable("reference-shapes", 2)) {
+          ImGui::TableNextColumn(); ImGui::TextUnformatted("Expected triad");
+          ImGui::PushID("expected-shape");
+          if (const auto* shape = app::tuner::shapeForState(expected ? expected->state : -1))
+            app::tuner::diagram(*shape, 290 * app::ui::unit());
+          else ImGui::TextUnformatted("No supported shape available");
+          ImGui::PopID();
+          ImGui::TableNextColumn(); ImGui::TextUnformatted("Detected triad");
+          ImGui::PushID("detected-shape");
+          if (const auto* shape = app::tuner::shapeForState(actual ? actual->actual : -1))
+            app::tuner::diagram(*shape, 290 * app::ui::unit());
+          else ImGui::TextUnformatted("No supported shape available");
+          ImGui::PopID();
+          ImGui::EndTable();
+        }
+      }
+    } else if (b.ready && !b.measured.pitch.empty()) {
+      const auto& points = b.measured.pitch;
+      const auto it = std::lower_bound(points.begin(), points.end(), position, [](const PitchFrame& p, double t) { return p.timeSeconds < t; });
+      std::size_t index = it == points.end() ? points.size() - 1 : static_cast<std::size_t>(it - points.begin());
+      if (index && std::abs(points[index - 1].timeSeconds - position) < std::abs(points[index].timeSeconds - position)) --index;
+      const auto& p = points[index];
+      const bool covered = std::abs(p.timeSeconds - position) <= 256 / b.measured.rate;
+      if (covered && p.estimate.voiced) ImGui::Text("Fresh YIN pitch: %.2f Hz (%s)", p.estimate.frequencyHz, noteText(p.estimate.frequencyHz).c_str());
+      else ImGui::TextUnformatted(covered ? "Fresh YIN pitch: unvoiced" : "Fresh YIN pitch: uncovered");
+      if (d.kind != "speech" && covered && d.pitch[index].hz > 0) {
+        ImGui::SameLine(); ImGui::Text("| Reference %.2f Hz", d.pitch[index].hz);
+        if (p.estimate.voiced) { ImGui::SameLine(); ImGui::Text("| Error %+.1f cents", 1200 * std::log2(p.estimate.frequencyHz / d.pitch[index].hz)); }
+      } else { ImGui::SameLine(); ImGui::TextDisabled("| Pitch reference: not available for this window"); }
+    }
+    std::string sounding;
+    for (const auto& n : d.notes) if (position >= n.start && position < n.end) {
+      const auto name = midiToLabel(static_cast<int>(std::lround(n.midi)));
+      if (!sounding.empty()) sounding += ", ";
+      if (name.ok()) sounding += name.value();
+    }
+    if (d.kind == "guitar") {
+      if (d.notes.empty()) ImGui::TextUnformatted("Individual note pitches and timings are not annotated for this recording.");
+      else ImGui::TextWrapped("Annotated notes sounding: %s", sounding.empty() ? "none" : sounding.c_str());
+    }
+    if (!d.notes.empty() || d.kind == "speech") drawReferencePlot(position, false);
+    ImGui::TextDisabled("%s", d.mode == "chords" ? "Green: all annotated notes. Red: chord mismatch. Gray: unscored. Click a plot to seek." : d.kind == "speech" ? "Blue: fresh voice-pitch estimate. No verified speech-pitch reference. Click to seek." : "Green: annotated notes. Blue: fresh voiced pitch. Only isolated note windows are scored. Click to seek.");
+    if (d.kind == "speech") {
+      ImGui::TextWrapped("Published transcript: %s", d.transcript.c_str());
+      ImGui::TextWrapped("Whisper base.en (saved separate recognizer): %s", d.estimate.c_str());
+      std::string word;
+      for (const auto& w : d.words) if (position >= w.start && position < w.end) word = w.text;
+      ImGui::TextColored(ImVec4(.5f, .8f, 1, 1), "Current word (estimated timing): %s", word.empty() ? "--" : word.c_str());
+      if (ImGui::CollapsingHeader("Word-by-word errors")) {
+        for (const auto& edit : d.edits) if (edit.operation != "match")
+          ImGui::TextWrapped("%s: expected [%s], recognized [%s]", edit.operation.c_str(), edit.expected.c_str(), edit.actual.c_str());
+      }
+    }
+    if (!d.notes.empty() && ImGui::CollapsingHeader("All reference notes / exact timings")) {
+      if (ImGui::BeginTable("reference-notes", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY, ImVec2(0, 160))) {
+        for (const char* h : {"Start (s)", "End (s)", "MIDI pitch", "Hz from MIDI", "String index"}) ImGui::TableSetupColumn(h);
+        ImGui::TableHeadersRow();
+        for (const auto& n : d.notes) {
+          ImGui::TableNextRow(); ImGui::TableNextColumn(); ImGui::Text("%.6f", n.start);
+          ImGui::TableNextColumn(); ImGui::Text("%.6f", n.end);
+          ImGui::TableNextColumn(); ImGui::Text("%.4f", n.midi);
+          ImGui::TableNextColumn(); ImGui::Text("%.3f", 440 * std::pow(2, (n.midi - 69) / 12));
+          ImGui::TableNextColumn(); ImGui::Text("%d", n.string);
+        }
+        ImGui::EndTable();
+      }
+    }
+    if (ImGui::CollapsingHeader("What this test proves / sources")) {
+      if (d.id.starts_with("PD-"))
+        ImGui::TextWrapped("WBOSITG (2008), acoustic guitar recordings released into the public domain by their author. https://commons.wikimedia.org/wiki/File:A-major.ogg and the linked B-G recordings. The uploader names each chord; individual notes, bass inversions and precise timing are not independently annotated. Audio, source pages and file hashes are saved with the collection.");
+      else if (d.kind == "guitar")
+        ImGui::TextWrapped("GuitarSet 1.1.0: Xi, Bittner, Pauwels, Ye, Bello (2018), CC BY 4.0. https://zenodo.org/records/3371780. Performed chords are semi-automatic, manually verified annotations with lead-sheet roots and boundaries; not perfect physical truth.");
+      else
+        ImGui::TextWrapped("LibriSpeech: Panayotov, Chen, Povey, Khudanpur (2015), LibriVox readers, CC BY 4.0. https://www.openslr.org/12. Words have published transcripts; word timing and speech pitch do not have verified reference labels.");
+      ImGui::TextWrapped("Chord scores use duration-weighted major/minor rules. Unsupported chords and uncovered edges receive no credit. Pitch is scored only on full windows containing one annotated note, within 50 cents; missed voices count as errors. Viterbi is offline, not a live latency test. This is a small demonstration collection, not broad accuracy certification.");
+    }
+  }
+
   void drawTransport() {
-    const int mode = e().mode.load();
-    if (ImGui::RadioButton("File", mode != kMic) && mode == kMic) stopMic();
+    int mode = e().mode.load();
+    if (ImGui::RadioButton("Recording", mode != kMic) && mode != kFile) returnToFile();
     ImGui::SameLine();
     if (ImGui::RadioButton("Microphone", mode == kMic) && mode != kMic) {
       refreshMics();
       startMic();
     }
+    mode = e().mode.load();
     ImGui::SameLine();
     ImGui::TextDisabled("|");
     ImGui::SameLine();
@@ -2145,7 +2410,7 @@ struct App {
       ImGui::SameLine();
       if (ImGui::Button("Demo")) loadDemo();
       ImGui::EndDisabled();
-      ImGui::SameLine();
+      ImGui::Spacing();
       const bool playing = e().playing.load();
       ImGui::BeginDisabled(e().trackFrames == 0);
       if (ImGui::Button(playing ? "Pause" : "Play", ImVec2(64.0f, 0.0f))) setPlaying(!playing);
@@ -2193,14 +2458,54 @@ struct App {
       ImGui::SameLine();
       if (ImGui::Button("Refresh")) refreshMics();
     }
-    // Tuner, right-aligned.
-    char tbuf[96] = "tuner: --";
-    if (tune.voiced && tuneLevelDb > -55.0)
-      std::snprintf(tbuf, sizeof tbuf, "tuner: %s  %.1f Hz  (pYIN %.2f)", noteText(tune.frequencyHz).c_str(),
-                    tune.frequencyHz, tune.confidence);
-    const float tw = ImGui::CalcTextSize(tbuf).x;
-    ImGui::SameLine(std::max(ImGui::GetCursorPosX() + 10.0f, ImGui::GetWindowWidth() - tw - 16.0f));
-    ImGui::TextColored(ImVec4(0.99f, 0.94f, 0.67f, 1.0f), "%s", tbuf);
+  }
+
+  void drawHeader() {
+    const float u = app::ui::unit();
+    app::ui::heading("MMathEn", 22);
+    ImGui::SameLine(170 * u);
+    if (app::ui::button("Analyzer", !referenceView && !tunerView)) { referenceView = tunerView = false; paramsDirty = true; }
+    ImGui::SameLine();
+    if (app::ui::button("Music & tuner", tunerView)) { referenceView = false; tunerView = true; paramsDirty = true; }
+    ImGui::SameLine();
+    if (app::ui::button("Reference recordings", referenceView)) {
+      referenceView = true; tunerView = false; paramsDirty = true;
+      if (referenceDemo.entries.empty()) {
+        const char* base = SDL_GetBasePath();
+        const auto nearby = std::filesystem::path(base ? base : "") / "reference-suite.tsv";
+        const auto local = std::filesystem::path("build_real_audio") / "reference-suite.tsv";
+        if (std::filesystem::exists(nearby)) referenceDemo.open(nearby.string());
+        else if (std::filesystem::exists(local)) referenceDemo.open(local.string());
+        else {
+          // Explorer launches may have a different working directory.
+          for (auto parent = std::filesystem::path(base ? base : "").parent_path();
+               !parent.empty() && parent != parent.parent_path(); parent = parent.parent_path()) {
+            const auto suite = parent / "build_real_audio/reference-suite.tsv";
+            if (std::filesystem::exists(suite)) { referenceDemo.open(suite.string()); break; }
+          }
+        }
+      }
+      if (!referenceDemo.entries.empty() && !referenceDemo.busy()) selectReference(std::max(0, referenceDemo.selected));
+    }
+    if (ImGui::GetContentRegionAvail().x > 1080 * u) ImGui::SameLine(ImGui::GetWindowWidth() - 350 * u);
+    else ImGui::Spacing();
+    const bool silent = SDL_GetAudioStreamGain(play) == 0;
+    if (silent) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(.50f, .23f, .11f, 1));
+    if (ImGui::Button(silent ? "Unmute sound" : "Mute sound", ImVec2(130 * u, 0))) {
+      output.muted = !silent;
+      if (silent && output.volume == 0) output.volume = .5f;
+      if (!output.apply(play)) status = std::string("Sound control failed: ") + SDL_GetError();
+    }
+    if (silent) ImGui::PopStyleColor();
+    ImGui::SameLine(); ImGui::SetNextItemWidth(130 * u);
+    float percent = output.volume * 100;
+    if (ImGui::SliderFloat("##output-volume", &percent, 0, 100, "%.0f%%", ImGuiSliderFlags_AlwaysClamp)) {
+      output.volume = percent / 100; output.muted = false;
+      if (!output.apply(play)) status = std::string("Volume change failed: ") + SDL_GetError();
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Listening volume. Analysis and exported audio are unchanged.");
+    if (silent) { ImGui::SameLine(); ImGui::TextColored(ImVec4(1, .68f, .38f, 1), "MUTED"); }
+    ImGui::Separator();
   }
 
   static void pushPending(void* user, Pending kind, const char* const* list) {
@@ -2210,6 +2515,7 @@ struct App {
     a->pending.emplace_back(kind, list[0]);
   }
   static void SDLCALL onOpenChosen(void* u, const char* const* l, int) { pushPending(u, Pending::Open, l); }
+  static void SDLCALL onSuiteChosen(void* u, const char* const* l, int) { pushPending(u, Pending::ReferenceSuite, l); }
   static void SDLCALL onRefChosen(void* u, const char* const* l, int) { pushPending(u, Pending::Reference, l); }
   static void SDLCALL onSvgChosen(void* u, const char* const* l, int) { pushPending(u, Pending::ExportSvg, l); }
   static void SDLCALL onWavChosen(void* u, const char* const* l, int) { pushPending(u, Pending::ExportWav, l); }
@@ -2225,8 +2531,10 @@ struct App {
       if (item.first == Pending::Reference) startMatchAnalysis(item.second);
       if (item.first == Pending::ExportSvg) exportSvg(item.second);
       if (item.first == Pending::ExportWav) startExport(item.second);
+      if (item.first == Pending::ReferenceSuite && !referenceDemo.busy() && referenceDemo.open(item.second)) selectReference(0);
     }
     pollJob();
+    referenceDemo.poll();
     if (paramsDirty) publish();
     pumpAudio(dt);
     const ImGuiIO& io = ImGui::GetIO();
@@ -2239,14 +2547,37 @@ struct App {
     ImGui::Begin("mmathEn", nullptr,
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                      ImGuiWindowFlags_NoBringToFrontOnFocus);
+    drawHeader();
+    if (referenceView) {
+      drawReferenceDemo();
+      ImGui::End();
+      return;
+    }
     drawTransport();
     ImGui::Separator();
+    if (tunerView) {
+      const auto previousRange=tunerPanel.pitchRange();
+      tunerPanel.microphone = e().mode.load() == kMic;
+      tunerPanel.refined = streamingTuner.refined;
+      tunerPanel.draw(tune, tuneLevelDb, e().mode.load() == kMic || (e().mode.load() == kFile && e().playing.load()));
+      if(previousRange!=tunerPanel.pitchRange()) {
+        hist.assign(app::precisionHistorySize(rate,tunerPanel.pitchRange()),0);
+        histPos=0; resetTuner();
+      }
+      if(!tunerPanel.music.audition.empty()) {
+        const auto w=app::music::referenceTones(tunerPanel.music.audition,tunerPanel.a4);
+        tunerPanel.music.audition.clear();
+        if(w.frames) loadWav(w,"Music math: generated reference tones");
+      }
+      ImGui::End();
+      return;
+    }
 
     const float statusH = ImGui::GetFrameHeightWithSpacing();
-    const float leftW = std::min(500.0f, ImGui::GetContentRegionAvail().x * 0.37f);
+    const float leftW = std::min(530.0f * app::ui::unit(), ImGui::GetContentRegionAvail().x * 0.42f);
     const float bodyH = ImGui::GetContentRegionAvail().y - statusH;
     ImGui::BeginChild("left", ImVec2(leftW, bodyH));
-    const float meterW = 56.0f;
+    const float meterW = 46.0f * app::ui::unit();
     ImGui::BeginChild("tabs", ImVec2(leftW - meterW - ImGui::GetStyle().ItemSpacing.x, 0.0f));
     if (ImGui::BeginTabBar("panels")) {
       auto tab = [&](const char* name, int idx) {
@@ -2311,10 +2642,11 @@ struct App {
 }  // namespace
 
 int main(int argc, char* argv[]) {
-  std::string capturePath, openPath, matchPath, exportPath;
+  std::string capturePath, openPath, matchPath, exportPath, referencePath;
+  int referenceTrack = 0, instrumentArg=0;
   double captureSeconds = 3.0, seekAt = -1.0;
   bool mute = false, useMic = false, compArg = false, transformArg = false, flatArg = false, truePeakArg = false,
-       normalizeArg = false, linearArg = false;
+       normalizeArg = false, linearArg = false, tunerArg = false, calibrationArg = false;
   int presetArg = -1, tabArg = -1, eqModeArg = -1, methodArg = -1;
   float shiftArg = 0.0f, tempoArg = 100.0f;
   for (int i = 1; i < argc; ++i) {
@@ -2322,6 +2654,10 @@ int main(int argc, char* argv[]) {
     const bool more = i + 1 < argc;
     if (a == "--capture" && more) {
       capturePath = argv[++i];
+    } else if (a == "--reference-demo" && more) {
+      referencePath = argv[++i];
+    } else if (a == "--reference-track" && more) {
+      referenceTrack = std::atoi(argv[++i]);
     } else if (a == "--seconds" && more) {
       captureSeconds = std::atof(argv[++i]);
     } else if (a == "--preset" && more) {
@@ -2359,6 +2695,14 @@ int main(int argc, char* argv[]) {
       compArg = true;
     } else if (a == "--mic") {
       useMic = true;
+    } else if (a == "--tuner") {
+      tunerArg = true;
+    } else if (a == "--piano") {
+      tunerArg = true; instrumentArg=1;
+    } else if (a == "--guitar") {
+      tunerArg = true; instrumentArg=2;
+    } else if (a == "--calibration") {
+      calibrationArg = true;
     } else if (a == "--mute") {
       mute = true;
     } else {
@@ -2374,7 +2718,10 @@ int main(int argc, char* argv[]) {
   const float s = scale > 0.0f ? scale : 1.0f;
   auto appPtr = std::make_unique<App>();
   App& a = *appPtr;
-  a.window = SDL_CreateWindow("mmathEn: analyzer, EQ, dynamics, pitch", static_cast<int>(1500 * s),
+  a.tunerView = tunerArg;
+  a.tunerPanel.instrument=instrumentArg;
+  a.tunerPanel.showCalibration = calibrationArg;
+  a.window = SDL_CreateWindow("MMathEn: music, piano, tuning & sound", static_cast<int>(1500 * s),
                               static_cast<int>(900 * s), SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
   if (!a.window) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "mmathEn", SDL_GetError(), nullptr);
@@ -2401,7 +2748,8 @@ int main(int argc, char* argv[]) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "mmathEn: no audio output", SDL_GetError(), a.window);
     return 1;
   }
-  if (mute) SDL_SetAudioStreamGain(a.play, 0.0f);
+  a.output.muted = mute;
+  if (!a.output.apply(a.play)) return 1;
   SDL_ResumeAudioStreamDevice(a.play);
 
   IMGUI_CHECKVERSION();
@@ -2409,11 +2757,10 @@ int main(int argc, char* argv[]) {
   ImGuiIO& io = ImGui::GetIO();
   io.IniFilename = nullptr;
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-  ImGui::StyleColorsDark();
-  ImGuiStyle& style = ImGui::GetStyle();
-  style.ScaleAllSizes(s);
-  style.FontScaleDpi = s;
-  style.WindowRounding = 0.0f;
+  const std::filesystem::path systemFont("C:/Windows/Fonts/segoeui.ttf");
+  if (std::filesystem::exists(systemFont)) io.Fonts->AddFontFromFileTTF(systemFont.string().c_str(), 16);
+  else io.Fonts->AddFontDefault();
+  app::ui::theme(s);
   ImGui_ImplSDL3_InitForSDLRenderer(a.window, a.renderer);
   ImGui_ImplSDLRenderer3_Init(a.renderer);
 
@@ -2452,7 +2799,11 @@ int main(int argc, char* argv[]) {
   if (methodArg >= 0) a.method = methodArg;
   a.shiftSemis = shiftArg;
   a.tempoPct = tempoArg;
-  if (useMic) {
+  if (!referencePath.empty()) {
+    a.referenceView = true;
+    a.paramsDirty = true;
+    if (a.referenceDemo.open(referencePath)) a.selectReference(referenceTrack);
+  } else if (useMic) {
     a.refreshMics();
     a.startMic();
   } else if (!openPath.empty()) {
@@ -2474,6 +2825,11 @@ int main(int argc, char* argv[]) {
       if (ev.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && ev.window.windowID == SDL_GetWindowID(a.window))
         running = false;
       if (ev.type == SDL_EVENT_DROP_FILE && ev.drop.data) a.loadPath(ev.drop.data);
+      if ((ev.type == SDL_EVENT_AUDIO_DEVICE_ADDED || ev.type == SDL_EVENT_AUDIO_DEVICE_REMOVED ||
+           ev.type == SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED) && ev.adevice.recording) {
+        a.tunerPanel.calibration.reset();
+        a.resetTuner();
+      }
     }
     if (SDL_GetWindowFlags(a.window) & SDL_WINDOW_MINIMIZED) {
       SDL_Delay(10);
@@ -2496,7 +2852,7 @@ int main(int argc, char* argv[]) {
       a.seek(seekAt);
       seekDone = true;
     }
-    if (a.busy()) start = t;  // captures wait for background jobs
+    if (a.busy() || a.referenceDemo.busy()) start = t;  // captures wait for background jobs
 
     ImGui_ImplSDLRenderer3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
@@ -2508,7 +2864,7 @@ int main(int argc, char* argv[]) {
     SDL_RenderClear(a.renderer);
     ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), a.renderer);
 
-    if (!capturePath.empty() && !transformPending && exportPath.empty() && !a.busy() && t - start >= captureSeconds) {
+    if (!capturePath.empty() && !transformPending && exportPath.empty() && !a.busy() && !a.referenceDemo.busy() && t - start >= captureSeconds) {
       SDL_Surface* shot = SDL_RenderReadPixels(a.renderer, nullptr);
       const bool saved = shot && SDL_SavePNG(shot, capturePath.c_str());
       if (shot) SDL_DestroySurface(shot);
@@ -2529,6 +2885,11 @@ int main(int argc, char* argv[]) {
                      a.loudness ? a.loudness->integratedLufs() : kLoudnessFloor,
                      a.loudness ? a.loudness->momentaryLufs() : kLoudnessFloor,
                      a.loudness ? a.loudness->truePeakDbtp() : kLoudnessFloor);
+        if (a.referenceView) SDL_IOprintf(f, "referenceTrack=%s\nreferenceReady=%d\nreferenceEngine=%s\nreferenceAccuracy=%.15f\nreferenceEligible=%.15f\nreferenceError=%s\n", a.referenceDemo.data.id.c_str(), a.referenceDemo.ready ? 1 : 0, a.referenceDemo.measured.engine.c_str(), a.referenceDemo.result.accuracy(), a.referenceDemo.result.eligible, a.referenceDemo.error.c_str());
+        SDL_IOprintf(f, "outputGain=%.6f\noutputMuted=%d\nsourceMode=%d\ntunerView=%d\n", SDL_GetAudioStreamGain(a.play), a.output.muted ? 1 : 0, a.e().mode.load(), a.tunerView ? 1 : 0);
+        SDL_AudioSpec deviceSpec{};
+        if (SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(a.play), &deviceSpec, nullptr))
+          SDL_IOprintf(f, "outputFormat=%u\noutputChannels=%d\noutputRate=%d\n", static_cast<unsigned>(deviceSpec.format), deviceSpec.channels, deviceSpec.freq);
         SDL_CloseIO(f);
       }
       rc = saved ? 0 : 2;
@@ -2537,6 +2898,7 @@ int main(int argc, char* argv[]) {
     SDL_RenderPresent(a.renderer);
   }
 
+  if (a.referenceDemo.busy()) a.referenceDemo.worker.wait();
   if (a.job && a.job->thread.joinable()) a.job->thread.join();
   a.stopMic();
   SDL_DestroyAudioStream(a.play);
