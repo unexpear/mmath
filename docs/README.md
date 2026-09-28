@@ -44,6 +44,14 @@ MVP: Phases 0–2 + 2.5 · C++20 · zero-dep core · strict units
 | 37 | `37-d22-d30-desktop-app.md` | D22/D29/D30 record: WAV reader, lock-free hand-offs, the SDL3 + ImGui desktop app |
 | 38 | `38-d31-loudness-true-peak.md` | D31/D32 record: BS.1770 loudness, 4× true peak, true-peak limiter mode, multichannel WAV writer and export |
 | 39 | `39-d33-d38-repair-pitch-tsm-multiband.md` | D33–D38 record: loudness normalization, noise reduction and spectral repair, pYIN, PGHI/hybrid TSM, multiband and dynamic EQ, linear-phase EQ, ACGE cross-check of D25 |
+| 40 | `40-d39-d43-mfcc-gmm-hmm-ngram-chords.md` | D39–D43 record: MFCC, GMM/EM, HMM forward-backward/Viterbi/Baum-Welch, Markov chains, Kneser-Ney n-grams, HMM chord recognition |
+| 41 | `41-real-audio-reference-demo.md` | Native desktop reference demo: real guitar chords/notes, spoken words, measured accuracy and coverage, reproducible corpus checks |
+| 42 | `42-desktop-tuner-comparison.md` | Real-recording tuner comparison, native string/calibration controls, and copied chord diagrams |
+| 43 | `43-desktop-audio-and-accuracy.md` | Sound repairs, desktop UI, and held-out real-recording pitch/chord improvement |
+| 44 | `44-community-recognition-comparison.md` | Comparable open-source chord/pitch methods, full-quality scores, optional native Chordino integration |
+| 45 | `45-precision-and-phone-limits.md` | Current phone claims and hardware limits, real-recording arithmetic audit, rejected spectral candidates |
+| 46 | `46-recognition-and-calibration.md` | Fine tuner tracking, device calibration, default extended chords, reserved-recording results and rejected bass experiment |
+| 47 | `47-native-chord-engine.md` | Improved native chord engine, Chordino removed from desktop, public-domain recordings, reserved evaluation and noise limitations |
 | — | `FOUNDATION.md` | **Canonical** base decisions (accepted/proposed/deferred) |
 | — | `NUMERICS.md` | **Canonical** precision, determinism tiers, tolerances |
 | — | `VALIDATION.md` | **Canonical** verification vs validation, evidence rules |

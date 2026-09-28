@@ -1,0 +1,64 @@
+{
+  "downloads": [
+    {
+      "path": "sonic-annotator.zip",
+      "url": "https://github.com/sonic-visualiser/sonic-annotator/releases/download/sonic-annotator-1.7/sonic-annotator-1.7-win64.zip",
+      "sha256": "c40717e029210cf1e1c97bc7dadea00cf4386327e67fdf9ca66027a91ea26693",
+      "group": "chords"
+    },
+    {
+      "path": "chordino/nnls-chroma.dll",
+      "url": "https://github.com/jotapemj/nnls-chroma-win64/releases/download/v1.1-win64/nnls-chroma.dll",
+      "sha256": "ba0f3b35dcc77d5d48b65d72794e37a0dc1f97aa953e9e1dfdcca7bc27d22ad9",
+      "group": "chords"
+    },
+    {
+      "path": "chordino/nnls-chroma.n3",
+      "url": "https://github.com/jotapemj/nnls-chroma-win64/releases/download/v1.1-win64/nnls-chroma.n3",
+      "sha256": "71f6229c997058ea302e207241059e0753e4b42be9f97429f34cebd796421de6",
+      "group": "chords"
+    },
+    {
+      "path": "chordino/nnls-chroma.cat",
+      "url": "https://github.com/jotapemj/nnls-chroma-win64/releases/download/v1.1-win64/nnls-chroma.cat",
+      "sha256": "10e53533341c68c372ecef69fa542fe8530bad1ee49c38295cc3e12721a64a17",
+      "group": "chords"
+    },
+    {
+      "path": "chordino/COPYING",
+      "url": "https://github.com/jotapemj/nnls-chroma-win64/releases/download/v1.1-win64/COPYING",
+      "sha256": "67f82e045cf7acfef853ea0f426575a8359161a0a325e19f02b529a87c4b6c34",
+      "group": "chords"
+    },
+    {
+      "path": "tiny.onnx",
+      "url": "https://github.com/yqzhishen/onnxcrepe/releases/download/v1.1.0/tiny.onnx",
+      "sha256": "91fc2a0fd10f965dbf7775995daf50e99273caedd7efd00001f23be649da1bc3",
+      "group": "pitch"
+    },
+    {
+      "path": "full.onnx",
+      "url": "https://github.com/yqzhishen/onnxcrepe/releases/download/v1.1.0/full.onnx",
+      "sha256": "119845c72c702e052e5262430f9d120bce46176689aa226c39d09dea5cc3a610",
+      "group": "pitch"
+    },
+    {
+      "path": "CREPE-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/yqzhishen/onnxcrepe/ca7e5d7f2dfca5cc4d99e8d546b00793ca4e7157/LICENSE",
+      "sha256": "f13b2dcb777a46f6768d3b0678adb7a8453248f5e685d4d45df7f0b5a5437d1c",
+      "group": "pitch"
+    },
+    {
+      "path": "CREPE-original-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/marl/crepe/c9b71ce61491454125a0693f584f7244f29d9884/LICENSE",
+      "sha256": "72b2e8b7b1f8f21b667eb241275d4b57cb504d17c0fc624421ec306ef4edc4ac",
+      "group": "pitch"
+    },
+    {
+      "path": "torchcrepe-LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/maxrmorrison/torchcrepe/19e2ec3d494c0797a5ff2a11408ec5838fba6681/LICENSE",
+      "sha256": "2e1d0b22e64e0f0937cb213dbe45b0b02c97d278c4db8bae926ae031325b2417",
+      "group": "pitch"
+    }
+  ]
+}

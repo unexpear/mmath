@@ -9,6 +9,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(BUILD_TESTING "Build the test suite (fetches pinned Catch2 v3)" ON)
 option(MMATHEN_BUILD_EXAMPLES "Build runnable examples" ON)
+option(MMATHEN_BUILD_VALIDATION "Build the offline real-audio measurement tool" OFF)
+option(MMATHEN_COMPARE_TUNERS "Build comparison with the copied f3 tuner engine" OFF)
 option(MMATHEN_BUILD_APP
   "Build the desktop spectrum/EQ app (fetches pinned SDL3 + Dear ImGui)" OFF)
 option(MMATHEN_SANITIZE
@@ -153,7 +155,12 @@ if(BUILD_TESTING)
     tests/test_tsm.cpp
     tests/test_multiband.cpp
     tests/test_acge.cpp
+    tests/test_mfcc.cpp
+    tests/test_gmm_hmm.cpp
+    tests/test_markov_ngram.cpp
+    tests/test_chords.cpp
     tests/test_realtime_io.cpp
+    tests/test_desktop_tuner.cpp
     tests/headers/th_result.cpp
     tests/headers/th_scalar.cpp
     tests/headers/th_constants.cpp
@@ -232,6 +239,13 @@ if(BUILD_TESTING)
     tests/headers/th_dsp_multiband.cpp
     tests/headers/th_dsp_linear_phase.cpp
     tests/headers/th_dsp_acge.cpp
+    tests/headers/th_analysis_mfcc.cpp
+    tests/headers/th_stats_random.cpp
+    tests/headers/th_stats_gmm.cpp
+    tests/headers/th_stats_hmm.cpp
+    tests/headers/th_stats_markov.cpp
+    tests/headers/th_stats_ngram.cpp
+    tests/headers/th_analysis_chords.cpp
     tests/headers/th_sink_wav_reader.cpp
     tests/headers/th_core_spsc_ring.cpp
     tests/headers/th_analysis_analyzer.cpp
@@ -279,6 +293,34 @@ if(BUILD_TESTING)
   mmathen_compile_probe(invalid_add_ratio_ratio FALSE)
   mmathen_compile_probe(invalid_convert_samplerate_frequency FALSE)
   mmathen_compile_probe(invalid_convert_quantity_double FALSE)
+endif()
+
+if(MMATHEN_BUILD_VALIDATION)
+  add_executable(native_chord_probe tools/real_audio/native_chord_probe.cpp)
+  target_link_libraries(native_chord_probe PRIVATE mmathen_core)
+  mmathen_dev_settings(native_chord_probe)
+  add_executable(recognition_probe tools/real_audio/recognition_probe.cpp)
+  target_link_libraries(recognition_probe PRIVATE mmathen_core)
+  mmathen_dev_settings(recognition_probe)
+  add_executable(chroma_math_probe tools/real_audio/chroma_math_probe.cpp)
+  target_link_libraries(chroma_math_probe PRIVATE mmathen_core)
+  mmathen_dev_settings(chroma_math_probe)
+  add_executable(accuracy_probe tools/real_audio/accuracy_probe.cpp)
+  target_link_libraries(accuracy_probe PRIVATE mmathen_core)
+  mmathen_dev_settings(accuracy_probe)
+  add_executable(real_audio_probe tools/real_audio/probe.cpp)
+  target_link_libraries(real_audio_probe PRIVATE mmathen_core)
+  mmathen_dev_settings(real_audio_probe)
+  add_executable(reference_data_check tools/real_audio/check_native.cpp)
+  target_link_libraries(reference_data_check PRIVATE mmathen_core)
+  mmathen_dev_settings(reference_data_check)
+endif()
+
+if(MMATHEN_COMPARE_TUNERS)
+  add_subdirectory(tools/real_audio/vendor/tuner-engine/cpp tuner-engine SYSTEM)
+  add_executable(tuner_probe tools/real_audio/tuner_probe.cpp)
+  target_link_libraries(tuner_probe PRIVATE mmathen_core tuner_engine_core)
+  mmathen_dev_settings(tuner_probe)
 endif()
 
 if(MMATHEN_BUILD_EXAMPLES)
@@ -332,4 +374,12 @@ if(MMATHEN_BUILD_APP)
   add_executable(mmathen_app WIN32 app/spectrum_app.cpp)
   target_link_libraries(mmathen_app PRIVATE mmathen_core mmathen_imgui)
   mmathen_dev_settings(mmathen_app)
+  if(MMATHEN_BUILD_VALIDATION)
+    add_executable(chordino_check tools/real_audio/check_chordino.cpp)
+    target_link_libraries(chordino_check PRIVATE mmathen_core SDL3::SDL3-static)
+    mmathen_dev_settings(chordino_check)
+    add_executable(playback_check tools/real_audio/check_playback.cpp)
+    target_link_libraries(playback_check PRIVATE mmathen_core SDL3::SDL3-static)
+    mmathen_dev_settings(playback_check)
+  endif()
 endif()

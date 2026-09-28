@@ -1,0 +1,18 @@
+[
+  {
+    "file": "features/chords/data/chords.ts",
+    "sha256": "65d112cd803473e727a0d6d4c6e414fa98de3c21291b495b24cc10f7a50f5c6b"
+  },
+  {
+    "file": "features/tuner/data/tunings.ts",
+    "sha256": "67544d596aafa441c651b06ffd9f31fd6f5b1cbfcb940214543525be1f2d801c"
+  },
+  {
+    "file": "features/tuner/pitch.ts",
+    "sha256": "90f037613f77c8b742d15f109f9bbdede8fa696f4797ae8038de0101a29503ee"
+  },
+  {
+    "file": "features/tuner/tunerReading.ts",
+    "sha256": "b907b274fd54864b6585a45bbed4aaa85e2d2871e307c5ac237fbc34a3d726ac"
+  }
+]
