@@ -1,11 +1,13 @@
-// Instruments — violin and viola assembly (docs/48).
+// Instruments — violin, viola, and cello, plus steady Helmholtz bow (docs/48).
 //
 // The open string is the ideal-string fundamental at the pitch-adapter
 // frequency. The nominal density is Guettler's range midpoint, and the
 // tension that hits that pitch must sit inside his published tension
 // interval. A pluck is the existing modal sum, checked against d'Alembert
 // within the truncation bound. The bridge hook is the coupled-string
-// limits (rigid end, free end). Bow, hammer, and reed are refused.
+// limits (rigid end, free end). Hammer and reed are refused. A bow is a
+// steady Helmholtz stroke: stick/slip velocity, bridge-force sawtooth,
+// and Schelleng's maximum normal force.
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -15,6 +17,8 @@
 #include <limits>
 #include <utility>
 
+#include <mmathen/instruments/bow.h>
+#include <mmathen/instruments/cello.h>
 #include <mmathen/instruments/viola.h>
 #include <mmathen/instruments/violin.h>
 #include <mmathen/math/comparison.h>
@@ -57,14 +61,17 @@ StringInstrumentSpec violinSpec() {
 }
 }  // namespace
 
-TEST_CASE("violin and viola construct as four-string assemblies",
+TEST_CASE("violin, viola, and cello construct as four-string assemblies",
           "[instruments]") {
   const auto violinInstrument = unwrap(violin());
   const auto violaInstrument = unwrap(viola());
+  const auto celloInstrument = unwrap(cello());
   CHECK(formula(violinInstrument) == "violin G3 D4 A4 E5");
   CHECK(formula(violaInstrument) == "viola C3 G3 D4 A4");
+  CHECK(formula(celloInstrument) == "cello C2 G2 D3 A3");
   CHECK(violinInstrument.courses.size() == kStringInstrumentCourses);
   CHECK(violaInstrument.courses.size() == kStringInstrumentCourses);
+  CHECK(celloInstrument.courses.size() == kStringInstrumentCourses);
   CHECK(findCourse(violinInstrument, "E4") == nullptr);
   REQUIRE(findCourse(violinInstrument, "A4") != nullptr);
   CHECK(std::strcmp(findCourse(violinInstrument, "A4")->tuning.label, "A4") ==
@@ -74,7 +81,8 @@ TEST_CASE("violin and viola construct as four-string assemblies",
 TEST_CASE("open strings are the pitch adapter and the ideal-string law",
           "[instruments]") {
   const double fifth = std::pow(2.0, 7.0 / 12.0);
-  for (const auto& instrument : {unwrap(violin()), unwrap(viola())}) {
+  for (const auto& instrument :
+       {unwrap(violin()), unwrap(viola()), unwrap(cello())}) {
     for (std::size_t i = 0; i < instrument.courses.size(); ++i) {
       const StringCourse& course = instrument.courses[i];
       const auto spelled = unwrap(makePitch(course.tuning.label));
@@ -109,13 +117,27 @@ TEST_CASE("open strings are the pitch adapter and the ideal-string law",
   }
 }
 
-TEST_CASE("viola is longer and lower than the violin", "[instruments]") {
+TEST_CASE("viola is longer and lower than the violin, cello lower still",
+          "[instruments]") {
   const auto violinInstrument = unwrap(violin());
   const auto violaInstrument = unwrap(viola());
+  const auto celloInstrument = unwrap(cello());
   CHECK(violaInstrument.body.length.value() >
         violinInstrument.body.length.value());
+  CHECK(celloInstrument.body.length.value() >
+        violaInstrument.body.length.value());
   CHECK(violaInstrument.courses[0].geometry.vibratingLength.value() >
         violinInstrument.courses[0].geometry.vibratingLength.value());
+  CHECK(celloInstrument.courses[0].geometry.vibratingLength.value() >
+        violaInstrument.courses[0].geometry.vibratingLength.value());
+  CHECK(celloInstrument.body.length.value() !=
+        celloInstrument.courses[0].geometry.vibratingLength.value());
+  CHECK(celloInstrument.compass.low.value() <
+        violaInstrument.compass.low.value());
+  CHECK(celloInstrument.courses.back().tuning.frequency.value() <
+        violaInstrument.courses.back().tuning.frequency.value());
+  CHECK(celloInstrument.compass.high.value() <
+        violaInstrument.compass.high.value());
   CHECK(violaInstrument.body.length.value() !=
         violaInstrument.courses[0].geometry.vibratingLength.value());
   CHECK(violinInstrument.body.length.value() !=
@@ -163,6 +185,7 @@ TEST_CASE("a pluck follows the modal sum; other excitations are refused",
             modalPluckResponse(course, pluck, 1.0, time, 64))) <=
         modal.truncationBound() + 1e-9);
 
+  // A bow is not an initial shape. Hammer and reed have no model.
   for (const ExcitationKind kind :
        {ExcitationKind::Bow, ExcitationKind::Hammer, ExcitationKind::Reed}) {
     Excitation other = pluck;
@@ -188,7 +211,8 @@ TEST_CASE("a pluck follows the modal sum; other excitations are refused",
 
 TEST_CASE("the bridge hook recovers the rigid and free ends",
           "[instruments]") {
-  for (const auto& instrument : {unwrap(violin()), unwrap(viola())}) {
+  for (const auto& instrument :
+       {unwrap(violin()), unwrap(viola()), unwrap(cello())}) {
     const StringCourse& course = instrument.courses[0];
     const double open = unwrap(openStringFrequency(course)).value();
     const auto rigid = unwrap(
@@ -245,4 +269,109 @@ TEST_CASE("assembly rejects a table that does not close", "[instruments]") {
   spec = violinSpec();
   spec.name = "";
   CHECK(makeStringInstrument(spec).error() == QuantityError::InvalidArgument);
+}
+
+TEST_CASE("a bow stroke is steady Helmholtz motion", "[instruments]") {
+  const auto violinInstrument = unwrap(violin());
+  const StringCourse& course = violinInstrument.courses[2];  // A4
+  const double beta = 1.0 / 9.0;
+  const double speed = 0.2;
+  const double muS = 0.8;
+  const double muD = 0.3;
+  const double density = course.material.linearDensity.value();
+  const double wave = std::sqrt(course.tension.value() / density);
+  const double impedance = density * wave;
+  const double maxNormal = 2.0 * impedance * speed / (beta * (muS - muD));
+  const BowStroke stroke{beta, speed, 0.5 * maxNormal, {muS, muD}};
+  const auto motion = unwrap(makeHelmholtzStroke(course, stroke));
+
+  const double open = unwrap(openStringFrequency(course)).value();
+  CHECK(nearlyEqual(motion.period, 1.0 / open, 0.0, 1e-12));
+  CHECK(nearlyEqual(motion.stickDuration / motion.period, 1.0 - beta, 0.0,
+                    1e-15));
+  CHECK(nearlyEqual(motion.slipDuration / motion.period, beta, 0.0, 1e-15));
+  CHECK(motion.stickVelocity == speed);
+  CHECK(nearlyEqual(motion.slipVelocity, -speed * (1.0 - beta) / beta, 0.0,
+                    1e-15));
+  CHECK(nearlyEqual(motion.slipVelocity - motion.bowSpeed, -speed / beta, 0.0,
+                    1e-15));
+  CHECK(nearlyEqual(motion.maxNormalForce, maxNormal, 0.0, 1e-12));
+  CHECK(motion.slipFrictionForce == muD * stroke.normalForceNewtons);
+
+  const double slope =
+      course.tension.value() * speed / (beta * course.geometry.vibratingLength.value());
+  CHECK(nearlyEqual(motion.bridgeForceSlope, slope, 0.0, 1e-12));
+  CHECK(nearlyEqual(motion.bridgeForceFlyback, -2.0 * impedance * speed / beta,
+                    0.0, 1e-12));
+  CHECK(nearlyEqual(motion.bridgeForceFlyback, -motion.bridgeForceSlope * motion.period,
+                    0.0, 1e-12));
+
+  const double midStick = 0.5 * motion.stickDuration;
+  CHECK(helmholtzBowVelocity(motion, midStick) == speed);
+  CHECK(helmholtzBowVelocity(motion, motion.stickDuration) ==
+        motion.slipVelocity);
+  CHECK(helmholtzBowVelocity(motion, -0.5 * motion.slipDuration) ==
+        motion.slipVelocity);
+  const double dt = 1.0e-8;
+  const double finiteDifference =
+      (helmholtzBowDisplacement(motion, midStick + dt) -
+       helmholtzBowDisplacement(motion, midStick)) /
+      dt;
+  CHECK(nearlyEqual(finiteDifference, speed, 0.0, 1e-6));
+  CHECK(nearlyEqual(helmholtzBowDisplacement(motion, 0.0),
+                    helmholtzBowDisplacement(motion, motion.period), 0.0,
+                    1e-15));
+  const double peakToPeak =
+      helmholtzBowDisplacement(motion, motion.stickDuration) -
+      helmholtzBowDisplacement(motion, 0.0);
+  CHECK(nearlyEqual(peakToPeak, speed * motion.stickDuration, 0.0, 1e-12));
+
+  CHECK(helmholtzBridgeForce(motion, motion.stickDuration) ==
+        0.5 * motion.bridgeForceFlyback);
+  const double ramp =
+      (helmholtzBridgeForce(motion, midStick + dt) -
+       helmholtzBridgeForce(motion, midStick)) /
+      dt;
+  CHECK(nearlyEqual(ramp, motion.bridgeForceSlope, 0.0, 1e-9));
+  // The ramp's midpoint is zero, so the sawtooth has no DC offset.
+  const double midRamp = (0.5 - motion.beta) * motion.period;
+  CHECK(nearlyEqual(helmholtzBridgeForce(motion, midRamp), 0.0, 1e-12, 0.0));
+
+  BowStroke tooHeavy = stroke;
+  tooHeavy.normalForceNewtons = motion.maxNormalForce * 1.01;
+  CHECK(makeHelmholtzStroke(course, tooHeavy).error() ==
+        QuantityError::DomainError);
+  BowStroke atLimit = stroke;
+  atLimit.normalForceNewtons = motion.maxNormalForce;
+  CHECK(makeHelmholtzStroke(course, atLimit).ok());
+
+  BowStroke upBow = stroke;
+  upBow.speedMetersPerSecond = -speed;
+  const auto upward = unwrap(makeHelmholtzStroke(course, upBow));
+  CHECK(upward.stickVelocity == -speed);
+  CHECK(upward.slipFrictionForce == -motion.slipFrictionForce);
+  CHECK(upward.bridgeForceSlope == -motion.bridgeForceSlope);
+
+  BowStroke onTheBridge = stroke;
+  onTheBridge.bridgeFraction = 0.0;
+  CHECK(makeHelmholtzStroke(course, onTheBridge).error() ==
+        QuantityError::InvalidArgument);
+  BowStroke stopped = stroke;
+  stopped.speedMetersPerSecond = 0.0;
+  CHECK(makeHelmholtzStroke(course, stopped).error() ==
+        QuantityError::InvalidArgument);
+  BowStroke noDrop = stroke;
+  noDrop.friction.slidingCoefficient = muS;
+  CHECK(makeHelmholtzStroke(course, noDrop).error() ==
+        QuantityError::InvalidArgument);
+
+  // The same β and speed on the cello's longer A string is a different
+  // impedance, so Schelleng's maximum force is not the violin's.
+  const auto celloInstrument = unwrap(cello());
+  const StringCourse* celloA = findCourse(celloInstrument, "A3");
+  REQUIRE(celloA != nullptr);
+  const auto celloMotion = unwrap(makeHelmholtzStroke(*celloA, stroke));
+  CHECK(celloMotion.impedance != motion.impedance);
+  CHECK(celloMotion.maxNormalForce != motion.maxNormalForce);
+  CHECK(celloMotion.period > motion.period);
 }

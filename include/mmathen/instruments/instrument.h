@@ -7,11 +7,12 @@
 // of the string. This header assembles those three into a course and, for a
 // pluck, hands the course to the existing ideal-string solvers (wave1d.h).
 // The bridge end is a coupling hook into coupled_string.h: the caller
-// supplies a BridgeOscillator. No stock bridge, body, or bow is invented
-// (VALIDATION.md: unknown properties stay unknown).
+// supplies a BridgeOscillator. No stock bridge admittance and no body
+// resonator are invented (VALIDATION.md: unknown properties stay unknown).
 //
-// Bow, hammer, and reed are named excitation kinds. They are rejected with
-// DomainError until those models exist — not silently played as a pluck.
+// A pluck is an initial shape on the ideal string. A bow is not: steady
+// Helmholtz motion lives in bow.h. Hammer and reed are named and rejected
+// with DomainError. They are not played as a pluck.
 //
 // Dependency: this layer may use physics/ and the music pitch→frequency
 // adapter. physics/ and core/ do not include instruments/.
@@ -20,8 +21,9 @@
 // f = (1/(2L)) sqrt(T/μ) and against the caller's published table (the
 // nominal density is the midpoint of the published range; construction
 // fails if the tension that tunes the string leaves the published tension
-// interval). UNVALIDATED as radiated sound: no body, no bow, no measured
-// admittance.
+// interval). UNVALIDATED as radiated sound: no body and no measured
+// admittance. The bow model in bow.h is steady Helmholtz motion on this
+// ideal string, not a captured transient and not a radiated tone.
 
 #include <array>
 #include <cmath>
@@ -39,11 +41,12 @@
 
 namespace mmathen {
 
-// Half of a 0.1 Hz tabular resolution. A published hertz value agrees with
-// the pitch adapter when it is that printed figure, not a different pitch.
-inline constexpr double kTabulatedHertzTolerance = 0.05;
+// Guettler's tables are printed to 0.1 Hz. Agreement means within one
+// printed unit, which covers ordinary rounding and his cello D3 (146.9 Hz
+// against the adapter's 146.83 Hz). A different pitch class still fails.
+inline constexpr double kTabulatedHertzTolerance = 0.1;
 
-// Shared by the violin and the viola. Nominal linear density is the
+// Shared by violin, viola, and cello. Nominal linear density is the
 // arithmetic midpoint of a published g/m range; tension is then the
 // ideal-string tension at the tuned frequency.
 inline constexpr const char* kGuettlerBowedStringSource =
@@ -66,7 +69,7 @@ static_assert(kStringInstrumentCourses == 4);
 
 enum class ExcitationKind {
   Pluck,   // realized: InitialShape::pluck on the ideal string
-  Bow,     // not modeled
+  Bow,     // not an initial shape; steady motion is bow.h
   Hammer,  // not modeled
   Reed,    // not modeled
 };
@@ -212,8 +215,9 @@ namespace detail {
   return makeCoupledString(system.value(), course.tension, bridge);
 }
 
-// Pluck → InitialShape. Bow, hammer, and reed are DomainError. A position
-// outside (0, 1) or a non-finite amplitude is InvalidArgument.
+// Pluck → InitialShape. Hammer and reed are DomainError. Bow is also
+// DomainError here: a steady bow is not an initial shape (see bow.h).
+// A position outside (0, 1) or a non-finite amplitude is InvalidArgument.
 [[nodiscard]] inline Result<InitialShape, QuantityError> realizeExcitation(
     const StringCourse& course, const Excitation& excitation) {
   using R = Result<InitialShape, QuantityError>;
