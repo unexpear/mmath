@@ -13,6 +13,10 @@ Status: planning · Nothing below may shape Phase 0–2 APIs
    `Analytical | ReducedOrder | Modal | Waveguide | FDTD | FEM | Measured | Hybrid`.
 4. **Objects → instruments:** String/Bar/Plate/Membrane/Tube/Cavity/Reed/Hammer/Bow;
    geometry ≠ material; coupling `H(f)` chains; excitation position → modal weights.
+   First slice landed: `instruments/` with violin and viola ideal strings
+   (geometry, material, tuning, pluck, bridge hook — `docs/48-instruments-violin-viola.md`).
+   Bow, reed, hammer, and body resonators are not built. This slice does not
+   change Phase 0–2 APIs.
 5. **Spatial + hearing:** `t=d/c`, Doppler from first principles, reverb/HRTF;
    loudness/pitch perception separate from physics.
 6. **Composition graph:** `Scale→Chords→VoiceLead→Rhythm→Humanize→Instrument→Room→Out`;

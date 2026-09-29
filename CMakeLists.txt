@@ -136,6 +136,7 @@ if(BUILD_TESTING)
     tests/test_fdtd_box.cpp
     tests/test_fem1d.cpp
     tests/test_coupled_string.cpp
+    tests/test_instruments.cpp
     tests/test_hearing.cpp
     tests/test_spectrum.cpp
     tests/test_svg.cpp
@@ -216,6 +217,9 @@ if(BUILD_TESTING)
     tests/headers/th_physics_fdtd_box.cpp
     tests/headers/th_physics_fem1d.cpp
     tests/headers/th_physics_coupled_string.cpp
+    tests/headers/th_instruments_instrument.cpp
+    tests/headers/th_instruments_violin.cpp
+    tests/headers/th_instruments_viola.cpp
     tests/headers/th_hearing_loudness.cpp
     tests/headers/th_hearing_scales.cpp
     tests/headers/th_hearing_masking.cpp

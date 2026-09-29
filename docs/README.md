@@ -52,6 +52,7 @@ MVP: Phases 0–2 + 2.5 · C++20 · zero-dep core · strict units
 | 45 | `45-precision-and-phone-limits.md` | Current phone claims and hardware limits, real-recording arithmetic audit, rejected spectral candidates |
 | 46 | `46-recognition-and-calibration.md` | Fine tuner tracking, device calibration, default extended chords, reserved-recording results and rejected bass experiment |
 | 47 | `47-native-chord-engine.md` | Improved native chord engine, Chordino removed from desktop, public-domain recordings, reserved evaluation and noise limitations |
+| 48 | `48-instruments-violin-viola.md` | First instrument assembly: violin and viola (geometry, material, tuning, pluck, bridge hook) |
 | — | `FOUNDATION.md` | **Canonical** base decisions (accepted/proposed/deferred) |
 | — | `NUMERICS.md` | **Canonical** precision, determinism tiers, tolerances |
 | — | `VALIDATION.md` | **Canonical** verification vs validation, evidence rules |
