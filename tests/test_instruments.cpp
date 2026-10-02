@@ -19,6 +19,7 @@
 
 #include <mmathen/instruments/bow.h>
 #include <mmathen/instruments/cello.h>
+#include <mmathen/instruments/double_bass.h>
 #include <mmathen/instruments/viola.h>
 #include <mmathen/instruments/violin.h>
 #include <mmathen/math/comparison.h>
@@ -61,17 +62,20 @@ StringInstrumentSpec violinSpec() {
 }
 }  // namespace
 
-TEST_CASE("violin, viola, and cello construct as four-string assemblies",
+TEST_CASE("violin, viola, cello, and double bass construct as four-string assemblies",
           "[instruments]") {
   const auto violinInstrument = unwrap(violin());
   const auto violaInstrument = unwrap(viola());
   const auto celloInstrument = unwrap(cello());
+  const auto bassInstrument = unwrap(doubleBass());
   CHECK(formula(violinInstrument) == "violin G3 D4 A4 E5");
   CHECK(formula(violaInstrument) == "viola C3 G3 D4 A4");
   CHECK(formula(celloInstrument) == "cello C2 G2 D3 A3");
+  CHECK(formula(bassInstrument) == "double bass E1 A1 D2 G2");
   CHECK(violinInstrument.courses.size() == kStringInstrumentCourses);
   CHECK(violaInstrument.courses.size() == kStringInstrumentCourses);
   CHECK(celloInstrument.courses.size() == kStringInstrumentCourses);
+  CHECK(bassInstrument.courses.size() == kStringInstrumentCourses);
   CHECK(findCourse(violinInstrument, "E4") == nullptr);
   REQUIRE(findCourse(violinInstrument, "A4") != nullptr);
   CHECK(std::strcmp(findCourse(violinInstrument, "A4")->tuning.label, "A4") ==
@@ -81,8 +85,9 @@ TEST_CASE("violin, viola, and cello construct as four-string assemblies",
 TEST_CASE("open strings are the pitch adapter and the ideal-string law",
           "[instruments]") {
   const double fifth = std::pow(2.0, 7.0 / 12.0);
+  const double fourth = std::pow(2.0, 5.0 / 12.0);
   for (const auto& instrument :
-       {unwrap(violin()), unwrap(viola()), unwrap(cello())}) {
+       {unwrap(violin()), unwrap(viola()), unwrap(cello()), unwrap(doubleBass())}) {
     for (std::size_t i = 0; i < instrument.courses.size(); ++i) {
       const StringCourse& course = instrument.courses[i];
       const auto spelled = unwrap(makePitch(course.tuning.label));
@@ -102,7 +107,11 @@ TEST_CASE("open strings are the pitch adapter and the ideal-string law",
       if (i > 0) {
         const double ratio = course.tuning.frequency.value() /
                              instrument.courses[i - 1].tuning.frequency.value();
-        CHECK(nearlyEqual(ratio, fifth, 0.0, 1e-12));
+        // Violin, viola, and cello ascend by fifths. Orchestral bass
+        // tuning E1 A1 D2 G2 ascends by fourths.
+        const double step =
+            std::strcmp(instrument.name, "double bass") == 0 ? fourth : fifth;
+        CHECK(nearlyEqual(ratio, step, 0.0, 1e-12));
       }
     }
     CHECK(instrument.compass.low == instrument.courses.front().tuning.frequency);
@@ -117,27 +126,42 @@ TEST_CASE("open strings are the pitch adapter and the ideal-string law",
   }
 }
 
-TEST_CASE("viola is longer and lower than the violin, cello lower still",
+TEST_CASE("each larger instrument is longer and lower than the one above it",
           "[instruments]") {
   const auto violinInstrument = unwrap(violin());
   const auto violaInstrument = unwrap(viola());
   const auto celloInstrument = unwrap(cello());
+  const auto bassInstrument = unwrap(doubleBass());
   CHECK(violaInstrument.body.length.value() >
         violinInstrument.body.length.value());
   CHECK(celloInstrument.body.length.value() >
         violaInstrument.body.length.value());
+  CHECK(bassInstrument.body.length.value() >
+        celloInstrument.body.length.value());
   CHECK(violaInstrument.courses[0].geometry.vibratingLength.value() >
         violinInstrument.courses[0].geometry.vibratingLength.value());
   CHECK(celloInstrument.courses[0].geometry.vibratingLength.value() >
         violaInstrument.courses[0].geometry.vibratingLength.value());
+  CHECK(bassInstrument.courses[0].geometry.vibratingLength.value() >
+        celloInstrument.courses[0].geometry.vibratingLength.value());
   CHECK(celloInstrument.body.length.value() !=
         celloInstrument.courses[0].geometry.vibratingLength.value());
+  CHECK(bassInstrument.body.length.value() !=
+        bassInstrument.courses[0].geometry.vibratingLength.value());
+  CHECK(bassInstrument.body.length.value() == 1.110);
+  CHECK(bassInstrument.courses[0].geometry.vibratingLength.value() == 1.060);
   CHECK(celloInstrument.compass.low.value() <
         violaInstrument.compass.low.value());
+  CHECK(bassInstrument.compass.low.value() <
+        celloInstrument.compass.low.value());
   CHECK(celloInstrument.courses.back().tuning.frequency.value() <
         violaInstrument.courses.back().tuning.frequency.value());
+  CHECK(bassInstrument.courses.back().tuning.frequency.value() <
+        celloInstrument.courses.back().tuning.frequency.value());
   CHECK(celloInstrument.compass.high.value() <
         violaInstrument.compass.high.value());
+  CHECK(bassInstrument.compass.high.value() <
+        celloInstrument.compass.high.value());
   CHECK(violaInstrument.body.length.value() !=
         violaInstrument.courses[0].geometry.vibratingLength.value());
   CHECK(violinInstrument.body.length.value() !=
@@ -212,7 +236,7 @@ TEST_CASE("a pluck follows the modal sum; other excitations are refused",
 TEST_CASE("the bridge hook recovers the rigid and free ends",
           "[instruments]") {
   for (const auto& instrument :
-       {unwrap(violin()), unwrap(viola()), unwrap(cello())}) {
+       {unwrap(violin()), unwrap(viola()), unwrap(cello()), unwrap(doubleBass())}) {
     const StringCourse& course = instrument.courses[0];
     const double open = unwrap(openStringFrequency(course)).value();
     const auto rigid = unwrap(

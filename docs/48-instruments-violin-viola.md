@@ -1,6 +1,6 @@
-# Instruments — violin, viola, cello, and a Helmholtz bow
+# Instruments — violin, viola, cello, double bass, and a Helmholtz bow
 
-Status: assembly layer for three bowed strings, plus a steady Helmholtz
+Status: assembly layer for four bowed strings, plus a steady Helmholtz
 bow on one ideal string. Verified against the ideal-string law, Guettler's
 tables, and the Helmholtz/Schelleng identities below. Unvalidated as
 radiated sound: no body resonator and no measured bridge admittance.
@@ -20,6 +20,7 @@ interval.
 | `instruments/violin.h` | G3 D4 A4 E5, vibrating length 0.328 m, body 0.356 m, compass G3–E7 |
 | `instruments/viola.h` | C3 G3 D4 A4, vibrating length 0.375 m, body 0.410 m, compass C3–C6 |
 | `instruments/cello.h` | C2 G2 D3 A3, vibrating length 0.690 m, body 0.755 m, compass C2–E5 |
+| `instruments/double_bass.h` | Orchestral E1 A1 D2 G2, vibrating length 1.060 m, body 1.110 m, sounding compass E1–B3 (written E2–B4) |
 | `instruments/bow.h` | Steady Helmholtz stick/slip, bridge-force sawtooth, Schelleng maximum normal force |
 
 `physics/` does not include `instruments/`. The only music dependency is
@@ -32,7 +33,7 @@ builds the steady regime.
 
 ## Sources
 
-String table (all three instruments), one length per instrument and a g/m
+String table (all four instruments), one length per instrument and a g/m
 range plus a tension range per string: Knut Guettler, "Some typical
 properties of bowed strings"
 (<https://knutsacoustics.com/files/Typical-string-properties.pdf>), with
@@ -40,8 +41,11 @@ values contributed by Fan Tao (D'Addario) and Michel Simane
 (Corelli/Savarez).
 
 - Violin vibrating length **32.8 cm**. Viola **37.5 cm**. Cello **69.0 cm**.
+  Double bass **106.0 cm**, the orchestra-tuning block of the same table
+  (not the solo-tuning block F#1 B1 E2 A2, which uses the same length).
 - Printed frequencies (0.1 Hz): violin 196.0, 293.7, 440.0, 659.3; viola
-  130.8, 196.0, 293.7, 440.0; cello 65.4, 98.0, 146.9, 220.0. Agreement
+  130.8, 196.0, 293.7, 440.0; cello 65.4, 98.0, 146.9, 220.0; double bass
+  orchestra tuning 41.2, 55.0, 73.4, 98.0. Agreement
   with the pitch adapter is one printed unit
   (`kTabulatedHertzTolerance` = 0.1 Hz). The cello D3 is the wide case:
   Guettler prints 146.9 Hz and the adapter's A440 D3 is 146.83 Hz. His
@@ -65,13 +69,48 @@ Body length is a different geometric object and is not folded into \(L\):
   length). The body length is still stored separately.
 - Cello **755 mm**: MENC nominal size chart, 4/4 cello (nominal string
   length 695 mm). Guettler's vibrating length is 69.0 cm, not 695 mm.
+- Double bass **1110 mm**: MENC nominal size chart, 3/4 standard bass
+  (the column marked STD; nominal string length 1060 mm, which matches
+  Guettler's 106.0 cm). The 4/4 column is 1160 mm of body and 1100 mm of
+  string and is not this instrument. Body length is still stored
+  separately from the vibrating length.
 
 Compass (approximate orchestral range, not a fingerboard stop):
 HyperPhysics, "Playing Ranges of Instruments", Georgia State University
 (<http://hyperphysics.phy-astr.gsu.edu/hbase/Music/orchins.html>; the page
 cites Rossing, *Science of Sound*, p. 219, and White & White, p. 280):
-violin G3–E7, viola C3–C6, cello C2–E5. The low end is the lowest open
-string.
+violin G3–E7, viola C3–C6, cello C2–E5, double bass sounding E1–B3
+(printed 41.2 Hz to 246.9 Hz). The low end is the lowest open string.
+Orchestral double-bass parts are written an octave higher, so the
+practical written compass for that sounding range is E2–B4. The
+frequencies on the instrument are the sounding pitches.
+
+## Double bass strings
+
+Guettler's orchestra-tuning rows at 106.0 cm, low to high:
+
+| Course | Printed Hz | g/m range | Tension range (N) |
+|---|---|---|---|
+| E1 | 41.2 | 37.32–44.12 | 284.7–336.6 |
+| A1 | 55.0 | 20.45–23.88 | 278.0–324.7 |
+| D2 | 73.4 | 10.96–13.12 | 265.3–317.6 |
+| G2 | 98.0 | 5.98–7.25 | 258.0–312.8 |
+
+The same block lists a B0 extension (30.9 Hz, 68.81–81.35 g/m,
+295.3–349.1 N). This instrument has four courses, so that string is not
+built. The solo-tuning block (F#1 B1 E2 A2) is a different tuning and is
+not built either.
+
+G2 is also the cello's G string. The adapter frequency matches. The bass
+vibrating length is 106.0 cm against the cello's 69.0 cm, so the wave
+speed is higher, and Guettler's density and tension ranges for the bass
+G2 are not the cello's. A double bass is not a cello with the labels
+rewritten, and the body length is not used as \(L\).
+
+Nothing here is a body resonator, a bridge admittance, or a new
+`physics/` type. Hammer and reed still return `DomainError`. The
+Helmholtz bow is unchanged and can be applied to a bass course the same
+way as to a violin, viola, or cello course.
 
 ## What the same pitch does on the longer instrument
 
@@ -86,8 +125,9 @@ not a violin with the labels rewritten.
   (relative \(10^{-12}\)).
 - Derived tension lies strictly inside Guettler's published interval;
   nominal density is the range midpoint.
-- Adjacent open strings are equal-tempered fifths (\(2^{7/12}\)), because
-  that is what the adapter returns.
+- Adjacent open strings on violin, viola, and cello are equal-tempered
+  fifths (\(2^{7/12}\)). Orchestral double-bass tuning ascends by
+  fourths (\(2^{5/12}\)): E1 A1 D2 G2. Both are what the adapter returns.
 - A pluck's modal sum stays within `ModalSolution::truncationBound` of
   the d'Alembert field. Ends stay at rest within that bound.
 - `coupleToBridge` with a rigid oscillator recovers the fixed-fixed

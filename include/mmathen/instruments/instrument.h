@@ -46,7 +46,7 @@ namespace mmathen {
 // against the adapter's 146.83 Hz). A different pitch class still fails.
 inline constexpr double kTabulatedHertzTolerance = 0.1;
 
-// Shared by violin, viola, and cello. Nominal linear density is the
+// Shared by violin, viola, cello, and double bass. Nominal linear density is the
 // arithmetic midpoint of a published g/m range; tension is then the
 // ideal-string tension at the tuned frequency.
 inline constexpr const char* kGuettlerBowedStringSource =
