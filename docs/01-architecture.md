@@ -37,7 +37,7 @@ measurement, analysis, serialization, visualization, testing, plugins
 | L7–L11 | `objects/`, `materials/`, `coupling/`, `modes/` | String/Bar/Plate/Membrane/Tube/Cavity/Reed/Hammer/Bow/Pickup/Mic/Speaker; geometry ≠ material; `f1=1/2L·√(T/μ)`; `H(f)` chains; `x(t)=Σ An·e^(−αn·t)·sin(2πfn·t+φn)` |
 | L12–L13 | `spatial/`, `hearing/` | pose/directivity, `t=d/c`, Doppler, reverb/HRTF; thresholds, masking, loudness, roughness (physical amp ≠ loudness) |
 | L14–L25 | `music/` | Frequency≠Pitch≠PitchClass; `r=f2/f1`; `cents=1200·log2(r)`; `n→f` tunings; `NoteEvent` as event; `BPM(t)`; rational durations; transforms `T_k(P)`, `I_a(p)=a−p`, `t′=k·t` |
-| L26–L27 | `compose/`, `instruments/` | graph nodes (not built); instrument = assembly of objects + materials + excitation. Assembly so far: violin, viola, cello, double bass, steady Helmholtz bow (`docs/48`) |
+| L26–L27 | `compose/`, `instruments/` | graph nodes (not built); instrument = assembly of objects + materials + excitation. Assembly so far: violin, viola, cello, double bass, steady Helmholtz bow, one open-loop body mode (`docs/48`) |
 | L28–L29 | `electronics/`, `dsp/` | `V(t), I(t), Z(ω)`; FIR/IIR/FFT-conv/delay/sat/resample/add/sub/FM/granular; blocks declare latency, fs-assumptions, state, realtime-safety |
 | L30 | `renderer/`, `sink/` | `MathSignal → Sampler(t_n=n/fs) → DSPGraph → Buffer → Sink`; `IAudioSink: Null/Wav/Wasapi/...` |
 

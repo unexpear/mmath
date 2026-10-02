@@ -1,4 +1,5 @@
-// Instruments — violin, viola, and cello, plus steady Helmholtz bow (docs/48).
+// Instruments — violin, viola, cello, double bass, Helmholtz bow, and one
+// body mode (docs/48).
 //
 // The open string is the ideal-string fundamental at the pitch-adapter
 // frequency. The nominal density is Guettler's range midpoint, and the
@@ -7,16 +8,19 @@
 // within the truncation bound. The bridge hook is the coupled-string
 // limits (rigid end, free end). Hammer and reed are refused. A bow is a
 // steady Helmholtz stroke: stick/slip velocity, bridge-force sawtooth,
-// and Schelleng's maximum normal force.
+// and Schelleng's maximum normal force. A body mode filters that force
+// with a caller-supplied resonance, Q, and modal mass.
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
 #include <cmath>
+#include <complex>
 #include <cstring>
 #include <limits>
 #include <utility>
 
+#include <mmathen/instruments/body.h>
 #include <mmathen/instruments/bow.h>
 #include <mmathen/instruments/cello.h>
 #include <mmathen/instruments/double_bass.h>
@@ -398,4 +402,120 @@ TEST_CASE("a bow stroke is steady Helmholtz motion", "[instruments]") {
   CHECK(celloMotion.impedance != motion.impedance);
   CHECK(celloMotion.maxNormalForce != motion.maxNormalForce);
   CHECK(celloMotion.period > motion.period);
+}
+
+TEST_CASE("one body mode filters the Helmholtz bridge force", "[instruments]") {
+  // Arguments, not a published mode of any of the four instruments.
+  const auto mode = unwrap(makeBodyResonator(BodyModeSpec{300.0, 20.0, 0.05}));
+  CHECK(nearlyEqual(mode.stiffness,
+                    mode.modalMassKg * mode.omega0 * mode.omega0, 0.0, 1e-15));
+  CHECK(nearlyEqual(mode.damping,
+                    mode.modalMassKg * mode.omega0 / mode.qualityFactor, 0.0,
+                    1e-15));
+  CHECK(nearlyEqual(mode.resonantMobility, 1.0 / mode.damping, 0.0, 1e-15));
+
+  const auto atResonance = unwrap(bodyMobility(mode, mode.resonanceHz));
+  CHECK(nearlyEqual(atResonance.real(), mode.resonantMobility, 0.0, 1e-12));
+  CHECK(nearlyEqual(atResonance.imag(), 0.0, 0.0, 1e-12));
+  const auto atRest = unwrap(bodyMobility(mode, 0.0));
+  CHECK(atRest.real() == 0.0);
+  CHECK(atRest.imag() == 0.0);
+  const auto below = unwrap(bodyMobility(mode, mode.resonanceHz * 0.1));
+  CHECK(below.imag() > 0.0);
+  CHECK(std::fabs(below.real()) < std::fabs(below.imag()));
+  const auto above = unwrap(bodyMobility(mode, mode.resonanceHz * 10.0));
+  CHECK(above.imag() < 0.0);
+  const double omegaHigh = constants::twoPi * mode.resonanceHz * 10.0;
+  const double massAsymptote = 1.0 / (mode.modalMassKg * omegaHigh);
+  CHECK(std::fabs(std::abs(above) - massAsymptote) / massAsymptote < 0.02);
+
+  CHECK(makeBodyResonator(BodyModeSpec{0.0, 20.0, 0.05}).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(makeBodyResonator(BodyModeSpec{300.0, 0.0, 0.05}).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(makeBodyResonator(BodyModeSpec{300.0, 20.0, -0.05}).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(bodyMobility(mode, -1.0).error() == QuantityError::InvalidArgument);
+
+  const double beta = 1.0 / 9.0;
+  const double speed = 0.2;
+  const BowStroke stroke{beta, speed, 0.05, {0.8, 0.3}};
+  const int harmonics = 24;
+  const StringInstrument instruments[] = {unwrap(violin()), unwrap(viola()),
+                                          unwrap(cello()), unwrap(doubleBass())};
+  double previousFlyback = 0.0;
+  for (const StringInstrument& instrument : instruments) {
+    const auto motion =
+        unwrap(makeHelmholtzStroke(instrument.courses[0], stroke));
+    REQUIRE(stroke.normalForceNewtons < motion.maxNormalForce);
+    const double flyback = motion.bridgeForceFlyback;
+    CHECK(flyback != previousFlyback);
+    previousFlyback = flyback;
+
+    const auto first = unwrap(bodyVelocityCoefficient(mode, motion, 1));
+    const auto mobility =
+        unwrap(bodyMobility(mode, 1.0 / motion.period));
+    const std::complex<double> expected =
+        mobility * std::complex<double>(0.0, -flyback / constants::twoPi);
+    CHECK(nearlyEqual(first.real(), expected.real(), 0.0, 1e-12));
+    CHECK(nearlyEqual(first.imag(), expected.imag(), 0.0, 1e-12));
+
+    for (double fraction : {0.0, 0.17, 0.5, 0.83}) {
+      const double time = fraction * motion.period;
+      double slip = time - motion.stickDuration;
+      if (slip < 0.0) slip += motion.period;
+      double velocity = 0.0;
+      double displacement = 0.0;
+      for (int n = 1; n <= harmonics; ++n) {
+        const double omega =
+            constants::twoPi * static_cast<double>(n) / motion.period;
+        const double sineForce = flyback / (constants::pi * static_cast<double>(n));
+        const double a = mode.stiffness - mode.modalMassKg * omega * omega;
+        const double rw = mode.damping * omega;
+        const double det = a * a + rw * rw;
+        const double cosine = -rw * sineForce / det;
+        const double sine = a * sineForce / det;
+        const double angle = omega * slip;
+        velocity += -cosine * omega * std::sin(angle) +
+                    sine * omega * std::cos(angle);
+        displacement += cosine * std::cos(angle) + sine * std::sin(angle);
+      }
+      CHECK(nearlyEqual(unwrap(bodyVelocity(mode, motion, time, harmonics)),
+                        velocity, 0.0, 1e-9));
+      CHECK(nearlyEqual(
+          unwrap(bodyDisplacement(mode, motion, time, harmonics)),
+          displacement, 0.0, 1e-9));
+      CHECK(nearlyEqual(
+          unwrap(bodyVelocity(mode, motion, time + 3.0 * motion.period,
+                              harmonics)),
+          velocity, 0.0, 1e-12));
+    }
+
+    double meanPower = 0.0;
+    for (int n = 1; n <= harmonics; ++n) {
+      const double sineForce =
+          flyback / (constants::pi * static_cast<double>(n));
+      const auto mobilityN = unwrap(
+          bodyMobility(mode, static_cast<double>(n) / motion.period));
+      meanPower += 0.5 * sineForce * sineForce * mobilityN.real();
+    }
+    constexpr int samples = 2048;
+    double damper = 0.0;
+    for (int i = 0; i < samples; ++i) {
+      const double time = motion.period * static_cast<double>(i) / samples;
+      const double velocity =
+          unwrap(bodyVelocity(mode, motion, time, harmonics));
+      damper += mode.damping * velocity * velocity;
+    }
+    damper /= static_cast<double>(samples);
+    CHECK(nearlyEqual(damper, meanPower, 0.0, 1e-6));
+  }
+
+  HelmholtzStroke blank;
+  CHECK(bodyVelocity(mode, blank, 0.0, 8).error() ==
+        QuantityError::InvalidArgument);
+  const auto violinMotion =
+      unwrap(makeHelmholtzStroke(unwrap(violin()).courses[0], stroke));
+  CHECK(bodyVelocity(mode, violinMotion, 0.0, 0).error() ==
+        QuantityError::InvalidArgument);
 }

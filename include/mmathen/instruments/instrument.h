@@ -7,8 +7,10 @@
 // of the string. This header assembles those three into a course and, for a
 // pluck, hands the course to the existing ideal-string solvers (wave1d.h).
 // The bridge end is a coupling hook into coupled_string.h: the caller
-// supplies a BridgeOscillator. No stock bridge admittance and no body
-// resonator are invented (VALIDATION.md: unknown properties stay unknown).
+// supplies a BridgeOscillator. No measured bridge admittance is stored on
+// an instrument (VALIDATION.md: unknown properties stay unknown). A single
+// body mode, with its resonance, Q, and modal mass supplied by the caller,
+// lives in body.h and does not feed back into the string.
 //
 // A pluck is an initial shape on the ideal string. A bow is not: steady
 // Helmholtz motion lives in bow.h. Hammer and reed are named and rejected
@@ -21,9 +23,10 @@
 // f = (1/(2L)) sqrt(T/μ) and against the caller's published table (the
 // nominal density is the midpoint of the published range; construction
 // fails if the tension that tunes the string leaves the published tension
-// interval). UNVALIDATED as radiated sound: no body and no measured
-// admittance. The bow model in bow.h is steady Helmholtz motion on this
-// ideal string, not a captured transient and not a radiated tone.
+// interval). UNVALIDATED as radiated sound: body.h is one open-loop mode
+// driven by the rigid-bridge force, not a measured admittance and not a
+// radiated pressure. The bow model in bow.h is steady Helmholtz motion on
+// this ideal string, not a captured transient and not a radiated tone.
 
 #include <array>
 #include <cmath>
@@ -205,8 +208,9 @@ namespace detail {
 }
 
 // Attach the bridge end (x = L) to a caller-supplied oscillator. The stock
-// instruments do not carry a bridge: there is no measured admittance in
-// this slice. InvalidArgument if the oscillator is unusable.
+// instruments do not carry a bridge: there is no measured admittance on
+// the course. body.h is a separate open-loop mode, not this coupling.
+// InvalidArgument if the oscillator is unusable.
 [[nodiscard]] inline Result<CoupledString, QuantityError> coupleToBridge(
     const StringCourse& course, BridgeOscillator bridge) {
   using R = Result<CoupledString, QuantityError>;

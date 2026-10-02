@@ -1,9 +1,11 @@
-# Instruments — violin, viola, cello, double bass, and a Helmholtz bow
+# Instruments — violin, viola, cello, double bass, a Helmholtz bow, and one body mode
 
-Status: assembly layer for four bowed strings, plus a steady Helmholtz
-bow on one ideal string. Verified against the ideal-string law, Guettler's
-tables, and the Helmholtz/Schelleng identities below. Unvalidated as
-radiated sound: no body resonator and no measured bridge admittance.
+Status: assembly layer for four bowed strings, a steady Helmholtz bow on
+one ideal string, and one body mode driven by that bow's bridge force.
+Verified against the ideal-string law, Guettler's tables, the
+Helmholtz/Schelleng identities, and the single-mode admittance below.
+Unvalidated as radiated sound: the body mode is open-loop, and there is
+no measured bridge admittance and no far-field pressure.
 
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
@@ -22,6 +24,7 @@ interval.
 | `instruments/cello.h` | C2 G2 D3 A3, vibrating length 0.690 m, body 0.755 m, compass C2–E5 |
 | `instruments/double_bass.h` | Orchestral E1 A1 D2 G2, vibrating length 1.060 m, body 1.110 m, sounding compass E1–B3 (written E2–B4) |
 | `instruments/bow.h` | Steady Helmholtz stick/slip, bridge-force sawtooth, Schelleng maximum normal force |
+| `instruments/body.h` | One driving-point body mode. Resonance, Q, and modal mass are arguments |
 
 `physics/` does not include `instruments/`. The only music dependency is
 the pitch→frequency adapter (`makePitch`), so open-string hertz are the
@@ -107,10 +110,10 @@ speed is higher, and Guettler's density and tension ranges for the bass
 G2 are not the cello's. A double bass is not a cello with the labels
 rewritten, and the body length is not used as \(L\).
 
-Nothing here is a body resonator, a bridge admittance, or a new
-`physics/` type. Hammer and reed still return `DomainError`. The
-Helmholtz bow is unchanged and can be applied to a bass course the same
-way as to a violin, viola, or cello course.
+Hammer and reed still return `DomainError`. The Helmholtz bow is
+unchanged and can be applied to a bass course the same way as to a
+violin, viola, or cello course. The body mode in the next section is the
+same function for all four; none of the factories stores a resonance.
 
 ## What the same pitch does on the longer instrument
 
@@ -140,6 +143,14 @@ not a violin with the labels rewritten.
   above. A normal force above Schelleng's maximum is refused. The cello's
   A string, at the same β and bow speed, has a different impedance and a
   longer period than the violin's A string.
+- One body mode has stiffness \(m\omega_0^2\), damping \(m\omega_0/Q\), and
+  mobility \(1/r\) exactly at resonance, with a positive imaginary part
+  below resonance and a negative imaginary part above it. Driven by the
+  Helmholtz sawtooth, its velocity and displacement match the independent
+  particular solution of \(m\ddot x + r\dot x + kx = F\) harmonic by
+  harmonic. Mean damper power matches mean input power. The same mode on
+  the lowest string of each of the four instruments sees a different
+  flyback, so the first velocity coefficient changes with the instrument.
 
 ## Bow
 
@@ -162,11 +173,49 @@ and this slice does not invent one. Friction coefficients are arguments,
 not a hidden rosin table.
 
 Not in this bow: capture transients, bow-hair width, torsion, thermal
-rosin, a rounded corner, and any body filter on the bridge force.
+rosin, a rounded corner, and any body filter on the bridge force. The
+body mode below is applied after the force is known. It does not change
+the bow.
+
+## Body
+
+`body.h` is one term of the modal driving-point admittance (Woodhouse,
+"On the 'bridge hill' of the violin", eq. (4)):
+
+\[
+Y(\omega) = \frac{j\omega}{m\left(\omega_0^2 - \omega^2 + j\omega\omega_0/Q\right)},
+\quad Q = \frac{1}{2\zeta}.
+\]
+
+The mode-shape factor at the driven point is absorbed into the effective
+mass \(m\). Resonance frequency, \(Q\), and \(m\) are arguments. They are
+not derived from body length, and there is no stored A0 or B1 for the
+violin, viola, cello, or double bass: those are measurements this layer
+does not have.
+
+The steady bridge-foot velocity and displacement are the response to the
+Helmholtz sawtooth, summed from its Fourier coefficients
+\(c_n = -j\,\Delta/(2\pi n)\) (\(\Delta\) is the flyback). The string still
+sees a rigid bridge. This is an open-loop drive: the body does not move
+the string end, so wolf notes and other back-reaction are absent.
+
+Schelleng's minimum bow force stays unevaluated. The mode does carry its
+resonant resistance \(r = m\omega_0/Q\), which is \(1/|Y(\omega_0)|\), but
+that number is not the bridge resistance the string sees, and it is not
+substituted into the bow. Far-field pressure is not evaluated: it needs a
+radiating area or a volume velocity, and a distance. The cavity Helmholtz
+frequency is not evaluated: it needs f-hole area, cavity volume, and an
+effective neck length. A0–B1 coupling needs a mutual term. None of those
+constants is invented.
+
+`physics/` does not include `instruments/`. Hammer and reed still return
+`DomainError`.
 
 ## Still planned
 
-Hammer, reed, soundboard and cavity, a measured bridge admittance (and
-with it Schelleng's minimum bow force), fingered stopping as a change of
-vibrating length, stiffness of wound strings, and a time-stepped
-stick-slip capture. The Helmholtz stroke is the steady regime only.
+Hammer, reed, a sum of measured body modes, cavity Helmholtz frequency,
+A0–B1 coupling, far-field radiation, back-reaction of the body on the
+string (and with it Schelleng's minimum bow force), fingered stopping as
+a change of vibrating length, stiffness of wound strings, and a
+time-stepped stick-slip capture. The Helmholtz stroke is the steady
+regime only.

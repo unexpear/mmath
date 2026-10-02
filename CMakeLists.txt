@@ -223,6 +223,7 @@ if(BUILD_TESTING)
     tests/headers/th_instruments_cello.cpp
     tests/headers/th_instruments_double_bass.cpp
     tests/headers/th_instruments_bow.cpp
+    tests/headers/th_instruments_body.cpp
     tests/headers/th_hearing_loudness.cpp
     tests/headers/th_hearing_scales.cpp
     tests/headers/th_hearing_masking.cpp
