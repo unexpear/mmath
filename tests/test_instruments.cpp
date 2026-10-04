@@ -10,7 +10,8 @@
 // steady Helmholtz stroke: stick/slip velocity, bridge-force sawtooth,
 // and Schelleng's maximum normal force. A body mode filters that force
 // with a caller-supplied resonance, Q, and modal mass. A hard hammer is
-// the infinite-string contact law until the first reflection returns.
+// the infinite-string contact law until the first reflection returns. A
+// reed is the quasi-static Bernoulli slit, not a bore and not a string.
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -24,6 +25,7 @@
 #include <mmathen/instruments/body.h>
 #include <mmathen/instruments/bow.h>
 #include <mmathen/instruments/hammer.h>
+#include <mmathen/instruments/reed.h>
 #include <mmathen/instruments/cello.h>
 #include <mmathen/instruments/double_bass.h>
 #include <mmathen/instruments/viola.h>
@@ -215,7 +217,7 @@ TEST_CASE("a pluck follows the modal sum; other excitations are refused",
             modalPluckResponse(course, pluck, 1.0, time, 64))) <=
         modal.truncationBound() + 1e-9);
 
-  // Bow and hammer are not initial displacements. Reed has no model.
+  // Bow, hammer, and reed are not initial displacements.
   for (const ExcitationKind kind :
        {ExcitationKind::Bow, ExcitationKind::Hammer, ExcitationKind::Reed}) {
     Excitation other = pluck;
@@ -626,4 +628,64 @@ TEST_CASE("a hard hammer follows the infinite-string law until the reflection",
   CHECK(bassBlow.initialForce != blow.initialForce);
   CHECK(bassBlow.timeConstant != blow.timeConstant);
   CHECK(bassBlow.firstReflectionTime != blow.firstReflectionTime);
+}
+
+TEST_CASE("a reed is the quasi-static Bernoulli slit", "[instruments]") {
+  // Area and closure pressure are arguments, not a measured mouthpiece,
+  // and not a property of the violin, viola, cello, or double bass.
+  const double area = 1.5e-5;
+  const double closure = 6.0e3;
+  const double airPressure = 101325.0;
+  const double temperature = 293.15;
+  const auto reed = unwrap(makeReedCharacteristic(
+      ReedSpec{area, closure, airPressure, temperature}));
+  const double density =
+      unwrap(airDensity(PressurePascals{airPressure},
+                        TemperatureKelvin{temperature}))
+          .value();
+  CHECK(reed.airDensityKgPerM3 == density);
+  CHECK(reed.equilibriumAreaM2 == area);
+  CHECK(reed.closurePressurePa == closure);
+
+  const double peak =
+      (2.0 / 3.0) * area * std::sqrt(2.0 * closure / (3.0 * density));
+  CHECK(nearlyEqual(reed.maximumFlowM3PerS, peak, 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(reedVolumeFlow(reed, closure / 3.0)), peak, 0.0,
+                    1e-12));
+  CHECK(unwrap(reedVolumeFlow(reed, closure / 3.0)) >
+        unwrap(reedVolumeFlow(reed, 0.5 * closure / 3.0)));
+  CHECK(unwrap(reedVolumeFlow(reed, closure / 3.0)) >
+        unwrap(reedVolumeFlow(reed, 0.5 * closure)));
+
+  const double difference = 0.25 * closure;
+  const double opening = area * (1.0 - difference / closure);
+  CHECK(nearlyEqual(unwrap(reedOpeningArea(reed, difference)), opening, 0.0,
+                    1e-15));
+  CHECK(nearlyEqual(unwrap(reedVolumeFlow(reed, difference)),
+                    opening * std::sqrt(2.0 * difference / density), 0.0,
+                    1e-12));
+  CHECK(unwrap(reedOpeningArea(reed, 0.0)) == area);
+  CHECK(unwrap(reedVolumeFlow(reed, 0.0)) == 0.0);
+  CHECK(unwrap(reedOpeningArea(reed, closure)) == 0.0);
+  CHECK(unwrap(reedVolumeFlow(reed, closure)) == 0.0);
+  CHECK(unwrap(reedOpeningArea(reed, 2.0 * closure)) == 0.0);
+  CHECK(unwrap(reedVolumeFlow(reed, 2.0 * closure)) == 0.0);
+
+  CHECK(reedVolumeFlow(reed, -1.0).error() == QuantityError::DomainError);
+  CHECK(reedOpeningArea(reed, -closure).error() == QuantityError::DomainError);
+  CHECK(makeReedCharacteristic(ReedSpec{0.0, closure, airPressure, temperature})
+            .error() == QuantityError::InvalidArgument);
+  CHECK(makeReedCharacteristic(ReedSpec{area, -closure, airPressure, temperature})
+            .error() == QuantityError::InvalidArgument);
+  CHECK(makeReedCharacteristic(ReedSpec{area, closure, airPressure, 0.0})
+            .error() == QuantityError::DomainError);
+  CHECK(makeReedCharacteristic(ReedSpec{area, closure, -airPressure, temperature})
+            .error() == QuantityError::DomainError);
+
+  // A different air state is a different density, so the same slit does
+  // not pass the same peak flow.
+  const auto warmer = unwrap(makeReedCharacteristic(
+      ReedSpec{area, closure, airPressure, temperature + 20.0}));
+  CHECK(warmer.airDensityKgPerM3 < reed.airDensityKgPerM3);
+  CHECK(warmer.maximumFlowM3PerS != reed.maximumFlowM3PerS);
 }

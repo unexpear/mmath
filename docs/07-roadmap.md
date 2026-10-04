@@ -15,7 +15,7 @@ Status: planning · Nothing below may shape Phase 0–2 APIs
    geometry ≠ material; coupling `H(f)` chains; excitation position → modal weights.
    Landed: `instruments/` with violin, viola, cello, and double bass ideal strings, a
    pluck, a bridge hook, a steady Helmholtz bow, one open-loop body mode, and a
-   hard narrow hammer (`docs/48-instruments-violin-viola.md`). Reed, felt hammers,
+   hard narrow hammer, and a quasi-static single reed (`docs/48-instruments-violin-viola.md`). A reed bore, felt hammers,
    measured bridge admittance, and radiated pressure are not built. This slice does not change Phase 0–2 APIs.
 5. **Spatial + hearing:** `t=d/c`, Doppler from first principles, reverb/HRTF;
    loudness/pitch perception separate from physics.

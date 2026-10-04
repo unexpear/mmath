@@ -1,12 +1,14 @@
-# Instruments — bowed strings, a Helmholtz bow, one body mode, and a hard hammer
+# Instruments — bowed strings, bow, body mode, hard hammer, and a reed
 
 Status: assembly layer for four bowed strings, a steady Helmholtz bow on
-one ideal string, one body mode driven by that bow's bridge force, and a
-hard narrow hammer valid until the first reflection returns. Verified
-against the ideal-string law, Guettler's tables, the Helmholtz/Schelleng
-identities, the single-mode admittance, and the hard-hammer contact law
-below. Unvalidated as radiated sound: the body mode is open-loop, and
-there is no measured bridge admittance and no far-field pressure.
+one ideal string, one body mode driven by that bow's bridge force, a
+hard narrow hammer valid until the first reflection returns, and a
+quasi-static single-reed characteristic. Verified against the ideal-string
+law, Guettler's tables, the Helmholtz/Schelleng identities, the single-mode
+admittance, the hard-hammer contact law, and the reed flow law below.
+Unvalidated as radiated sound: the body mode is open-loop, and there is
+no measured bridge admittance and no far-field pressure. The reed is not
+a sounding bore.
 
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
@@ -27,6 +29,7 @@ interval.
 | `instruments/bow.h` | Steady Helmholtz stick/slip, bridge-force sawtooth, Schelleng maximum normal force |
 | `instruments/body.h` | One driving-point body mode. Resonance, Q, and modal mass are arguments |
 | `instruments/hammer.h` | Hard narrow hammer. Mass, speed, and strike position are arguments |
+| `instruments/reed.h` | Quasi-static single reed. Effective area, closure pressure, and air state are arguments |
 
 `physics/` does not include `instruments/`. The only music dependency is
 the pitch→frequency adapter (`makePitch`), so open-string hertz are the
@@ -34,10 +37,10 @@ engine's A440 12-TET pitches rather than a second copy of that formula.
 
 A pluck is an initial shape. A bow is not; `makeHelmholtzStroke` builds
 the steady regime. A hammer is not either; `makeHardHammerBlow` is the
-hard narrow hammer until the first reflection returns.
-`realizeExcitation` still returns `DomainError` for a bow and for a
-hammer, because that function only builds an initial displacement. Reed
-still returns `DomainError` and has no model.
+hard narrow hammer until the first reflection returns. A reed is not
+either; `makeReedCharacteristic` is the quasi-static slit.
+`realizeExcitation` still returns `DomainError` for a bow, a hammer, and
+a reed, because that function only builds an initial displacement.
 
 ## Sources
 
@@ -115,11 +118,11 @@ speed is higher, and Guettler's density and tension ranges for the bass
 G2 are not the cello's. A double bass is not a cello with the labels
 rewritten, and the body length is not used as \(L\).
 
-Reed still returns `DomainError`. The Helmholtz bow is unchanged and can
-be applied to a bass course the same way as to a violin, viola, or cello
-course. The body mode and the hard hammer are the same functions for any
-of the four courses; none of the factories stores a resonance, a hammer
-mass, or a strike speed.
+The Helmholtz bow is unchanged and can be applied to a bass course the
+same way as to a violin, viola, or cello course. The body mode and the
+hard hammer are the same functions for any of the four courses. The reed
+does not take a course. None of the factories stores a resonance, a
+hammer mass, a strike speed, or a reed.
 
 ## What the same pitch does on the longer instrument
 
@@ -167,6 +170,12 @@ not a violin with the labels rewritten.
   mass, and a strike on the nut or the bridge are refused. The direct
   wave is zero ahead of the outgoing front and matches the retarded
   contact displacement behind it, until a reflection arrives.
+- A reed's opening is \(S_0(1-\Delta P/P_M)\) up to closure and zero after
+  it. The volume flow is \(S\sqrt{2\Delta P/\rho}\), with \(\rho\) the
+  ideal-gas density at the caller's pressure and temperature. The flow
+  is largest at \(\Delta P=P_M/3\). A negative pressure difference is
+  refused. A warmer air state at the same slit has a lower density and a
+  different peak flow.
 
 ## Bow
 
@@ -224,8 +233,40 @@ frequency is not evaluated: it needs f-hole area, cavity volume, and an
 effective neck length. A0–B1 coupling needs a mutual term. None of those
 constants is invented.
 
-`physics/` does not include `instruments/`. Reed still returns
-`DomainError`.
+`physics/` does not include `instruments/`.
+
+## Reed
+
+`reed.h` is the elementary single-reed characteristic of Dalmont, Gilbert,
+and Ollivier, JASA 114(4), 2253–2262 (2003), eqs. (1) and (5). Effective
+jet area \(S_0\), closure pressure \(P_M\), and the static air state are
+arguments. Density is \(\rho=p/(RT)\) from `airDensity`, not a stored
+1.2 kg/m³. For \(0\le\Delta P\le P_M\),
+
+\[
+S=S_0\left(1-\frac{\Delta P}{P_M}\right),\qquad
+U=S\sqrt{\frac{2\Delta P}{\rho}}.
+\]
+
+Above \(P_M\) the reed is on the lay and both area and flow are zero. The
+flow is largest at \(\Delta P=P_M/3\),
+
+\[
+U_{\max}=\frac{2}{3}S_0\sqrt{\frac{2P_M}{3\rho}}.
+\]
+
+\(\Delta P<0\) is `DomainError`. Equation (5) is the blowing direction.
+
+\(S_0\) is already the effective jet area. A second vena-contracta
+coefficient is not applied. The characteristic does not oscillate: a
+played note needs a bore reflection function, or a length and a
+cross-section, and neither is invented or taken from the bowed-string
+factories. Reed mass is not an argument, so inertia and damping are
+absent. Dalmont's quasi-static use assumes the playing frequency is small
+beside the reed resonance, and the paper does not give a numerical ratio
+at which that assumption fails, so no ratio is invented. A viscous
+cutoff would need a viscosity and the channel width separately from
+\(S_0\); that cutoff is not applied.
 
 ## Hammer
 
@@ -257,8 +298,8 @@ Hammer width, shank rotation, and gravity are not in the model.
 
 ## Still planned
 
-Reed, felt compliance and the reflected-wave sum for the hammer, a sum of
-measured body modes, cavity Helmholtz frequency,
+A reed bore and reed inertia, felt compliance and the reflected-wave sum
+for the hammer, a sum of measured body modes, cavity Helmholtz frequency,
 A0–B1 coupling, far-field radiation, back-reaction of the body on the
 string (and with it Schelleng's minimum bow force), fingered stopping as
 a change of vibrating length, stiffness of wound strings, and a
