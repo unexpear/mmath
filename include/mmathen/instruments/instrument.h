@@ -52,7 +52,8 @@ inline constexpr double kTabulatedHertzTolerance = 0.1;
 
 // Shared by violin, viola, cello, and double bass. Nominal linear density is the
 // arithmetic midpoint of a published g/m range; tension is then the
-// ideal-string tension at the tuned frequency.
+// ideal-string tension at the tuned frequency. Harp and harpsichord courses
+// use the same law; their tables are not four-string bowed rows.
 inline constexpr const char* kGuettlerBowedStringSource =
     "Knut Guettler, \"Some typical properties of bowed strings\", "
     "https://knutsacoustics.com/files/Typical-string-properties.pdf "
@@ -118,6 +119,9 @@ struct StringCourse {
   TabulatedRange publishedDensityGPerM;
   TabulatedRange publishedTensionN;
   double publishedFrequencyHz = 0.0;
+  // False when the source names the pitch and does not print a hertz
+  // value. publishedFrequencyHz is then 0 and is not a second frequency.
+  bool frequencyPrinted = true;
   const char* source = nullptr;
 };
 
@@ -148,6 +152,8 @@ struct StringInstrument {
 
 // One row of a published string table. Density is g/m, tension is N, both
 // inclusive ranges. The nominal density is their arithmetic midpoint.
+// BowedStringRow is the original name; harp and harpsichord rows are the
+// same fields.
 struct BowedStringRow {
   const char* label;
   double publishedFrequencyHz;
@@ -175,6 +181,15 @@ struct StringInstrumentSpec {
                                                double published) {
   return std::isfinite(modeled) && std::isfinite(published) &&
          std::fabs(modeled - published) <= kTabulatedHertzTolerance;
+}
+
+// `unit` is one place of the source's printing (0.1 Hz when the table
+// prints tenths, 1 Hz when it prints whole hertz).
+[[nodiscard]] inline bool tabulatedHertzAgrees(double modeled, double published,
+                                               double unit) {
+  return std::isfinite(modeled) && std::isfinite(published) &&
+         std::isfinite(unit) && unit > 0.0 &&
+         std::fabs(modeled - published) <= unit;
 }
 
 namespace detail {
@@ -259,48 +274,87 @@ namespace detail {
   return modal.value().at(DistanceMeters{x}, time);
 }
 
+namespace detail {
+
+// Nominal density is the midpoint of the g/m range. Tension is
+// T = μ (2 L f)^2. RangeError if that tension leaves the interval.
+// `label` is stored as the pointer the caller passed; it must outlive
+// the course.
+[[nodiscard]] inline Result<StringCourse, QuantityError> courseAtFrequency(
+    DistanceMeters vibratingLength, const char* label, double frequency,
+    double densityMinGPerM, double densityMaxGPerM, double tensionMinN,
+    double tensionMaxN, double publishedFrequencyHz, bool frequencyPrinted,
+    const char* source) {
+  using R = Result<StringCourse, QuantityError>;
+  if (!text(source) || !text(label))
+    return R::failure(QuantityError::InvalidArgument);
+  if (!positiveFinite(vibratingLength.value()) || !std::isfinite(frequency) ||
+      !(frequency > 0.0))
+    return R::failure(QuantityError::InvalidArgument);
+  if (!usableRange(densityMinGPerM, densityMaxGPerM) ||
+      !usableRange(tensionMinN, tensionMaxN))
+    return R::failure(QuantityError::InvalidArgument);
+  const double gramsPerMeter = 0.5 * (densityMinGPerM + densityMaxGPerM);
+  const double linearDensity = gramsPerMeter * 1.0e-3;
+  const double waveSpeed = 2.0 * vibratingLength.value() * frequency;
+  const double tension = linearDensity * waveSpeed * waveSpeed;
+  if (!std::isfinite(tension) || tension < tensionMinN || tension > tensionMaxN)
+    return R::failure(QuantityError::RangeError);
+  return R::success(StringCourse{
+      StringGeometry{vibratingLength},
+      StringMaterial{LinearDensityKgPerM{linearDensity}},
+      StringTuning{label, FrequencyHz{frequency}},
+      TensionNewtons{tension},
+      TabulatedRange{densityMinGPerM, densityMaxGPerM},
+      TabulatedRange{tensionMinN, tensionMaxN},
+      frequencyPrinted ? publishedFrequencyHz : 0.0,
+      frequencyPrinted,
+      source});
+}
+
+}  // namespace detail
+
 // Build one course. The nominal linear density is the midpoint of the
 // published g/m range. Tension is T = μ (2 L f)^2 at the pitch-adapter
 // frequency of `row.label`, so the open string is that pitch by
 // construction. RangeError if that tension leaves the published tension
 // interval, or if the published hertz value is not the adapter's pitch
-// at tabular resolution. InvalidArgument for a bad length, label, range,
-// or source.
+// within `hertzUnit` (one printed unit; the bowed-string tables use
+// kTabulatedHertzTolerance). InvalidArgument for a bad length, label,
+// range, unit, or source.
 [[nodiscard]] inline Result<StringCourse, QuantityError> makeStringCourse(
     DistanceMeters vibratingLength, const BowedStringRow& row,
-    const char* source) {
+    const char* source, double hertzUnit = kTabulatedHertzTolerance) {
   using R = Result<StringCourse, QuantityError>;
-  if (!detail::text(source) || !detail::text(row.label))
-    return R::failure(QuantityError::InvalidArgument);
-  if (!detail::positiveFinite(vibratingLength.value()))
-    return R::failure(QuantityError::InvalidArgument);
-  if (!detail::usableRange(row.linearDensityMinGPerM,
-                           row.linearDensityMaxGPerM) ||
-      !detail::usableRange(row.tensionMinN, row.tensionMaxN))
+  if (!detail::text(row.label))
     return R::failure(QuantityError::InvalidArgument);
   auto pitch = makePitch(row.label);
   if (!pitch.ok()) return R::failure(pitch.error());
   const double frequency = pitch.value().frequency.value();
-  if (!tabulatedHertzAgrees(frequency, row.publishedFrequencyHz))
+  if (!tabulatedHertzAgrees(frequency, row.publishedFrequencyHz, hertzUnit))
     return R::failure(QuantityError::RangeError);
-  const double gramsPerMeter =
-      0.5 * (row.linearDensityMinGPerM + row.linearDensityMaxGPerM);
-  const double linearDensity = gramsPerMeter * 1.0e-3;
-  const double waveSpeed = 2.0 * vibratingLength.value() * frequency;
-  const double tension = linearDensity * waveSpeed * waveSpeed;
-  if (!std::isfinite(tension) || tension < row.tensionMinN ||
-      tension > row.tensionMaxN)
-    return R::failure(QuantityError::RangeError);
-  // Quantities are not default-constructible: the course is an aggregate.
-  return R::success(StringCourse{
-      StringGeometry{vibratingLength},
-      StringMaterial{LinearDensityKgPerM{linearDensity}},
-      StringTuning{row.label, FrequencyHz{frequency}},
-      TensionNewtons{tension},
-      TabulatedRange{row.linearDensityMinGPerM, row.linearDensityMaxGPerM},
-      TabulatedRange{row.tensionMinN, row.tensionMaxN},
-      row.publishedFrequencyHz,
-      source});
+  return detail::courseAtFrequency(
+      vibratingLength, row.label, frequency, row.linearDensityMinGPerM,
+      row.linearDensityMaxGPerM, row.tensionMinN, row.tensionMaxN,
+      row.publishedFrequencyHz, true, source);
+}
+
+// Same ideal-string course when the source names the pitch and does not
+// print hertz. There is then no second frequency to agree with.
+// publishedFrequencyHz on the course is 0 and frequencyPrinted is false.
+// RangeError if the ideal tension leaves the tension interval.
+[[nodiscard]] inline Result<StringCourse, QuantityError>
+makeStringCourseAtPitch(DistanceMeters vibratingLength, const char* label,
+                        double densityMinGPerM, double densityMaxGPerM,
+                        double tensionMinN, double tensionMaxN,
+                        const char* source) {
+  using R = Result<StringCourse, QuantityError>;
+  if (!detail::text(label)) return R::failure(QuantityError::InvalidArgument);
+  auto pitch = makePitch(label);
+  if (!pitch.ok()) return R::failure(pitch.error());
+  return detail::courseAtFrequency(
+      vibratingLength, label, pitch.value().frequency.value(), densityMinGPerM,
+      densityMaxGPerM, tensionMinN, tensionMaxN, 0.0, false, source);
 }
 
 // Four courses, low to high, on one body. Compass low must be the lowest

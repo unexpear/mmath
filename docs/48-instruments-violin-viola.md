@@ -1,14 +1,16 @@
-# Instruments — bowed strings, bow, body mode, hard hammer, and a reed
+# Instruments — bowed strings, harp, harpsichord, bow, body, hammer, reed
 
-Status: assembly layer for four bowed strings, a steady Helmholtz bow on
-one ideal string, one body mode driven by that bow's bridge force, a
-hard narrow hammer valid until the first reflection returns, and a
-quasi-static single-reed characteristic. Verified against the ideal-string
-law, Guettler's tables, the Helmholtz/Schelleng identities, the single-mode
-admittance, the hard-hammer contact law, and the reed flow law below.
-Unvalidated as radiated sound: the body mode is open-loop, and there is
-no measured bridge admittance and no far-field pressure. The reed is not
-a sounding bore.
+Status: assembly layer for four bowed strings, a concert pedal harp, a
+French double harpsichord, a steady Helmholtz bow on one ideal string,
+one body mode driven by that bow's bridge force, a hard narrow hammer
+valid until the first reflection returns, and a quasi-static single-reed
+characteristic. Verified against the ideal-string law, Guettler's tables,
+the harp and harpsichord measurements named below, the Helmholtz/Schelleng
+identities, the single-mode admittance, the hard-hammer contact law, and
+the reed flow law. Unvalidated as radiated sound: the body mode is
+open-loop, and there is no measured bridge admittance and no far-field
+pressure. The reed is not a sounding bore. The harp and the harpsichord
+are not sounded through a soundboard model.
 
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
@@ -30,6 +32,8 @@ interval.
 | `instruments/body.h` | One driving-point body mode. Resonance, Q, and modal mass are arguments |
 | `instruments/hammer.h` | Hard narrow hammer. Mass, speed, and strike position are arguments |
 | `instruments/reed.h` | Quasi-static single reed. Effective area, closure pressure, and air state are arguments |
+| `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
+| `instruments/harpsichord.h` | Goermans/Taskin 1764/1783–4 French double: 2×8′ + 4′, compass F1–F6 |
 
 `physics/` does not include `instruments/`. The only music dependency is
 the pitch→frequency adapter (`makePitch`), so open-string hertz are the
@@ -40,7 +44,10 @@ the steady regime. A hammer is not either; `makeHardHammerBlow` is the
 hard narrow hammer until the first reflection returns. A reed is not
 either; `makeReedCharacteristic` is the quasi-static slit.
 `realizeExcitation` still returns `DomainError` for a bow, a hammer, and
-a reed, because that function only builds an initial displacement.
+a reed, because that function only builds an initial displacement. The
+harp is finger-plucked and the harpsichord is plucked by a jack. Neither
+factory stores a bow, a hammer, or a reed. Peau de buffle is a jack
+register on the lower 8', not a fourth choir and not a hammer.
 
 ## Sources
 
@@ -124,6 +131,89 @@ hard hammer are the same functions for any of the four courses. The reed
 does not take a course. None of the factories stores a resonance, a
 hammer mass, a strike speed, or a reed.
 
+## Concert pedal harp
+
+Camac Atlantide Prestige, a 47-string concert pedal harp, not a folk harp.
+String geometry is Jean-Loïc Le Carrou, *Vibro-acoustique de la harpe de
+concert*, thèse, Université du Maine, 2006, Annexe A.1
+(<https://theses.hal.science/tel-00133443>). The study instrument did not
+have the pedal discs fitted, so the lengths are the full open lengths.
+Natural and sharp speaking lengths are not in the table and are not
+inferred from a fork spacing.
+
+The table is the flat-pedal string set, numbered 00 (highest) to 45
+(lowest). Stored labels are the A440 scientific spellings of the printed
+hertz, low to high Cb1–Gb7. Chadefaux's "Do♭−1" to "Sol♭6" is another
+octave count for the same 31 Hz–2960 Hz span and is not the stored
+spelling. Printed hertz agree with the adapter within one printed unit:
+0.1 Hz where the table prints a tenth, 1 Hz where it prints a whole
+number. Cb7 is the wide case (printed 1975 Hz, adapter 1975.53 Hz).
+
+Materials, as printed: nylon 00–6, sheep gut 7–33, wound steel 34–45.
+Each row also stores the printed diameter, angle, and soundboard
+position. None of those is the vibrating length. At the gut/steel break
+the diameter drops (string 33 is 2.36 mm, string 34 is 1.6 mm), which is
+the table and not a smoothed gauge.
+
+Vibrating lengths run from 7.7 cm (string 00) to 154 cm (string 45).
+Instrument height is a different object: Delphine Chadefaux, *Musician /
+instrument interaction: the case of the concert harp*, thèse, Université
+Pierre et Marie Curie, 2012
+(<https://theses.hal.science/tel-00828314>), Camac Atlantide Prestige,
+"une hauteur de 1 m 86". Le Carrou's Annexe A.2 prints other millimetre
+figures without naming the edge; they are not used as the height or as
+\(L\).
+
+Annexe A.1 does not print linear density or a per-string tension
+interval. `tuneHarpString` takes both as arguments. Nominal density is
+the midpoint of the caller's g/m range, and tension is
+\(T=\mu(2Lf)^2\) at the adapter frequency. Construction fails if that
+tension leaves the caller's interval. Table 7.1's volumetric densities
+are hypotheses taken from another harp (Bell and Firth) and are not
+used, including for the wound strings, where an outer diameter and a
+steel density would not be the linear density. Chadefaux reports that
+the tensions on an Atlantide Prestige are spread from 45 N to 756 N.
+That is the spread of the set, not an allowance for each string, and
+`tuneHarpString` does not read it.
+
+## French double harpsichord
+
+Jean Goermans / Pascal Taskin, Paris 1764 / 1783–4, Russell Collection,
+Musical Instrument Museums Edinburgh, accession 4329
+(<https://collections.ed.ac.uk/mimed/record/14796>). Two manuals. Compass
+61 notes, F1–F6. Choirs: two 8' and one 4'. Peau de buffle is a jack
+register on the lower 8'; the buff is a batten on the upper 8'. The
+catalogue says gauge numbers are stamped and does not print them.
+
+Case length 2365 mm is Table 1 of "Taskin Harpsichord Scalings and
+Stringings Revisited", Bray Baroque, 2011
+(<https://www.braybaroque.ie/harps/Taskin_stringing.htm>), the 1784
+Edinburgh row. The museum Measurements field prints 2365 and does not
+name the unit; the millimetre case length is that table. The longest
+stored speaking length is the long 8' F1 at 1835 mm, which is not the
+case length.
+
+The catalogue prints eleven long-8' speaking lengths and plucking
+points (mm): F6 142 (80), C6 184 (87), F5 271 (98), C5 366 (105),
+F4 550 (113), C4 713 (124), F3 993 (138), C3 1207 (148), F2 1532 (162),
+C2 1727 (174), F1 1835 (193). Bray's long-8' column matches F, C, c,
+c', c'' (F1, C2, C3, C4, C5). The plucking point is stored as printed.
+It is not turned into a fraction, because the catalogue does not say
+which end it is measured from.
+
+The 4' lengths at c, c', and c'' are Bray's Table 1, not half the 8':
+C3 637 mm against 1207 mm, C4 351 mm against 713 mm, C5 169 mm against
+366 mm. The short 8' speaking lengths are in neither source and are
+not invented. The other 4' notes are not invented either.
+
+The catalogue does not print hertz, a linear density, or a tension
+interval. `tuneHarpsichordString` takes the density and tension ranges
+as arguments and tunes the catalogue's note name with the A440 adapter.
+The course records no published frequency. Historical pitch is not
+A440 and is not stored. The same density on the long 8' C3 and the 4'
+C3 produces two tensions, because the speaking lengths differ; a
+tension interval that holds one refuses the other.
+
 ## What the same pitch does on the longer instrument
 
 G3, D4, and A4 exist on both. The adapter frequency matches. The viola's
@@ -147,6 +237,17 @@ not a violin with the labels rewritten.
 - Bad tables (tension band that cannot tune the pitch, published hertz
   that is a different note, courses not low-to-high, compass that is not
   the lowest open string) fail construction.
+- The Atlantide's 47 strings ascend Cb1–Gb7, each printed hertz within
+  its printed unit of the adapter, and every vibrating length is shorter
+  than the 1.86 m height. Nylon, gut, and wound steel change at the
+  printed string numbers. A course whose ideal tension leaves the
+  caller's interval is refused, including when that tension still sits
+  inside the 45–756 N instrument-level spread.
+- The French double's case is 2365 mm and its long 8' F1 is 1835 mm.
+  The compass is 61 notes, F1–F6. The 4' C3, C4, and C5 are not half
+  the long 8'. No short-8' length is stored. The same density on the
+  two C3 speaking lengths yields two tensions, and the interval that
+  holds the 4' refuses the 8'.
 - Helmholtz stick and slip velocities, their durations, the bridge-force
   slope and flyback, and a zero-mean bow displacement match the identities
   above. A normal force above Schelleng's maximum is refused. The cello's

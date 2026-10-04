@@ -1,5 +1,5 @@
-// Instruments — violin, viola, cello, double bass, Helmholtz bow, and one
-// body mode (docs/48).
+// Instruments — bowed strings, a concert pedal harp, a French double
+// harpsichord, Helmholtz bow, and one body mode (docs/48).
 //
 // The open string is the ideal-string fundamental at the pitch-adapter
 // frequency. The nominal density is Guettler's range midpoint, and the
@@ -18,6 +18,7 @@
 #include <array>
 #include <cmath>
 #include <complex>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <utility>
@@ -25,6 +26,8 @@
 #include <mmathen/instruments/body.h>
 #include <mmathen/instruments/bow.h>
 #include <mmathen/instruments/hammer.h>
+#include <mmathen/instruments/harp.h>
+#include <mmathen/instruments/harpsichord.h>
 #include <mmathen/instruments/reed.h>
 #include <mmathen/instruments/cello.h>
 #include <mmathen/instruments/double_bass.h>
@@ -688,4 +691,251 @@ TEST_CASE("a reed is the quasi-static Bernoulli slit", "[instruments]") {
       ReedSpec{area, closure, airPressure, temperature + 20.0}));
   CHECK(warmer.airDensityKgPerM3 < reed.airDensityKgPerM3);
   CHECK(warmer.maximumFlowM3PerS != reed.maximumFlowM3PerS);
+}
+
+namespace {
+int harpSourceNumber(const char* text) {
+  if (std::strcmp(text, "00") == 0) return -1;
+  return std::atoi(text);
+}
+
+double idealTension(double lengthM, double frequencyHz, double gramsPerMeter) {
+  const double wave = 2.0 * lengthM * frequencyHz;
+  return gramsPerMeter * 1.0e-3 * wave * wave;
+}
+}  // namespace
+
+TEST_CASE("concert pedal harp keeps height off the vibrating lengths",
+          "[instruments]") {
+  const PedalHarp harp = unwrap(concertPedalHarp());
+  CHECK(formula(harp) == "Camac Atlantide Prestige Cb1 Gb7");
+  CHECK(harp.strings.size() == kConcertHarpStrings);
+  CHECK(harp.height.value() == kConcertHarpHeightM);
+  CHECK(harp.reportedTensionSpreadN.min == 45.0);
+  CHECK(harp.reportedTensionSpreadN.max == 756.0);
+  CHECK(std::strcmp(harp.strings.front().sourceNumber, "45") == 0);
+  CHECK(std::strcmp(harp.strings.front().label, "Cb1") == 0);
+  CHECK(std::strcmp(harp.strings.back().sourceNumber, "00") == 0);
+  CHECK(std::strcmp(harp.strings.back().label, "Gb7") == 0);
+  CHECK(harp.compass.low == unwrap(makePitch("Cb1")).frequency);
+  CHECK(harp.compass.high == unwrap(makePitch("Gb7")).frequency);
+  CHECK(std::fabs(harp.compass.low.value() - 30.9) <= 0.1);
+  CHECK(std::fabs(harp.compass.high.value() - 2960.0) <= 1.0);
+
+  int wound = 0;
+  int gut = 0;
+  int nylon = 0;
+  for (std::size_t i = 0; i < harp.strings.size(); ++i) {
+    const HarpStringGeometry& string = harp.strings[i];
+    const auto spelled = unwrap(makePitch(string.label));
+    CHECK(std::fabs(spelled.frequency.value() - string.publishedFrequencyHz) <=
+          string.printedHertzUnit);
+    const double metres = string.vibratingLengthCm * 1.0e-2;
+    CHECK(metres < harp.height.value());
+    CHECK(metres != harp.height.value());
+    CHECK(string.positionCm != string.vibratingLengthCm);
+    CHECK(string.positionCm * 1.0e-2 != harp.height.value());
+    CHECK(string.diameterMm > 0.0);
+    const int number = harpSourceNumber(string.sourceNumber);
+    if (number >= 34) {
+      CHECK(string.material == HarpStringMaterial::WoundSteel);
+      ++wound;
+    } else if (number >= 7) {
+      CHECK(string.material == HarpStringMaterial::Gut);
+      ++gut;
+    } else {
+      CHECK(string.material == HarpStringMaterial::Nylon);
+      ++nylon;
+    }
+    if (i > 0) {
+      CHECK(spelled.frequency.value() >
+            unwrap(makePitch(harp.strings[i - 1].label)).frequency.value());
+      CHECK(string.vibratingLengthCm < harp.strings[i - 1].vibratingLengthCm);
+    }
+  }
+  CHECK(wound == 12);
+  CHECK(gut == 27);
+  CHECK(nylon == 8);
+  // The wound string's diameter is not a continuation of the gut gauge.
+  const HarpStringGeometry* gutEnd = findHarpStringByNumber(harp, "33");
+  const HarpStringGeometry* woundStart = findHarpStringByNumber(harp, "34");
+  REQUIRE(gutEnd != nullptr);
+  REQUIRE(woundStart != nullptr);
+  CHECK(woundStart->diameterMm < gutEnd->diameterMm);
+  CHECK(findHarpString(harp, "G4") == nullptr);
+}
+
+TEST_CASE("harp courses take density and tension ranges as arguments",
+          "[instruments]") {
+  const PedalHarp harp = unwrap(concertPedalHarp());
+  const HarpStringGeometry* cb4 = findHarpString(harp, "Cb4");
+  REQUIRE(cb4 != nullptr);
+  CHECK(cb4->vibratingLengthCm == 58.8);
+  const double frequency = unwrap(makePitch("Cb4")).frequency.value();
+  const double length = cb4->vibratingLengthCm * 1.0e-2;
+  const double tension = idealTension(length, frequency, 2.0);
+  CHECK(tension > harp.reportedTensionSpreadN.min);
+  CHECK(tension < harp.reportedTensionSpreadN.max);
+
+  const StringCourse tuned =
+      unwrap(tuneHarpString(*cb4, 1.0, 3.0, tension * 0.5, tension * 1.5));
+  CHECK(tuned.frequencyPrinted);
+  CHECK(std::fabs(tuned.publishedFrequencyHz - 246.9) <= 0.1);
+  CHECK(nearlyEqual(unwrap(openStringFrequency(tuned)), tuned.tuning.frequency,
+                    FrequencyHz{0.0}, 1e-12));
+  CHECK(tuned.tension.value() > tuned.publishedTensionN.min);
+  CHECK(tuned.tension.value() < tuned.publishedTensionN.max);
+  CHECK(tuned.geometry.vibratingLength.value() != harp.height.value());
+
+  // Inside Chadefaux's 45–756 N spread, and still refused: that spread is
+  // not the per-string interval.
+  CHECK(tension * 0.5 > 45.0);
+  CHECK(tuneHarpString(*cb4, 1.0, 3.0, tension + 1.0, tension + 2.0).error() ==
+        QuantityError::RangeError);
+  CHECK(tuneHarpString(*cb4, 3.0, 1.0, tension * 0.5, tension * 1.5).error() ==
+        QuantityError::InvalidArgument);
+
+  HarpStringGeometry shifted = *cb4;
+  shifted.publishedFrequencyHz = 100.0;
+  CHECK(tuneHarpString(shifted, 1.0, 3.0, 1.0, 1.0e6).error() ==
+        QuantityError::RangeError);
+
+  // Cb7 is printed as 1975 Hz. The adapter is 1975.53 Hz, inside one
+  // printed hertz and outside a tenth.
+  const HarpStringGeometry* cb7 = findHarpStringByNumber(harp, "3");
+  REQUIRE(cb7 != nullptr);
+  const BowedStringRow wide{"Cb7", cb7->publishedFrequencyHz, 1.0, 2.0, 1.0,
+                            1.0e6};
+  CHECK(makeStringCourse(DistanceMeters{cb7->vibratingLengthCm * 1.0e-2}, wide,
+                         "src", 0.1)
+            .error() == QuantityError::RangeError);
+  CHECK(makeStringCourse(DistanceMeters{cb7->vibratingLengthCm * 1.0e-2}, wide,
+                         "src", cb7->printedHertzUnit)
+            .ok());
+
+  const HarpStringGeometry* lowest = findHarpStringByNumber(harp, "45");
+  REQUIRE(lowest != nullptr);
+  const double bassFrequency = unwrap(makePitch("Cb1")).frequency.value();
+  const double bassTension =
+      idealTension(lowest->vibratingLengthCm * 1.0e-2, bassFrequency, 20.0);
+  const StringCourse bass = unwrap(
+      tuneHarpString(*lowest, 10.0, 30.0, bassTension * 0.5, bassTension * 1.5));
+  CHECK(nearlyEqual(bass.material.linearDensity.value(), 20.0e-3, 0.0, 1e-15));
+  CHECK(bass.geometry.vibratingLength.value() !=
+        lowest->diameterMm * 1.0e-3);
+
+  const Excitation pluck{ExcitationKind::Pluck, 0.3, 1.0e-4};
+  CHECK(realizeExcitation(tuned, pluck).ok());
+  CHECK(realizeExcitation(tuned, Excitation{ExcitationKind::Bow, 0.3, 1.0e-4})
+            .error() == QuantityError::DomainError);
+  CHECK(realizeExcitation(tuned, Excitation{ExcitationKind::Hammer, 0.3, 1.0e-4})
+            .error() == QuantityError::DomainError);
+  CHECK(realizeExcitation(tuned, Excitation{ExcitationKind::Reed, 0.3, 1.0e-4})
+            .error() == QuantityError::DomainError);
+}
+
+TEST_CASE("French double keeps case length off the speaking lengths",
+          "[instruments]") {
+  const FrenchDouble instrument = unwrap(frenchDouble());
+  CHECK(formula(instrument) == "Goermans-Taskin French double F1 F6");
+  CHECK(instrument.manuals == 2);
+  CHECK(instrument.eightFootChoirs == 2);
+  CHECK(instrument.fourFootChoirs == 1);
+  CHECK(instrument.peauDeBuffle);
+  CHECK(instrument.buffStop);
+  CHECK(instrument.caseLength.value() ==
+        kFrenchDoubleCaseLengthMm * 1.0e-3);
+  CHECK(instrument.compass.noteCount == kFrenchDoubleCompassNotes);
+  CHECK(instrument.compass.low == unwrap(makePitch("F1")).frequency);
+  CHECK(instrument.compass.high == unwrap(makePitch("F6")).frequency);
+  const auto low = unwrap(makePitch("F1"));
+  const auto high = unwrap(makePitch("F6"));
+  REQUIRE(low.midi.has_value());
+  REQUIRE(high.midi.has_value());
+  CHECK(*high.midi - *low.midi + 1 == kFrenchDoubleCompassNotes);
+
+  int longEight = 0;
+  int shortEight = 0;
+  int fourFoot = 0;
+  for (const HarpsichordSpeakingLength& string : instrument.strings) {
+    CHECK(string.vibratingLengthMm < kFrenchDoubleCaseLengthMm);
+    if (string.choir == HarpsichordChoir::LongEightFoot) {
+      ++longEight;
+      REQUIRE(string.pluckingPointMm.has_value());
+      CHECK(*string.pluckingPointMm != string.vibratingLengthMm);
+    } else if (string.choir == HarpsichordChoir::FourFoot) {
+      ++fourFoot;
+      CHECK(!string.pluckingPointMm.has_value());
+    } else {
+      ++shortEight;
+    }
+  }
+  CHECK(longEight == 11);
+  CHECK(fourFoot == 3);
+  CHECK(shortEight == 0);
+  CHECK(findSpeakingLength(instrument, HarpsichordChoir::ShortEightFoot,
+                           "C4") == nullptr);
+
+  const HarpsichordSpeakingLength* eight =
+      findSpeakingLength(instrument, HarpsichordChoir::LongEightFoot, "C3");
+  const HarpsichordSpeakingLength* four =
+      findSpeakingLength(instrument, HarpsichordChoir::FourFoot, "C3");
+  const HarpsichordSpeakingLength* eightC4 =
+      findSpeakingLength(instrument, HarpsichordChoir::LongEightFoot, "C4");
+  const HarpsichordSpeakingLength* fourC4 =
+      findSpeakingLength(instrument, HarpsichordChoir::FourFoot, "C4");
+  const HarpsichordSpeakingLength* bass =
+      findSpeakingLength(instrument, HarpsichordChoir::LongEightFoot, "F1");
+  REQUIRE(eight != nullptr);
+  REQUIRE(four != nullptr);
+  REQUIRE(eightC4 != nullptr);
+  REQUIRE(fourC4 != nullptr);
+  REQUIRE(bass != nullptr);
+  CHECK(eight->vibratingLengthMm == 1207.0);
+  CHECK(four->vibratingLengthMm == 637.0);
+  CHECK(eightC4->vibratingLengthMm == 713.0);
+  CHECK(fourC4->vibratingLengthMm == 351.0);
+  CHECK(bass->vibratingLengthMm == 1835.0);
+  CHECK(*bass->pluckingPointMm == 193.0);
+  CHECK(std::fabs(four->vibratingLengthMm - 0.5 * eight->vibratingLengthMm) >
+        0.5);
+  CHECK(std::fabs(fourC4->vibratingLengthMm -
+                  0.5 * eightC4->vibratingLengthMm) > 0.5);
+  CHECK(bass->vibratingLengthMm * 1.0e-3 != instrument.caseLength.value());
+
+  const double frequency = unwrap(makePitch("C3")).frequency.value();
+  const double eightTension =
+      idealTension(eight->vibratingLengthMm * 1.0e-3, frequency, 1.0);
+  const double fourTension =
+      idealTension(four->vibratingLengthMm * 1.0e-3, frequency, 1.0);
+  CHECK(eightTension != fourTension);
+  const StringCourse longCourse = unwrap(
+      tuneHarpsichordString(*eight, 0.5, 1.5, eightTension * 0.5,
+                            eightTension * 1.5));
+  const StringCourse shortCourse = unwrap(
+      tuneHarpsichordString(*four, 0.5, 1.5, fourTension * 0.5,
+                            fourTension * 1.5));
+  CHECK(!longCourse.frequencyPrinted);
+  CHECK(longCourse.publishedFrequencyHz == 0.0);
+  CHECK(longCourse.tuning.frequency == shortCourse.tuning.frequency);
+  CHECK(longCourse.geometry.vibratingLength.value() >
+        shortCourse.geometry.vibratingLength.value());
+  CHECK(longCourse.tension.value() != shortCourse.tension.value());
+  CHECK(nearlyEqual(unwrap(openStringFrequency(longCourse)),
+                    longCourse.tuning.frequency, FrequencyHz{0.0}, 1e-12));
+  CHECK(tuneHarpsichordString(*eight, 0.5, 1.5, fourTension * 0.5,
+                              fourTension * 1.5)
+            .error() == QuantityError::RangeError);
+
+  const Excitation pluck{ExcitationKind::Pluck, 0.2, 1.0e-4};
+  CHECK(realizeExcitation(longCourse, pluck).ok());
+  CHECK(realizeExcitation(longCourse,
+                          Excitation{ExcitationKind::Bow, 0.2, 1.0e-4})
+            .error() == QuantityError::DomainError);
+  CHECK(realizeExcitation(longCourse,
+                          Excitation{ExcitationKind::Hammer, 0.2, 1.0e-4})
+            .error() == QuantityError::DomainError);
+  CHECK(realizeExcitation(longCourse,
+                          Excitation{ExcitationKind::Reed, 0.2, 1.0e-4})
+            .error() == QuantityError::DomainError);
 }
