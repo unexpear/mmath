@@ -108,6 +108,16 @@ struct BodyResonator {
 
 // Driving-point mobility Y(f) = v/F, metres per second per newton.
 // f = 0 returns 0. A negative or non-finite frequency is InvalidArgument.
+//
+// Y = jω / (m (d_r + j d_i)) is expanded as
+//   (ω d_i + j ω d_r) / (m (d_r² + d_i²)),
+// which is the same quotient. The only divisor is m|D|². std::complex
+// division is not used: MSVC's _Div (VC\Tools\MSVC\14.44 include\complex
+// line 1007) divides by the real part on the |Im| < |Re| branch. At
+// resonance d_r is 0, and a Release compile that constant-folds that
+// zero — the body header test drives the mode at its own resonance —
+// treats the library divide as C4723. |D|² is zero only when both parts
+// are, which is RangeError rather than a silent 0/0.
 [[nodiscard]] inline Result<std::complex<double>, QuantityError> bodyMobility(
     const BodyResonator& mode, double frequencyHz) {
   using R = Result<std::complex<double>, QuantityError>;
@@ -115,11 +125,14 @@ struct BodyResonator {
     return R::failure(QuantityError::InvalidArgument);
   if (frequencyHz == 0.0) return R::success(std::complex<double>{0.0, 0.0});
   const double omega = constants::twoPi * frequencyHz;
-  const std::complex<double> denominator(
-      mode.omega0 * mode.omega0 - omega * omega,
-      omega * mode.omega0 / mode.qualityFactor);
-  const std::complex<double> mobility =
-      std::complex<double>(0.0, omega) / (mode.modalMassKg * denominator);
+  const double realPart = mode.omega0 * mode.omega0 - omega * omega;
+  const double imagPart = omega * mode.omega0 / mode.qualityFactor;
+  const double modulus2 = realPart * realPart + imagPart * imagPart;
+  const double divisor = mode.modalMassKg * modulus2;
+  if (!(divisor > 0.0) || !std::isfinite(divisor))
+    return R::failure(QuantityError::RangeError);
+  const double scale = omega / divisor;
+  const std::complex<double> mobility{scale * imagPart, scale * realPart};
   if (!std::isfinite(mobility.real()) || !std::isfinite(mobility.imag()))
     return R::failure(QuantityError::RangeError);
   return R::success(mobility);
@@ -214,8 +227,15 @@ bodyVelocityCoefficient(const BodyResonator& mode, const HelmholtzStroke& stroke
     if (!velocity.ok()) return R::failure(velocity.error());
     const double omega =
         constants::twoPi * static_cast<double>(n) / stroke.period;
-    const std::complex<double> displacement =
-        velocity.value() / std::complex<double>(0.0, omega);
+    // X = V / (j ω) = v_im/ω - j v_re/ω. n ≥ 1 and P > 0, so ω > 0.
+    // Written out for the same reason as bodyMobility: the divisor would
+    // otherwise be complex(0, ω), and MSVC's complex divide splits on
+    // that zero real part.
+    if (!(omega > 0.0) || !std::isfinite(omega))
+      return R::failure(QuantityError::RangeError);
+    const std::complex<double>& harmonicVelocity = velocity.value();
+    const std::complex<double> displacement{harmonicVelocity.imag() / omega,
+                                            -harmonicVelocity.real() / omega};
     const double angle = omega * slip;
     sum += displacement * std::exp(std::complex<double>(0.0, angle));
   }
