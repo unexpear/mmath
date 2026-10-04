@@ -13,8 +13,9 @@
 // lives in body.h and does not feed back into the string.
 //
 // A pluck is an initial shape on the ideal string. A bow is not: steady
-// Helmholtz motion lives in bow.h. Hammer and reed are named and rejected
-// with DomainError. They are not played as a pluck.
+// Helmholtz motion lives in bow.h. A hammer is not: the hard narrow hammer
+// lives in hammer.h. Reed is named and rejected with DomainError. None of
+// those three is played as a pluck.
 //
 // Dependency: this layer may use physics/ and the music pitch→frequency
 // adapter. physics/ and core/ do not include instruments/.
@@ -73,7 +74,7 @@ static_assert(kStringInstrumentCourses == 4);
 enum class ExcitationKind {
   Pluck,   // realized: InitialShape::pluck on the ideal string
   Bow,     // not an initial shape; steady motion is bow.h
-  Hammer,  // not modeled
+  Hammer,  // not an initial shape; hard narrow hammer is hammer.h
   Reed,    // not modeled
 };
 
@@ -219,9 +220,10 @@ namespace detail {
   return makeCoupledString(system.value(), course.tension, bridge);
 }
 
-// Pluck → InitialShape. Hammer and reed are DomainError. Bow is also
-// DomainError here: a steady bow is not an initial shape (see bow.h).
-// A position outside (0, 1) or a non-finite amplitude is InvalidArgument.
+// Pluck → InitialShape. Bow and hammer are DomainError here: neither is an
+// initial displacement (see bow.h and hammer.h). Reed is DomainError
+// because it has no model. A position outside (0, 1) or a non-finite
+// amplitude is InvalidArgument.
 [[nodiscard]] inline Result<InitialShape, QuantityError> realizeExcitation(
     const StringCourse& course, const Excitation& excitation) {
   using R = Result<InitialShape, QuantityError>;

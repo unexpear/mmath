@@ -1,11 +1,12 @@
-# Instruments — violin, viola, cello, double bass, a Helmholtz bow, and one body mode
+# Instruments — bowed strings, a Helmholtz bow, one body mode, and a hard hammer
 
 Status: assembly layer for four bowed strings, a steady Helmholtz bow on
-one ideal string, and one body mode driven by that bow's bridge force.
-Verified against the ideal-string law, Guettler's tables, the
-Helmholtz/Schelleng identities, and the single-mode admittance below.
-Unvalidated as radiated sound: the body mode is open-loop, and there is
-no measured bridge admittance and no far-field pressure.
+one ideal string, one body mode driven by that bow's bridge force, and a
+hard narrow hammer valid until the first reflection returns. Verified
+against the ideal-string law, Guettler's tables, the Helmholtz/Schelleng
+identities, the single-mode admittance, and the hard-hammer contact law
+below. Unvalidated as radiated sound: the body mode is open-loop, and
+there is no measured bridge admittance and no far-field pressure.
 
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
@@ -25,14 +26,18 @@ interval.
 | `instruments/double_bass.h` | Orchestral E1 A1 D2 G2, vibrating length 1.060 m, body 1.110 m, sounding compass E1–B3 (written E2–B4) |
 | `instruments/bow.h` | Steady Helmholtz stick/slip, bridge-force sawtooth, Schelleng maximum normal force |
 | `instruments/body.h` | One driving-point body mode. Resonance, Q, and modal mass are arguments |
+| `instruments/hammer.h` | Hard narrow hammer. Mass, speed, and strike position are arguments |
 
 `physics/` does not include `instruments/`. The only music dependency is
 the pitch→frequency adapter (`makePitch`), so open-string hertz are the
 engine's A440 12-TET pitches rather than a second copy of that formula.
 
-A pluck is an initial shape. Hammer and reed still return `DomainError`
-from that path. A bow is not an initial shape; `makeHelmholtzStroke`
-builds the steady regime.
+A pluck is an initial shape. A bow is not; `makeHelmholtzStroke` builds
+the steady regime. A hammer is not either; `makeHardHammerBlow` is the
+hard narrow hammer until the first reflection returns.
+`realizeExcitation` still returns `DomainError` for a bow and for a
+hammer, because that function only builds an initial displacement. Reed
+still returns `DomainError` and has no model.
 
 ## Sources
 
@@ -110,10 +115,11 @@ speed is higher, and Guettler's density and tension ranges for the bass
 G2 are not the cello's. A double bass is not a cello with the labels
 rewritten, and the body length is not used as \(L\).
 
-Hammer and reed still return `DomainError`. The Helmholtz bow is
-unchanged and can be applied to a bass course the same way as to a
-violin, viola, or cello course. The body mode in the next section is the
-same function for all four; none of the factories stores a resonance.
+Reed still returns `DomainError`. The Helmholtz bow is unchanged and can
+be applied to a bass course the same way as to a violin, viola, or cello
+course. The body mode and the hard hammer are the same functions for any
+of the four courses; none of the factories stores a resonance, a hammer
+mass, or a strike speed.
 
 ## What the same pitch does on the longer instrument
 
@@ -151,6 +157,16 @@ not a violin with the labels rewritten.
   harmonic. Mean damper power matches mean input power. The same mode on
   the lowest string of each of the four instruments sees a different
   flyback, so the first velocity coefficient changes with the instrument.
+- A hard hammer's contact velocity is \(v_0 e^{-t/\tau}\) with
+  \(\tau = m/(2Z)\) and \(Z=\mu c\), the force is \(2Zv\), and the
+  contact displacement is the integral of that velocity. The impulse
+  equals the hammer's lost momentum. The same mass and speed on the
+  bass's lowest string is a different impedance, so the initial force
+  and the time constant are not the violin's. At and after the first
+  reflection the formula is refused. A non-positive speed, a non-positive
+  mass, and a strike on the nut or the bridge are refused. The direct
+  wave is zero ahead of the outgoing front and matches the retarded
+  contact displacement behind it, until a reflection arrives.
 
 ## Bow
 
@@ -208,12 +224,41 @@ frequency is not evaluated: it needs f-hole area, cavity volume, and an
 effective neck length. A0–B1 coupling needs a mutual term. None of those
 constants is invented.
 
-`physics/` does not include `instruments/`. Hammer and reed still return
+`physics/` does not include `instruments/`. Reed still returns
 `DomainError`.
+
+## Hammer
+
+`hammer.h` is the hard narrow hammer of Smith, *Physical Audio Signal
+Processing*, "The Mass-String Collision", cut off where Hall's finite
+string stops being that one wave. One-way impedance \(Z=\mu c\), incoming
+speed \(v_0\), hammer mass \(m\), contact starting at \(t=0\):
+
+\[
+v(t)=v_0 e^{-2Zt/m},\qquad F(t)=2Zv(t),\qquad
+y(t)=v_0\tau(1-e^{-t/\tau}),\qquad \tau=\frac{m}{2Z}.
+\]
+
+Mass, speed, and the strike fraction are arguments. No felt table and no
+hammer mass is stored on the violin, viola, cello, or double bass.
+
+The contact law is refused at \(t \ge 2d/c\), where \(d\) is the distance
+from the strike to the nearer end: a reflection has returned, and this
+slice does not sum Hall's later waves or decide when they throw the
+hammer off. A hard hammer on an infinite string never rebounds, so no
+contact-loss time is invented. Ahead of the outgoing front the string is
+still at rest. Behind it, displacement and velocity are the contact
+history retarded by \(|x-x_0|/c\). That copy is refused once a reflection
+from either end has reached \(x\).
+
+Felt compliance \(F=K\xi^{p}\) is not evaluated. \(K\) and \(p\) are not
+universal constants, and this hard limit does not take them as arguments.
+Hammer width, shank rotation, and gravity are not in the model.
 
 ## Still planned
 
-Hammer, reed, a sum of measured body modes, cavity Helmholtz frequency,
+Reed, felt compliance and the reflected-wave sum for the hammer, a sum of
+measured body modes, cavity Helmholtz frequency,
 A0–B1 coupling, far-field radiation, back-reaction of the body on the
 string (and with it Schelleng's minimum bow force), fingered stopping as
 a change of vibrating length, stiffness of wound strings, and a

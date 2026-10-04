@@ -9,7 +9,8 @@
 // limits (rigid end, free end). Hammer and reed are refused. A bow is a
 // steady Helmholtz stroke: stick/slip velocity, bridge-force sawtooth,
 // and Schelleng's maximum normal force. A body mode filters that force
-// with a caller-supplied resonance, Q, and modal mass.
+// with a caller-supplied resonance, Q, and modal mass. A hard hammer is
+// the infinite-string contact law until the first reflection returns.
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -22,6 +23,7 @@
 
 #include <mmathen/instruments/body.h>
 #include <mmathen/instruments/bow.h>
+#include <mmathen/instruments/hammer.h>
 #include <mmathen/instruments/cello.h>
 #include <mmathen/instruments/double_bass.h>
 #include <mmathen/instruments/viola.h>
@@ -213,7 +215,7 @@ TEST_CASE("a pluck follows the modal sum; other excitations are refused",
             modalPluckResponse(course, pluck, 1.0, time, 64))) <=
         modal.truncationBound() + 1e-9);
 
-  // A bow is not an initial shape. Hammer and reed have no model.
+  // Bow and hammer are not initial displacements. Reed has no model.
   for (const ExcitationKind kind :
        {ExcitationKind::Bow, ExcitationKind::Hammer, ExcitationKind::Reed}) {
     Excitation other = pluck;
@@ -518,4 +520,110 @@ TEST_CASE("one body mode filters the Helmholtz bridge force", "[instruments]") {
       unwrap(makeHelmholtzStroke(unwrap(violin()).courses[0], stroke));
   CHECK(bodyVelocity(mode, violinMotion, 0.0, 0).error() ==
         QuantityError::InvalidArgument);
+}
+
+TEST_CASE("a hard hammer follows the infinite-string law until the reflection",
+          "[instruments]") {
+  // Mass and speed are arguments, not a published piano hammer.
+  const auto violinInstrument = unwrap(violin());
+  const StringCourse& course = violinInstrument.courses[2];  // A4
+  const double fraction = 0.125;
+  const double mass = 0.012;
+  const double speed = 1.5;
+  const auto blow =
+      unwrap(makeHardHammerBlow(course, HammerStrike{fraction, mass, speed}));
+
+  const double length = course.geometry.vibratingLength.value();
+  const double density = course.material.linearDensity.value();
+  const double wave = std::sqrt(course.tension.value() / density);
+  const double impedance = density * wave;
+  const double position = fraction * length;
+  const double nearer = std::min(position, length - position);
+  const double firstReflection = 2.0 * nearer / wave;
+  CHECK(nearlyEqual(blow.impedance, impedance, 0.0, 1e-12));
+  CHECK(nearlyEqual(blow.timeConstant, mass / (2.0 * impedance), 0.0, 1e-12));
+  CHECK(nearlyEqual(blow.firstReflectionTime, firstReflection, 0.0, 1e-12));
+  CHECK(nearlyEqual(blow.initialForce, 2.0 * impedance * speed, 0.0, 1e-12));
+  CHECK(blow.positionMeters == position);
+
+  const auto centered = unwrap(
+      makeHardHammerBlow(course, HammerStrike{0.5, mass, speed}));
+  const double period = 2.0 * length / wave;
+  CHECK(nearlyEqual(centered.firstReflectionTime, 0.5 * period, 0.0, 1e-12));
+  CHECK(blow.firstReflectionTime < centered.firstReflectionTime);
+
+  const double time = 0.25 * blow.firstReflectionTime;
+  const double decay = std::exp(-time / blow.timeConstant);
+  const double velocity = speed * decay;
+  CHECK(nearlyEqual(unwrap(hardHammerVelocity(blow, time)), velocity, 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(unwrap(hardHammerForce(blow, time)),
+                    2.0 * impedance * velocity, 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(hardHammerForce(blow, 0.0)), blow.initialForce, 0.0,
+                    1e-15));
+  CHECK(unwrap(hardHammerDisplacement(blow, 0.0)) == 0.0);
+  CHECK(nearlyEqual(unwrap(hardHammerDisplacement(blow, time)),
+                    speed * blow.timeConstant * (1.0 - decay), 0.0, 1e-12));
+  const double kineticLoss =
+      0.5 * mass * (speed * speed - velocity * velocity);
+  CHECK(nearlyEqual(kineticLoss,
+                    0.5 * mass * speed * speed * (1.0 - decay * decay), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(mass * (speed - velocity), mass * speed * (1.0 - decay),
+                    0.0, 1e-12));
+
+  const double observe = 0.5 * length;
+  const double delay = std::fabs(observe - position) / wave;
+  const double reflectionAtObserve =
+      std::min((observe + position) / wave,
+               (2.0 * length - observe - position) / wave);
+  REQUIRE(delay < reflectionAtObserve);
+  CHECK(unwrap(hardHammerStringDisplacement(blow, observe, delay * 0.5)) ==
+        0.0);
+  CHECK(unwrap(hardHammerStringVelocity(blow, observe, delay * 0.5)) == 0.0);
+  const double after = delay + 0.2 * (reflectionAtObserve - delay);
+  CHECK(nearlyEqual(unwrap(hardHammerStringDisplacement(blow, observe, after)),
+                    unwrap(hardHammerDisplacement(blow, after - delay)), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(unwrap(hardHammerStringVelocity(blow, observe, after)),
+                    unwrap(hardHammerVelocity(blow, after - delay)), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(
+      unwrap(hardHammerStringDisplacement(blow, position, time)),
+      unwrap(hardHammerDisplacement(blow, time)), 0.0, 1e-15));
+
+  CHECK(hardHammerForce(blow, blow.firstReflectionTime).error() ==
+        QuantityError::DomainError);
+  CHECK(hardHammerVelocity(blow, blow.firstReflectionTime + 1.0e-6).error() ==
+        QuantityError::DomainError);
+  CHECK(hardHammerDisplacement(blow, -1.0e-9).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(hardHammerStringDisplacement(blow, observe, reflectionAtObserve)
+            .error() == QuantityError::DomainError);
+  CHECK(hardHammerStringDisplacement(blow, 0.0, time).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(hardHammerStringVelocity(blow, length, time).error() ==
+        QuantityError::InvalidArgument);
+
+  CHECK(makeHardHammerBlow(course, HammerStrike{0.0, mass, speed}).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(makeHardHammerBlow(course, HammerStrike{1.0, mass, speed}).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(makeHardHammerBlow(course, HammerStrike{fraction, 0.0, speed}).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(makeHardHammerBlow(course, HammerStrike{fraction, mass, 0.0}).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(makeHardHammerBlow(course, HammerStrike{fraction, mass, -speed})
+            .error() == QuantityError::InvalidArgument);
+
+  // The same mass and speed on the bass's heavier string is a different
+  // impedance, so the contact force and the time constant are not the
+  // violin's.
+  const auto bassInstrument = unwrap(doubleBass());
+  const auto bassBlow = unwrap(makeHardHammerBlow(
+      bassInstrument.courses[0], HammerStrike{fraction, mass, speed}));
+  CHECK(bassBlow.impedance != blow.impedance);
+  CHECK(bassBlow.initialForce != blow.initialForce);
+  CHECK(bassBlow.timeConstant != blow.timeConstant);
+  CHECK(bassBlow.firstReflectionTime != blow.firstReflectionTime);
 }
