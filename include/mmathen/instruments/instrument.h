@@ -17,6 +17,11 @@
 // lives in hammer.h. A reed is not: the quasi-static characteristic lives
 // in reed.h. None of those three is played as a pluck.
 //
+// A fingered stop is the same course with a shorter vibrating length. The
+// fraction is measured from the nut, as a pluck is. Tension and linear
+// density stay the open course's; the frequency is stringMode of the
+// bridge-side length. No fingerboard and no fret table is stored.
+//
 // Dependency: this layer may use physics/ and the music pitch→frequency
 // adapter. physics/ and core/ do not include instruments/.
 //
@@ -221,6 +226,60 @@ namespace detail {
     const StringCourse& course) {
   return stringMode(course.geometry.vibratingLength, course.tension,
                     course.material.linearDensity, 1);
+}
+
+// The stopped course is not a published open-string row. Tension and
+// linear density are copied from the open course; only the length changes.
+inline constexpr const char* kFingerStopSource =
+    "Fingered stop of an open course: tension and linear density are the "
+    "open course's, vibrating length is the bridge side L' = (1 - alpha) L, "
+    "and the fundamental is the fixed-fixed mode of that length "
+    "(stringMode). alpha is the caller's fraction from the nut. No "
+    "fingerboard length and no fret table.";
+
+// Stop `open` at fingerFractionFromNut in (0, 1), the same coordinate as
+// a pluck: 0 is the nut and 1 is the bridge, and neither is a stop.
+// Vibrating length becomes the bridge side, L' = (1 - alpha) L. Material
+// and tension are copied, so T = μ (2 L' f')^2 still holds and the wave
+// speed is unchanged. f' is stringMode(L', T, μ, 1). The published tension
+// interval is the open course's and is inclusive; a tension outside it is
+// RangeError. The stopped course has no spelled pitch: the label is null,
+// frequencyPrinted is false, and publishedFrequencyHz is 0.
+// InvalidArgument: fraction not in (0, 1), or the open course's length,
+// tension, density, or published ranges are not usable.
+[[nodiscard]] inline Result<StringCourse, QuantityError> fingerStop(
+    const StringCourse& open, double fingerFractionFromNut) {
+  using R = Result<StringCourse, QuantityError>;
+  if (!std::isfinite(fingerFractionFromNut) || !(fingerFractionFromNut > 0.0) ||
+      !(fingerFractionFromNut < 1.0))
+    return R::failure(QuantityError::InvalidArgument);
+  const double openLength = open.geometry.vibratingLength.value();
+  const double tension = open.tension.value();
+  const double density = open.material.linearDensity.value();
+  if (!detail::positiveFinite(openLength) || !detail::positiveFinite(tension) ||
+      !detail::positiveFinite(density))
+    return R::failure(QuantityError::InvalidArgument);
+  if (!detail::usableRange(open.publishedTensionN.min,
+                           open.publishedTensionN.max) ||
+      !detail::usableRange(open.publishedDensityGPerM.min,
+                           open.publishedDensityGPerM.max))
+    return R::failure(QuantityError::InvalidArgument);
+  if (tension < open.publishedTensionN.min || tension > open.publishedTensionN.max)
+    return R::failure(QuantityError::RangeError);
+  const double stoppedLength = (1.0 - fingerFractionFromNut) * openLength;
+  auto frequency = stringMode(DistanceMeters{stoppedLength}, open.tension,
+                              open.material.linearDensity, 1);
+  if (!frequency.ok()) return R::failure(frequency.error());
+  return R::success(StringCourse{
+      StringGeometry{DistanceMeters{stoppedLength}},
+      open.material,
+      StringTuning{nullptr, frequency.value()},
+      open.tension,
+      open.publishedDensityGPerM,
+      open.publishedTensionN,
+      0.0,
+      false,
+      kFingerStopSource});
 }
 
 // Attach the bridge end (x = L) to a caller-supplied oscillator. The stock

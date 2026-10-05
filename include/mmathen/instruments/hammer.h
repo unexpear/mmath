@@ -20,21 +20,42 @@
 // excitation II: General solution for a hard narrow hammer", J. Acoust.
 // Soc. Am. (1987): the first outgoing wave is this solution, and each
 // later reflection is another wave, which can throw the hammer off.
-// Those later waves are not summed here. Asking for a time at which a
-// reflection has already arrived is DomainError, the same kind of refusal
-// as a bow heavier than Schelleng's maximum.
+// hardHammerVelocity, hardHammerForce, hardHammerDisplacement, and the
+// direct-wave string copies stay on the pre-reflection side of that
+// cutoff. Asking them for a time at which a reflection has already
+// arrived is DomainError, the same kind of refusal as a bow heavier
+// than Schelleng's maximum.
 //
 // The first reflection returns to the contact point at 2 d / c, where d
 // is the distance to the nearer end. A hard hammer on an infinite string
-// never rebounds; this slice does not invent a contact-loss time.
+// never rebounds; those four functions do not invent a contact-loss time.
 //
-// Not evaluated, because each one needs data or a summation this closed
-// form does not have:
-//   felt compliance F = K ξ^p (K and p are not a universal constant;
-//   none is invented, and they are not arguments of this hard limit),
-//   Hall's reflected-wave series and multiple contacts,
-//   hammer width, shank rotation, gravity.
-// Reed is not this model. The bowed-string factories are unchanged.
+// reflectedHammerVelocity, reflectedHammerForce, and
+// reflectedHammerDisplacement add the first fixed-end image from the nut
+// and from the bridge. Velocity reflection at a fixed end is −1. With
+// incoming velocity waves the contact force is F = 2 Z v − 2 Z (v_il+v_ir).
+// Round trip to the nut is t_nut = 2x/c and to the bridge is
+// t_bridge = 2(L−x)/c. Until the nearer end's second image at
+// 2 * firstReflectionTime, every delayed sample still lies in the pure
+// exponential, so the closed form is valid on
+// [0, 2 * firstReflectionTime) and DomainError at and after that horizon.
+// The pure contact velocity plus, for each arrived delay t_d,
+//   extra = v0 (t_d − t) / τ * exp(−(t − t_d) / τ),
+// satisfies extra' + extra/τ = −v_pure(t−t_d)/τ. A centered strike has
+// t_nut = t_bridge, so both images are added. The extras vanish at the
+// arrival, so velocity and displacement stay continuous; the force jumps
+// because the returning wave is the strike's velocity step.
+//
+// Felt compliance is a separate instantaneous law, F = K ξ^p for ξ > 0
+// and F = 0 for ξ ≤ 0 (loss of contact is zero force, not the hard-hammer
+// DomainError). K and p are arguments. feltHammerDerivative uses the
+// blow's mass and impedance together with the caller's hammer and string
+// state: a_h = −F/m and v_string = F/(2Z) + v_incoming. It does not step
+// time, and it does not move the hard-hammer cutoff.
+//
+// Still not evaluated: hammer width, shank rotation, gravity, and any
+// image past the first from each end. No felt table and no hammer mass
+// is stored on a factory. Reed is not this model.
 //
 // VERIFIED against the force, velocity, displacement, momentum, and
 // energy identities above. UNVALIDATED against a measured hammer force.
@@ -52,8 +73,8 @@ inline constexpr const char* kHardHammerSource =
     "(v = v0 exp(-2 Z t / m), F = 2 Z v, Z the one-way string impedance). "
     "Valid only until the first reflection returns: D. E. Hall, \"Piano "
     "string excitation II: General solution for a hard narrow hammer\", "
-    "J. Acoust. Soc. Am. (1987). Felt stiffness, reflected-wave sum, and "
-    "loss of contact are not evaluated.";
+    "J. Acoust. Soc. Am. (1987). Felt compliance and the first-image sum "
+    "are separate functions in this header and are not applied here.";
 
 // Position is the fraction of the vibrating length from the nut toward
 // the bridge, as for a pluck. Mass is kilograms. Speed is the incoming
@@ -220,6 +241,196 @@ namespace hammer_detail {
       std::fabs(positionMeters - blow.positionMeters) / blow.waveSpeed;
   if (timeSeconds < delay) return R::success(0.0);
   return hardHammerVelocity(blow, timeSeconds - delay);
+}
+
+namespace hammer_detail {
+
+struct ReflectionImage {
+  double pureVelocity = 0.0;
+  double extraVelocity = 0.0;
+  double extraDisplacement = 0.0;
+};
+
+// First fixed-end image of delay `delay`. Zero until the wave arrives.
+// At the arrival the extra velocity and displacement are zero.
+[[nodiscard]] inline ReflectionImage arrivedImage(const HardHammerBlow& blow,
+                                                  double time, double delay) {
+  ReflectionImage image;
+  if (!(time >= delay)) return image;
+  const double age = time - delay;
+  const double tau = blow.timeConstant;
+  const double decay = std::exp(-age / tau);
+  image.pureVelocity = blow.incomingSpeed * decay;
+  image.extraVelocity = blow.incomingSpeed * (-age / tau) * decay;
+  image.extraDisplacement =
+      blow.incomingSpeed * ((age + tau) * decay - tau);
+  return image;
+}
+
+[[nodiscard]] inline bool reflectionBlowUsable(const HardHammerBlow& blow) {
+  const double length = blow.lengthMeters;
+  const double position = blow.positionMeters;
+  return std::isfinite(blow.incomingSpeed) && blow.incomingSpeed > 0.0 &&
+         std::isfinite(blow.timeConstant) && blow.timeConstant > 0.0 &&
+         std::isfinite(blow.impedance) && blow.impedance > 0.0 &&
+         std::isfinite(blow.waveSpeed) && blow.waveSpeed > 0.0 &&
+         std::isfinite(blow.firstReflectionTime) &&
+         blow.firstReflectionTime > 0.0 && std::isfinite(length) &&
+         length > 0.0 && std::isfinite(position) && position > 0.0 &&
+         position < length;
+}
+
+}  // namespace hammer_detail
+
+// Contact velocity (m/s) with the first fixed-end image from each end.
+// t in [0, 2 * firstReflectionTime) is the closed form. t < 0 or
+// non-finite is InvalidArgument. t at or after the second-image horizon
+// is DomainError: that image is not in the sum. hardHammerVelocity remains
+// DomainError from firstReflectionTime onward; this function is the one
+// that continues past that cutoff.
+[[nodiscard]] inline Result<double, QuantityError> reflectedHammerVelocity(
+    const HardHammerBlow& blow, double timeSeconds) {
+  using R = Result<double, QuantityError>;
+  if (!hammer_detail::reflectionBlowUsable(blow))
+    return R::failure(QuantityError::InvalidArgument);
+  if (!std::isfinite(timeSeconds) || timeSeconds < 0.0)
+    return R::failure(QuantityError::InvalidArgument);
+  if (!(timeSeconds < 2.0 * blow.firstReflectionTime))
+    return R::failure(QuantityError::DomainError);
+  const double nut = 2.0 * blow.positionMeters / blow.waveSpeed;
+  const double bridge =
+      2.0 * (blow.lengthMeters - blow.positionMeters) / blow.waveSpeed;
+  const auto fromNut = hammer_detail::arrivedImage(blow, timeSeconds, nut);
+  const auto fromBridge =
+      hammer_detail::arrivedImage(blow, timeSeconds, bridge);
+  const double speed = blow.incomingSpeed * std::exp(-timeSeconds / blow.timeConstant) +
+                       fromNut.extraVelocity + fromBridge.extraVelocity;
+  if (!std::isfinite(speed)) return R::failure(QuantityError::RangeError);
+  return R::success(speed);
+}
+
+// Contact force (N), F = 2 Z (v + v_pure(t − t_nut) + v_pure(t − t_bridge)),
+// with a delayed pure velocity omitted until its end has reflected.
+// Same time domain as reflectedHammerVelocity. The force jumps when an
+// image arrives; the velocity does not.
+[[nodiscard]] inline Result<double, QuantityError> reflectedHammerForce(
+    const HardHammerBlow& blow, double timeSeconds) {
+  using R = Result<double, QuantityError>;
+  if (!hammer_detail::reflectionBlowUsable(blow))
+    return R::failure(QuantityError::InvalidArgument);
+  if (!std::isfinite(timeSeconds) || timeSeconds < 0.0)
+    return R::failure(QuantityError::InvalidArgument);
+  if (!(timeSeconds < 2.0 * blow.firstReflectionTime))
+    return R::failure(QuantityError::DomainError);
+  const double nut = 2.0 * blow.positionMeters / blow.waveSpeed;
+  const double bridge =
+      2.0 * (blow.lengthMeters - blow.positionMeters) / blow.waveSpeed;
+  const auto fromNut = hammer_detail::arrivedImage(blow, timeSeconds, nut);
+  const auto fromBridge =
+      hammer_detail::arrivedImage(blow, timeSeconds, bridge);
+  auto speed = reflectedHammerVelocity(blow, timeSeconds);
+  if (!speed.ok()) return R::failure(speed.error());
+  const double force =
+      2.0 * blow.impedance *
+      (speed.value() + fromNut.pureVelocity + fromBridge.pureVelocity);
+  if (!std::isfinite(force)) return R::failure(QuantityError::RangeError);
+  return R::success(force);
+}
+
+// Contact displacement (m), the integral of reflectedHammerVelocity from
+// the instant of contact. The pure part is v0 τ (1 − e^{−t/τ}). Each
+// arrived image adds v0 ((t − t_d) + τ) e^{−(t−t_d)/τ} − v0 τ, which is
+// zero at t_d. Same time domain as the velocity.
+[[nodiscard]] inline Result<double, QuantityError> reflectedHammerDisplacement(
+    const HardHammerBlow& blow, double timeSeconds) {
+  using R = Result<double, QuantityError>;
+  if (!hammer_detail::reflectionBlowUsable(blow))
+    return R::failure(QuantityError::InvalidArgument);
+  if (!std::isfinite(timeSeconds) || timeSeconds < 0.0)
+    return R::failure(QuantityError::InvalidArgument);
+  if (!(timeSeconds < 2.0 * blow.firstReflectionTime))
+    return R::failure(QuantityError::DomainError);
+  const double nut = 2.0 * blow.positionMeters / blow.waveSpeed;
+  const double bridge =
+      2.0 * (blow.lengthMeters - blow.positionMeters) / blow.waveSpeed;
+  const auto fromNut = hammer_detail::arrivedImage(blow, timeSeconds, nut);
+  const auto fromBridge =
+      hammer_detail::arrivedImage(blow, timeSeconds, bridge);
+  const double decay = std::exp(-timeSeconds / blow.timeConstant);
+  const double metres =
+      blow.incomingSpeed * blow.timeConstant * (1.0 - decay) +
+      fromNut.extraDisplacement + fromBridge.extraDisplacement;
+  if (!std::isfinite(metres)) return R::failure(QuantityError::RangeError);
+  return R::success(metres);
+}
+
+// F = K ξ^p for ξ > 0, and 0 for ξ ≤ 0. K and p are arguments and must
+// be strictly positive and finite. A non-finite compression is
+// InvalidArgument. A non-finite power is RangeError. ξ ≤ 0 is loss of
+// contact, not the hard-hammer DomainError.
+[[nodiscard]] inline Result<double, QuantityError> feltHammerForce(
+    double compressionMeters, double stiffness, double exponent) {
+  using R = Result<double, QuantityError>;
+  if (!std::isfinite(compressionMeters) || !std::isfinite(stiffness) ||
+      !std::isfinite(exponent))
+    return R::failure(QuantityError::InvalidArgument);
+  if (!(stiffness > 0.0) || !(exponent > 0.0))
+    return R::failure(QuantityError::InvalidArgument);
+  if (!(compressionMeters > 0.0)) return R::success(0.0);
+  const double force = stiffness * std::pow(compressionMeters, exponent);
+  if (!std::isfinite(force)) return R::failure(QuantityError::RangeError);
+  return R::success(force);
+}
+
+// Instantaneous hammer and string state. Displacements are metres,
+// velocities are m/s. incomingVelocity is v_il + v_ir at the contact
+// point, supplied by the caller.
+struct FeltHammerState {
+  double hammerDisplacementMeters;
+  double hammerVelocityMetersPerSecond;
+  double stringDisplacementMeters;
+  double incomingVelocityMetersPerSecond;
+};
+
+// ξ = y_hammer − y_string. hammerAcceleration is −F/m.
+// stringVelocity is F/(2Z) + incomingVelocity. Mass and Z come from the
+// blow. No time step is taken, and firstReflectionTime is not consulted:
+// the hard-hammer cutoff stays on the hardHammer* functions.
+struct FeltHammerDerivative {
+  double compressionMeters = 0.0;
+  double forceNewtons = 0.0;
+  double hammerAcceleration = 0.0;
+  double stringVelocity = 0.0;
+};
+
+// InvalidArgument: a state component is non-finite, K or p is not
+// strictly positive, or the blow's mass or impedance is not strictly
+// positive. RangeError if the acceleration or the string velocity
+// overflows.
+[[nodiscard]] inline Result<FeltHammerDerivative, QuantityError>
+feltHammerDerivative(const HardHammerBlow& blow, const FeltHammerState& state,
+                     double stiffness, double exponent) {
+  using R = Result<FeltHammerDerivative, QuantityError>;
+  if (!std::isfinite(state.hammerDisplacementMeters) ||
+      !std::isfinite(state.hammerVelocityMetersPerSecond) ||
+      !std::isfinite(state.stringDisplacementMeters) ||
+      !std::isfinite(state.incomingVelocityMetersPerSecond))
+    return R::failure(QuantityError::InvalidArgument);
+  if (!std::isfinite(blow.massKg) || !(blow.massKg > 0.0) ||
+      !std::isfinite(blow.impedance) || !(blow.impedance > 0.0))
+    return R::failure(QuantityError::InvalidArgument);
+  const double compression =
+      state.hammerDisplacementMeters - state.stringDisplacementMeters;
+  auto force = feltHammerForce(compression, stiffness, exponent);
+  if (!force.ok()) return R::failure(force.error());
+  const double acceleration = -force.value() / blow.massKg;
+  const double stringVelocity =
+      force.value() / (2.0 * blow.impedance) +
+      state.incomingVelocityMetersPerSecond;
+  if (!std::isfinite(acceleration) || !std::isfinite(stringVelocity))
+    return R::failure(QuantityError::RangeError);
+  return R::success(FeltHammerDerivative{compression, force.value(),
+                                         acceleration, stringVelocity});
 }
 
 }  // namespace mmathen

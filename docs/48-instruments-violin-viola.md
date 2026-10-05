@@ -2,15 +2,18 @@
 
 Status: assembly layer for four bowed strings, a concert pedal harp, a
 French double harpsichord, a steady Helmholtz bow on one ideal string,
-one body mode driven by that bow's bridge force, a hard narrow hammer
-valid until the first reflection returns, and a quasi-static single-reed
-characteristic. Verified against the ideal-string law, Guettler's tables,
-the harp and harpsichord measurements named below, the Helmholtz/Schelleng
-identities, the single-mode admittance, the hard-hammer contact law, and
+one body mode driven by that bow's bridge force, a hard narrow hammer,
+the first fixed-end images of that hammer, a felt contact law, a
+quasi-static single reed, a cylindrical bore, and reed inertia. A
+fingered stop shortens one open course. Verified against the ideal-string
+law, Guettler's tables, the harp and harpsichord measurements named
+below, the Helmholtz/Schelleng identities, the single-mode admittance,
+the hard-hammer contact law, the first-image sum, the felt power law, and
 the reed flow law. Unvalidated as radiated sound: the body mode is
 open-loop, and there is no measured bridge admittance and no far-field
-pressure. The reed is not a sounding bore. The harp and the harpsichord
-are not sounded through a soundboard model.
+pressure. The bore is an ideal cylinder with the caller's length and
+cross-section; there is no clarinet. The harp and the harpsichord are
+not sounded through a soundboard model.
 
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
@@ -23,15 +26,15 @@ interval.
 
 | Header | Contents |
 |---|---|
-| `instruments/instrument.h` | `StringCourse` (geometry, material, tuning, derived tension); `makeStringCourse` / `makeStringInstrument`; pluck → `InitialShape` and the modal sum; `coupleToBridge` (caller-supplied `BridgeOscillator`) |
+| `instruments/instrument.h` | `StringCourse` (geometry, material, tuning, derived tension); `makeStringCourse` / `makeStringInstrument`; pluck → `InitialShape` and the modal sum; `coupleToBridge` (caller-supplied `BridgeOscillator`); `fingerStop` shortens the vibrating length |
 | `instruments/violin.h` | G3 D4 A4 E5, vibrating length 0.328 m, body 0.356 m, compass G3–E7 |
 | `instruments/viola.h` | C3 G3 D4 A4, vibrating length 0.375 m, body 0.410 m, compass C3–C6 |
 | `instruments/cello.h` | C2 G2 D3 A3, vibrating length 0.690 m, body 0.755 m, compass C2–E5 |
 | `instruments/double_bass.h` | Orchestral E1 A1 D2 G2, vibrating length 1.060 m, body 1.110 m, sounding compass E1–B3 (written E2–B4) |
 | `instruments/bow.h` | Steady Helmholtz stick/slip, bridge-force sawtooth, Schelleng maximum normal force |
 | `instruments/body.h` | One driving-point body mode. Resonance, Q, and modal mass are arguments |
-| `instruments/hammer.h` | Hard narrow hammer. Mass, speed, and strike position are arguments |
-| `instruments/reed.h` | Quasi-static single reed. Effective area, closure pressure, and air state are arguments |
+| `instruments/hammer.h` | Hard narrow hammer until the first reflection; first-image sum until the second image; felt law \(F=K\xi^{p}\). Mass, speed, strike, \(K\), and \(p\) are arguments |
+| `instruments/reed.h` | Quasi-static single reed; cylindrical bore; reed inertia. Area, closure, air state, bore length and cross-section, mass, tip area, closing displacement, and damping are arguments |
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
 | `instruments/harpsichord.h` | Goermans/Taskin 1764/1783–4 French double: 2×8′ + 4′, compass F1–F6 |
 
@@ -359,15 +362,53 @@ U_{\max}=\frac{2}{3}S_0\sqrt{\frac{2P_M}{3\rho}}.
 \(\Delta P<0\) is `DomainError`. Equation (5) is the blowing direction.
 
 \(S_0\) is already the effective jet area. A second vena-contracta
-coefficient is not applied. The characteristic does not oscillate: a
-played note needs a bore reflection function, or a length and a
-cross-section, and neither is invented or taken from the bowed-string
-factories. Reed mass is not an argument, so inertia and damping are
-absent. Dalmont's quasi-static use assumes the playing frequency is small
-beside the reed resonance, and the paper does not give a numerical ratio
-at which that assumption fails, so no ratio is invented. A viscous
-cutoff would need a viscosity and the channel width separately from
-\(S_0\); that cutoff is not applied.
+coefficient is not applied. Dalmont's quasi-static use assumes the
+playing frequency is small beside the reed resonance, and the paper does
+not give a numerical ratio at which that assumption fails, so no ratio
+is invented. A viscous cutoff would need a viscosity and the channel
+width separately from \(S_0\); that cutoff is not applied.
+
+### Bore
+
+`makeReedBore` is a cylinder. Length, cross-section, static pressure,
+temperature, and the far end are arguments. \(c=\sqrt{\gamma RT}\) and
+\(\rho=p/(RT)\) come from the air already in `physics/`. Acoustic
+impedance \(Z_c=\rho c/S\). The round trip is \(2L/c\).
+
+- Open far end: pressure reflection \(-1\), fundamental \(c/(4L)\),
+  \(Z=j Z_c\tan(kL)\). `RangeError` when \(\cos(kL)=0\).
+- Closed far end: pressure reflection \(+1\), fundamental \(c/(2L)\),
+  \(Z=-j Z_c\cot(kL)\). `RangeError` when \(\sin(kL)=0\), including
+  steady pressure.
+
+The impedance is built as a pure-imaginary complex. It is not a quotient
+of two complexes. `boreWaveSplit` takes the outgoing pressure and the
+outgoing pressure from one round trip earlier. \(p^-=R\,p^+_{\text{delayed}}\),
+\(p=p^++p^-\), and the volume flow into the bore is \((p^+-p^-)/Z_c\).
+There is no stored time step. The mouth-to-bore \(\Delta P\) that enters
+the reed characteristic is the caller's mouth pressure minus this mouth
+pressure. No clarinet is constructed, and no bore length is stored on
+the bowed-string, harp, or harpsichord factories.
+
+### Reed inertia
+
+`makeReedInertia` takes a mass, a tip area, a closing displacement, and
+a damping. Damping is an argument, including zero. Stiffness is derived
+so the static equilibrium sits on Dalmont's line,
+
+\[
+k=\frac{P_M A_{\text{tip}}}{y_{\text{close}}},\qquad
+f=\frac{1}{2\pi}\sqrt{\frac{k}{m}}.
+\]
+
+For \(0\le\Delta P\le P_M\) the equilibrium displacement is
+\(y=y_{\text{close}}\Delta P/P_M\), and the spring acceleration there is
+zero. \(\Delta P<0\) and \(\Delta P>P_M\) are `DomainError` for that
+equilibrium. The acceleration \((A\Delta P-ky-rv)/m\) stays the linear
+spring past the lay; there is no contact solver. Opening against
+displacement is the same straight line, zero on and beyond the lay, and
+larger than \(S_0\) if the reed is pulled back through \(y=0\). No
+reed-mass number is stored on a factory.
 
 ## Hammer
 
@@ -382,27 +423,73 @@ y(t)=v_0\tau(1-e^{-t/\tau}),\qquad \tau=\frac{m}{2Z}.
 \]
 
 Mass, speed, and the strike fraction are arguments. No felt table and no
-hammer mass is stored on the violin, viola, cello, or double bass.
+hammer mass is stored on the violin, viola, cello, double bass, harp, or
+harpsichord.
 
-The contact law is refused at \(t \ge 2d/c\), where \(d\) is the distance
-from the strike to the nearer end: a reflection has returned, and this
-slice does not sum Hall's later waves or decide when they throw the
-hammer off. A hard hammer on an infinite string never rebounds, so no
-contact-loss time is invented. Ahead of the outgoing front the string is
-still at rest. Behind it, displacement and velocity are the contact
-history retarded by \(|x-x_0|/c\). That copy is refused once a reflection
-from either end has reached \(x\).
+`hardHammerVelocity`, `hardHammerForce`, `hardHammerDisplacement`, and
+the direct-wave copies stay refused at \(t \ge 2d/c\), where \(d\) is the
+distance from the strike to the nearer end. A hard hammer on an infinite
+string never rebounds, so those functions invent no contact-loss time.
+Ahead of the outgoing front the string is still at rest. Behind it,
+displacement and velocity are the contact history retarded by
+\(|x-x_0|/c\). That copy is refused once a reflection from either end has
+reached \(x\).
 
-Felt compliance \(F=K\xi^{p}\) is not evaluated. \(K\) and \(p\) are not
-universal constants, and this hard limit does not take them as arguments.
-Hammer width, shank rotation, and gravity are not in the model.
+`reflectedHammerVelocity`, `reflectedHammerForce`, and
+`reflectedHammerDisplacement` add the first fixed-end image from the nut
+(\(t_{\mathrm{nut}}=2x/c\)) and from the bridge
+(\(t_{\mathrm{bridge}}=2(L-x)/c\)). Velocity reflection at a fixed end is
+\(-1\). For each delay \(t_d\) that has arrived,
+
+\[
+v(t)=v_0 e^{-t/\tau}+\sum v_0\frac{t_d-t}{\tau}e^{-(t-t_d)/\tau},\qquad
+F=2Z\bigl(v+\sum v_0 e^{-(t-t_d)/\tau}\bigr).
+\]
+
+The sum is valid on \([0, 2 t_{\text{first}})\) and is `DomainError` at
+and after that horizon, where the nearer end's second image arrives and
+is not included. A centered strike adds both images. Velocity and
+displacement are continuous at an arrival; the force jumps with the
+returning step. This does not replace the hard-hammer cutoff.
+
+Felt compliance is separate and instantaneous. \(K>0\) and \(p>0\) are
+arguments:
+
+\[
+F=K\xi^{p}\quad(\xi>0),\qquad F=0\quad(\xi\le 0).
+\]
+
+\(\xi\le 0\) is loss of contact, which is zero force, not the hard-hammer
+`DomainError`. `feltHammerDerivative` uses the blow's mass and impedance
+and the caller's state: \(a_h=-F/m\) and
+\(v_{\text{string}}=F/(2Z)+v_{\text{incoming}}\). It does not take a time
+step. Hammer width, shank rotation, and gravity are not in the model.
+
+## Fingered stop
+
+`fingerStop` takes one open course and a fraction \(\alpha\) in \((0,1)\),
+measured from the nut toward the bridge, the same coordinate as a pluck.
+The nut and the bridge are not stops. Geometry becomes the bridge-side
+length \(L'=(1-\alpha)L\). Material \(\mu\) and tension \(T\) are copied,
+so the wave speed is unchanged and
+
+\[
+T=\mu(2L'f')^2,\qquad f'=\frac{1}{2L'}\sqrt{\frac{T}{\mu}}=\frac{L}{L'}f.
+\]
+
+\(f'\) is `stringMode` of the shortened course. The published tension
+interval stays the open course's; a tension outside it is `RangeError`.
+The stopped course has no spelled pitch (`frequencyPrinted` is false).
+The same \(\alpha\) on two instruments is the same frequency ratio and a
+different hertz value, because \(L\) and the open pitch differ. No
+fingerboard length and no fret table is stored. Factories still hold
+open courses only.
 
 ## Still planned
 
-A reed bore and reed inertia, felt compliance and the reflected-wave sum
-for the hammer, a sum of measured body modes, cavity Helmholtz frequency,
-A0–B1 coupling, far-field radiation, back-reaction of the body on the
-string (and with it Schelleng's minimum bow force), fingered stopping as
-a change of vibrating length, stiffness of wound strings, and a
+A sum of measured body modes, cavity Helmholtz frequency, A0–B1 coupling,
+far-field radiation, back-reaction of the body on the string (and with it
+Schelleng's minimum bow force), stiffness of wound strings, and a
 time-stepped stick-slip capture. The Helmholtz stroke is the steady
-regime only.
+regime only. Images after the first from each hammer end, a viscous reed
+channel, and a sounding clarinet are not in this layer.

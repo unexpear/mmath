@@ -11,7 +11,11 @@
 // and Schelleng's maximum normal force. A body mode filters that force
 // with a caller-supplied resonance, Q, and modal mass. A hard hammer is
 // the infinite-string contact law until the first reflection returns. A
-// reed is the quasi-static Bernoulli slit, not a bore and not a string.
+// reed is the quasi-static Bernoulli slit. A fingered stop shortens the
+// vibrating length at the open course's tension. A cylindrical bore and
+// reed inertia take length, area, mass, and damping as arguments. The
+// hard hammer stays refused at the first reflection; the first-image sum
+// continues until the second image, and felt compliance is K ξ^p.
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -691,6 +695,345 @@ TEST_CASE("a reed is the quasi-static Bernoulli slit", "[instruments]") {
       ReedSpec{area, closure, airPressure, temperature + 20.0}));
   CHECK(warmer.airDensityKgPerM3 < reed.airDensityKgPerM3);
   CHECK(warmer.maximumFlowM3PerS != reed.maximumFlowM3PerS);
+}
+
+TEST_CASE("a fingered stop shortens the vibrating length and keeps the tension",
+          "[instruments]") {
+  const auto violinInstrument = unwrap(violin());
+  const auto violaInstrument = unwrap(viola());
+  const StringCourse& violinOpen = violinInstrument.courses[2];  // A4
+  const StringCourse& violaOpen = violaInstrument.courses[3];    // A4
+  const double alpha = 0.25;
+  const auto violinStopped = unwrap(fingerStop(violinOpen, alpha));
+  const auto violaStopped = unwrap(fingerStop(violaOpen, alpha));
+
+  CHECK(violinStopped.geometry.vibratingLength.value() ==
+        (1.0 - alpha) * violinOpen.geometry.vibratingLength.value());
+  CHECK(violinStopped.material.linearDensity.value() ==
+        violinOpen.material.linearDensity.value());
+  CHECK(violinStopped.tension.value() == violinOpen.tension.value());
+  CHECK(violinStopped.publishedTensionN.min == violinOpen.publishedTensionN.min);
+  CHECK(violinStopped.publishedTensionN.max == violinOpen.publishedTensionN.max);
+  CHECK(violinStopped.tuning.label == nullptr);
+  CHECK(violinStopped.frequencyPrinted == false);
+  CHECK(violinStopped.publishedFrequencyHz == 0.0);
+  CHECK(violinStopped.source == kFingerStopSource);
+  CHECK(violinOpen.tuning.label != nullptr);
+  CHECK(std::strcmp(violinOpen.tuning.label, "A4") == 0);
+  CHECK(violinOpen.geometry.vibratingLength.value() == 0.328);
+
+  const double stoppedHz = violinStopped.tuning.frequency.value();
+  const double openHz = violinOpen.tuning.frequency.value();
+  const double ratio = 1.0 / (1.0 - alpha);
+  CHECK(nearlyEqual(stoppedHz, openHz * ratio, 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(openStringFrequency(violinStopped)).value(), stoppedHz,
+                    0.0, 1e-12));
+  const double length = violinStopped.geometry.vibratingLength.value();
+  const double density = violinStopped.material.linearDensity.value();
+  const double tension = density * 4.0 * length * length * stoppedHz * stoppedHz;
+  CHECK(nearlyEqual(violinStopped.tension.value(), tension, 0.0, 1e-9));
+  CHECK(nearlyEqual(std::sqrt(violinStopped.tension.value() / density),
+                    std::sqrt(violinOpen.tension.value() /
+                              violinOpen.material.linearDensity.value()),
+                    0.0, 1e-12));
+
+  const double violaRatio = violaStopped.tuning.frequency.value() /
+                            violaOpen.tuning.frequency.value();
+  CHECK(nearlyEqual(violaRatio, ratio, 0.0, 1e-12));
+  // Both open courses are A4, so the same fraction is the same hertz.
+  // The vibrating lengths are not the same.
+  CHECK(nearlyEqual(violaStopped.tuning.frequency.value(), stoppedHz, 0.0,
+                    1e-12));
+  CHECK(violaStopped.geometry.vibratingLength.value() !=
+        violinStopped.geometry.vibratingLength.value());
+  const auto violinLow = unwrap(fingerStop(violinInstrument.courses[0], alpha));
+  const auto violaLow = unwrap(fingerStop(violaInstrument.courses[0], alpha));
+  CHECK(nearlyEqual(violinLow.tuning.frequency.value() /
+                        violinInstrument.courses[0].tuning.frequency.value(),
+                    ratio, 0.0, 1e-12));
+  CHECK(nearlyEqual(violaLow.tuning.frequency.value() /
+                        violaInstrument.courses[0].tuning.frequency.value(),
+                    ratio, 0.0, 1e-12));
+  CHECK(violinLow.tuning.frequency.value() != violaLow.tuning.frequency.value());
+  CHECK(violinLow.geometry.vibratingLength.value() !=
+        violaLow.geometry.vibratingLength.value());
+
+  const Excitation pluck{ExcitationKind::Pluck, 0.2, 1.0e-3};
+  CHECK(realizeExcitation(violinStopped, pluck).ok());
+  CHECK(realizeExcitation(violinStopped,
+                          Excitation{ExcitationKind::Bow, 0.2, 1.0e-3})
+            .error() == QuantityError::DomainError);
+  CHECK(makeHardHammerBlow(violinStopped, HammerStrike{0.2, 0.01, 1.0}).ok());
+
+  CHECK(fingerStop(violinOpen, 0.0).error() == QuantityError::InvalidArgument);
+  CHECK(fingerStop(violinOpen, 1.0).error() == QuantityError::InvalidArgument);
+  CHECK(fingerStop(violinOpen, -0.1).error() == QuantityError::InvalidArgument);
+  CHECK(fingerStop(violinOpen, 1.1).error() == QuantityError::InvalidArgument);
+  CHECK(fingerStop(violinOpen, std::numeric_limits<double>::quiet_NaN()).error() ==
+        QuantityError::InvalidArgument);
+
+  StringCourse overtensioned = violinOpen;
+  overtensioned.tension =
+      TensionNewtons{violinOpen.publishedTensionN.max + 1.0};
+  CHECK(fingerStop(overtensioned, alpha).error() == QuantityError::RangeError);
+  CHECK(violin().value().courses[2].tuning.label != nullptr);
+  CHECK(std::strcmp(violin().value().courses[2].tuning.label, "A4") == 0);
+}
+
+TEST_CASE("a reed bore is an ideal cylinder and inertia follows the static line",
+          "[instruments]") {
+  const double length = 0.5;
+  const double area = 2.0e-4;
+  const double airPressure = 101325.0;
+  const double temperature = 293.15;
+  const auto open = unwrap(makeReedBore(ReedBoreSpec{
+      length, area, airPressure, temperature, BoreFarEnd::Open}));
+  const auto closed = unwrap(makeReedBore(ReedBoreSpec{
+      length, area, airPressure, temperature, BoreFarEnd::Closed}));
+  const double density =
+      unwrap(airDensity(PressurePascals{airPressure},
+                        TemperatureKelvin{temperature}))
+          .value();
+  const double speed =
+      unwrap(speedOfSound(Air{TemperatureKelvin{temperature}})).value();
+  const double impedance = density * speed / area;
+  CHECK(open.airDensityKgPerM3 == density);
+  CHECK(open.soundSpeedMetersPerSecond == speed);
+  CHECK(nearlyEqual(open.acousticImpedance, impedance, 0.0, 1e-12));
+  CHECK(nearlyEqual(open.roundTripSeconds, 2.0 * length / speed, 0.0, 1e-12));
+  CHECK(nearlyEqual(open.fundamentalHz, speed / (4.0 * length), 0.0, 1e-12));
+  CHECK(open.pressureReflection == -1.0);
+  CHECK(nearlyEqual(closed.fundamentalHz, speed / (2.0 * length), 0.0, 1e-12));
+  CHECK(closed.pressureReflection == 1.0);
+  CHECK(unwrap(stoppedPipeMode(DistanceMeters{length},
+                               SpeedMetersPerSecond{speed}, 1))
+            .value() == open.fundamentalHz);
+  CHECK(unwrap(openPipeMode(DistanceMeters{length}, SpeedMetersPerSecond{speed},
+                            1))
+            .value() == closed.fundamentalHz);
+
+  const double quarter = speed / (8.0 * length);
+  const auto openZ = unwrap(boreInputImpedance(open, quarter));
+  const auto closedZ = unwrap(boreInputImpedance(closed, quarter));
+  CHECK(nearlyEqual(openZ.real(), 0.0, 0.0, 1e-9));
+  CHECK(nearlyEqual(openZ.imag(), impedance, 0.0, 1e-9));
+  CHECK(nearlyEqual(closedZ.real(), 0.0, 0.0, 1e-9));
+  CHECK(nearlyEqual(closedZ.imag(), -impedance, 0.0, 1e-9));
+  const auto rest = unwrap(boreInputImpedance(open, 0.0));
+  CHECK(rest.real() == 0.0);
+  CHECK(rest.imag() == 0.0);
+
+  CHECK(boreInputImpedance(open, open.fundamentalHz).error() ==
+        QuantityError::RangeError);
+  CHECK(boreInputImpedance(open, 3.0 * open.fundamentalHz).error() ==
+        QuantityError::RangeError);
+  CHECK(boreInputImpedance(closed, closed.fundamentalHz).error() ==
+        QuantityError::RangeError);
+  CHECK(boreInputImpedance(closed, 0.0).error() == QuantityError::RangeError);
+  CHECK(boreInputImpedance(open, -1.0).error() ==
+        QuantityError::InvalidArgument);
+
+  const auto split = unwrap(boreWaveSplit(open, 1.0, 2.0));
+  CHECK(split.incomingPressurePa == -2.0);
+  CHECK(split.mouthPressurePa == -1.0);
+  CHECK(nearlyEqual(split.volumeFlowM3PerS, 3.0 / impedance, 0.0, 1e-12));
+  const auto closedSplit = unwrap(boreWaveSplit(closed, 1.0, 2.0));
+  CHECK(closedSplit.incomingPressurePa == 2.0);
+  CHECK(closedSplit.mouthPressurePa == 3.0);
+  CHECK(nearlyEqual(closedSplit.volumeFlowM3PerS, -1.0 / impedance, 0.0,
+                    1e-12));
+
+  const auto shorter = unwrap(makeReedBore(ReedBoreSpec{
+      0.25, area, airPressure, temperature, BoreFarEnd::Open}));
+  CHECK(nearlyEqual(shorter.fundamentalHz, 2.0 * open.fundamentalHz, 0.0,
+                    1e-12));
+  CHECK(makeReedBore(ReedBoreSpec{0.0, area, airPressure, temperature,
+                                  BoreFarEnd::Open})
+            .error() == QuantityError::InvalidArgument);
+  CHECK(makeReedBore(ReedBoreSpec{length, -area, airPressure, temperature,
+                                  BoreFarEnd::Open})
+            .error() == QuantityError::InvalidArgument);
+
+  const double jet = 1.5e-5;
+  const double closure = 6.0e3;
+  const auto reed = unwrap(makeReedCharacteristic(
+      ReedSpec{jet, closure, airPressure, temperature}));
+  const double mass = 2.0e-5;
+  const double tip = 1.0e-4;
+  const double closing = 1.0e-3;
+  const auto undamped =
+      unwrap(makeReedInertia(reed, ReedInertiaSpec{mass, tip, closing, 0.0}));
+  const double stiffness = closure * tip / closing;
+  CHECK(nearlyEqual(undamped.stiffnessNewtonsPerMeter, stiffness, 0.0, 1e-12));
+  CHECK(nearlyEqual(undamped.resonanceHz,
+                    std::sqrt(stiffness / mass) / (2.0 * constants::pi), 0.0,
+                    1e-12));
+  const double half = unwrap(reedEquilibriumDisplacement(undamped, closure / 2.0));
+  CHECK(nearlyEqual(half, closing / 2.0, 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(reedTipAcceleration(undamped, half, 0.0, closure / 2.0)),
+                    0.0, 0.0, 1e-6));
+  CHECK(unwrap(reedEquilibriumDisplacement(undamped, 0.0)) == 0.0);
+  CHECK(nearlyEqual(unwrap(reedEquilibriumDisplacement(undamped, closure)),
+                    closing, 0.0, 1e-15));
+  CHECK(reedEquilibriumDisplacement(undamped, closure + 1.0).error() ==
+        QuantityError::DomainError);
+  CHECK(reedEquilibriumDisplacement(undamped, -1.0).error() ==
+        QuantityError::DomainError);
+  const double pastLay =
+      unwrap(reedTipAcceleration(undamped, closing, 0.0, closure + 50.0));
+  CHECK(nearlyEqual(pastLay, tip * 50.0 / mass, 0.0, 1e-9));
+
+  const double damping = 0.02;
+  const auto damped = unwrap(
+      makeReedInertia(reed, ReedInertiaSpec{mass, tip, closing, damping}));
+  CHECK(damped.dampingNewtonSecondsPerMeter == damping);
+  CHECK(nearlyEqual(unwrap(reedTipAcceleration(damped, 0.0, 1.0, 0.0)),
+                    -damping / mass, 0.0, 1e-12));
+  CHECK(makeReedInertia(reed, ReedInertiaSpec{mass, tip, closing, -0.01})
+            .error() == QuantityError::InvalidArgument);
+  CHECK(makeReedInertia(reed, ReedInertiaSpec{0.0, tip, closing, 0.0}).error() ==
+        QuantityError::InvalidArgument);
+
+  CHECK(unwrap(reedAreaAtDisplacement(reed, undamped, 0.0)) == jet);
+  CHECK(nearlyEqual(unwrap(reedAreaAtDisplacement(reed, undamped, closing / 2.0)),
+                    0.5 * jet, 0.0, 1e-12));
+  CHECK(unwrap(reedAreaAtDisplacement(reed, undamped, closing)) == 0.0);
+  CHECK(unwrap(reedAreaAtDisplacement(reed, undamped, 2.0 * closing)) == 0.0);
+  CHECK(nearlyEqual(unwrap(reedAreaAtDisplacement(reed, undamped, -closing)),
+                    2.0 * jet, 0.0, 1e-12));
+}
+
+TEST_CASE("felt compliance and the first hammer images keep the hard cutoff",
+          "[instruments]") {
+  const auto violinInstrument = unwrap(violin());
+  const StringCourse& course = violinInstrument.courses[2];
+  const double fraction = 0.125;
+  const double mass = 0.012;
+  const double speed = 1.5;
+  const auto blow =
+      unwrap(makeHardHammerBlow(course, HammerStrike{fraction, mass, speed}));
+  const double first = blow.firstReflectionTime;
+  const double tau = blow.timeConstant;
+  const double impedance = blow.impedance;
+
+  CHECK(hardHammerForce(blow, first).error() == QuantityError::DomainError);
+  CHECK(hardHammerVelocity(blow, 0.5 * first).ok());
+  CHECK(reflectedHammerVelocity(blow, first).ok());
+  CHECK(reflectedHammerForce(blow, 2.0 * first).error() ==
+        QuantityError::DomainError);
+  CHECK(reflectedHammerDisplacement(blow, 2.0 * first + 1.0e-9).error() ==
+        QuantityError::DomainError);
+  CHECK(reflectedHammerVelocity(blow, -1.0e-9).error() ==
+        QuantityError::InvalidArgument);
+
+  const double before = 0.5 * first;
+  CHECK(nearlyEqual(unwrap(reflectedHammerVelocity(blow, before)),
+                    unwrap(hardHammerVelocity(blow, before)), 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(reflectedHammerForce(blow, before)),
+                    unwrap(hardHammerForce(blow, before)), 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(reflectedHammerDisplacement(blow, before)),
+                    unwrap(hardHammerDisplacement(blow, before)), 0.0, 1e-12));
+
+  const double pureAtFirst = speed * std::exp(-first / tau);
+  CHECK(nearlyEqual(unwrap(reflectedHammerVelocity(blow, first)), pureAtFirst,
+                    0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(reflectedHammerDisplacement(blow, first)),
+                    speed * tau * (1.0 - std::exp(-first / tau)), 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(reflectedHammerForce(blow, first)),
+                    2.0 * impedance * (pureAtFirst + speed), 0.0, 1e-9));
+  const double justBefore = first * (1.0 - 1.0e-9);
+  const double forceBefore = unwrap(reflectedHammerForce(blow, justBefore));
+  CHECK(forceBefore < unwrap(reflectedHammerForce(blow, first)));
+
+  const double later = 1.5 * first;
+  const double nut = 2.0 * blow.positionMeters / blow.waveSpeed;
+  const double bridge =
+      2.0 * (blow.lengthMeters - blow.positionMeters) / blow.waveSpeed;
+  const double age = later - first;
+  const double decay = std::exp(-age / tau);
+  const double extra = speed * (-age / tau) * decay;
+  const double expectedVelocity =
+      speed * std::exp(-later / tau) + extra;
+  CHECK(nearlyEqual(unwrap(reflectedHammerVelocity(blow, later)),
+                    expectedVelocity, 0.0, 1e-12));
+  const double expectedForce =
+      2.0 * impedance * (expectedVelocity + speed * decay);
+  CHECK(nearlyEqual(unwrap(reflectedHammerForce(blow, later)), expectedForce,
+                    0.0, 1e-9));
+  CHECK((nut == first || bridge == first));
+  CHECK(nut != bridge);
+
+  const auto centered =
+      unwrap(makeHardHammerBlow(course, HammerStrike{0.5, mass, speed}));
+  const double centerTime = 1.5 * centered.firstReflectionTime;
+  const double centerAge = centerTime - centered.firstReflectionTime;
+  const double centerDecay = std::exp(-centerAge / centered.timeConstant);
+  const double centerExtra =
+      speed * (-centerAge / centered.timeConstant) * centerDecay;
+  const double centerVelocity =
+      speed * std::exp(-centerTime / centered.timeConstant) + 2.0 * centerExtra;
+  CHECK(nearlyEqual(unwrap(reflectedHammerVelocity(centered, centerTime)),
+                    centerVelocity, 0.0, 1e-12));
+  CHECK(nearlyEqual(
+      unwrap(reflectedHammerForce(centered, centerTime)),
+      2.0 * centered.impedance *
+          (centerVelocity + 2.0 * speed * centerDecay),
+      0.0, 1e-9));
+
+  const double sample = 1.5 * first;
+  constexpr int steps = 8000;
+  double integral = 0.0;
+  double previous = unwrap(reflectedHammerVelocity(blow, 0.0));
+  for (int i = 1; i <= steps; ++i) {
+    const double time = sample * static_cast<double>(i) / steps;
+    const double current = unwrap(reflectedHammerVelocity(blow, time));
+    integral += 0.5 * (previous + current) * (sample / steps);
+    previous = current;
+  }
+  CHECK(nearlyEqual(unwrap(reflectedHammerDisplacement(blow, sample)), integral,
+                    0.0, 1e-5));
+
+  const double probe = 1.25 * first;
+  const double dt = 1.0e-8;
+  const double earlier = unwrap(reflectedHammerVelocity(blow, probe - dt));
+  const double ahead = unwrap(reflectedHammerVelocity(blow, probe + dt));
+  const double slope = (ahead - earlier) / (2.0 * dt);
+  double incoming = 0.0;
+  if (probe >= nut) incoming += speed * std::exp(-(probe - nut) / tau);
+  if (probe >= bridge) incoming += speed * std::exp(-(probe - bridge) / tau);
+  const double atProbe = unwrap(reflectedHammerVelocity(blow, probe));
+  CHECK(nearlyEqual(slope, -(atProbe + incoming) / tau, 0.0, 1e-4));
+
+  const double stiffness = 1.0e8;
+  const double exponent = 2.5;
+  const double compression = 1.0e-4;
+  const double felt = stiffness * std::pow(compression, exponent);
+  CHECK(nearlyEqual(unwrap(feltHammerForce(compression, stiffness, exponent)),
+                    felt, 0.0, 1e-12));
+  CHECK(unwrap(feltHammerForce(0.0, stiffness, exponent)) == 0.0);
+  CHECK(unwrap(feltHammerForce(-compression, stiffness, exponent)) == 0.0);
+  CHECK(nearlyEqual(unwrap(feltHammerForce(compression, stiffness, 1.0)),
+                    stiffness * compression, 0.0, 1e-12));
+  CHECK(feltHammerForce(compression, 0.0, exponent).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(feltHammerForce(compression, stiffness, -1.0).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(feltHammerForce(2.0, std::numeric_limits<double>::max(), 1.0).error() ==
+        QuantityError::RangeError);
+
+  FeltHammerState touching{compression, 0.5, 0.0, 0.2};
+  const auto rate =
+      unwrap(feltHammerDerivative(blow, touching, stiffness, exponent));
+  CHECK(nearlyEqual(rate.forceNewtons, felt, 0.0, 1e-12));
+  CHECK(nearlyEqual(rate.hammerAcceleration, -felt / mass, 0.0, 1e-9));
+  CHECK(nearlyEqual(rate.stringVelocity, felt / (2.0 * impedance) + 0.2, 0.0,
+                    1e-9));
+  FeltHammerState clear{0.0, 0.5, compression, -0.3};
+  const auto free = unwrap(feltHammerDerivative(blow, clear, stiffness, exponent));
+  CHECK(free.forceNewtons == 0.0);
+  CHECK(free.hammerAcceleration == 0.0);
+  CHECK(free.stringVelocity == -0.3);
+  CHECK(free.compressionMeters < 0.0);
 }
 
 namespace {

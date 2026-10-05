@@ -5,7 +5,9 @@
 
 TEST_CASE("instruments/instrument.h is self-contained", "[headers]") {
   const mmathen::BowedStringRow row{"A4", 440.0, 0.58, 0.75, 48.3, 62.7};
-  CHECK(mmathen::makeStringCourse(mmathen::DistanceMeters{0.328}, row,
-                                  mmathen::kGuettlerBowedStringSource)
-            .ok());
+  const auto course =
+      mmathen::makeStringCourse(mmathen::DistanceMeters{0.328}, row,
+                                mmathen::kGuettlerBowedStringSource);
+  CHECK(course.ok());
+  CHECK(mmathen::fingerStop(course.value(), 0.25).ok());
 }
