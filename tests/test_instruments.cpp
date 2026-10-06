@@ -2242,3 +2242,132 @@ TEST_CASE("time-stepped stick-slip uses rigid reflections and caller friction",
   CHECK(stickSlipJunction(0.0, 0.0, 0.0, speed, 0.0, normal, friction, true)
             .error() == QuantityError::InvalidArgument);
 }
+
+TEST_CASE("a moving bridge re-solves the string from a caller resistance or mode",
+          "[instruments]") {
+  auto courseOf = [](double length, double mu, double tension) {
+    return StringCourse{
+        StringGeometry{DistanceMeters{length}},
+        StringMaterial{LinearDensityKgPerM{mu}},
+        StringTuning{"synthetic",
+                     FrequencyHz{std::sqrt(tension / mu) / (2.0 * length)}},
+        TensionNewtons{tension},
+        TabulatedRange{},
+        TabulatedRange{},
+        0.0,
+        false,
+        "synthetic"};
+  };
+  const double length = 0.5;
+  const double density = 0.01;
+  const double speed = 200.0;
+  const double tension = density * speed * speed;
+  const StringCourse course = courseOf(length, density, tension);
+  const double impedance = density * speed;
+  const double open = speed / (2.0 * length);
+  const double heavy = 20.0 * impedance;
+  const auto fundamental = unwrap(resistiveBridgeMode(course, heavy, 1));
+  CHECK(nearlyEqual(fundamental.frequencyHz, open, 0.0, 1e-12));
+  CHECK(nearlyEqual(fundamental.decayPerSecond,
+                    (speed / length) * std::atanh(impedance / heavy), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(fundamental.reflection,
+                    (impedance - heavy) / (impedance + heavy), 0.0, 1e-12));
+  const auto octave = unwrap(resistiveBridgeMode(course, heavy, 2));
+  CHECK(nearlyEqual(octave.frequencyHz, 2.0 * open, 0.0, 1e-12));
+  CHECK(nearlyEqual(octave.decayPerSecond, fundamental.decayPerSecond, 0.0,
+                    1e-12));
+  const auto stifferBridge = unwrap(resistiveBridgeMode(course, 2.0 * heavy, 1));
+  CHECK(nearlyEqual(stifferBridge.decayPerSecond,
+                    (speed / length) * std::atanh(impedance / (2.0 * heavy)),
+                    0.0, 1e-12));
+  CHECK(stifferBridge.decayPerSecond < fundamental.decayPerSecond);
+
+  const double light = 0.5 * impedance;
+  const auto freed = unwrap(resistiveBridgeMode(course, light, 1));
+  CHECK(nearlyEqual(freed.frequencyHz, 0.5 * open, 0.0, 1e-12));
+  CHECK(nearlyEqual(freed.decayPerSecond,
+                    (speed / length) * std::atanh(light / impedance), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(unwrap(resistiveBridgeMode(course, light, 2)).frequencyHz,
+                    1.5 * open, 0.0, 1e-12));
+  CHECK(resistiveBridgeMode(course, impedance, 1).error() ==
+        QuantityError::DomainError);
+  CHECK(resistiveBridgeMode(course, 0.0, 1).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(resistiveBridgeMode(course, -heavy, 1).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(resistiveBridgeMode(course, heavy, 0).error() ==
+        QuantityError::InvalidArgument);
+
+  const StringCourse longer = courseOf(2.0 * length, density, tension);
+  const auto stretched = unwrap(resistiveBridgeMode(longer, heavy, 1));
+  CHECK(nearlyEqual(stretched.frequencyHz, 0.5 * open, 0.0, 1e-12));
+  CHECK(nearlyEqual(stretched.decayPerSecond, 0.5 * fundamental.decayPerSecond,
+                    0.0, 1e-12));
+
+  const double bodyHz = 480.0;
+  const double mass = 0.002;
+  const auto resonator =
+      unwrap(makeBodyResonator(BodyModeSpec{bodyHz, 1.0e8, mass}));
+  const auto solved = unwrap(movingBridgeModes(course, resonator, 1));
+  const auto coupled = unwrap(coupleToBridge(
+      course, BridgeOscillator{mass, resonator.stiffness, 0.0}));
+  const auto coupledFrequency = unwrap(coupledModeFrequencies(coupled, 1));
+  CHECK(std::fabs(solved[0].frequencyHz - open) > 1.0e-3 * open);
+  CHECK(nearlyEqual(solved[0].frequencyHz, coupledFrequency[0].value(), 0.0,
+                    1.0e-5));
+  const auto partner =
+      unwrap(makeBodyResonator(BodyModeSpec{900.0, 1.0e8, 0.004}));
+  const BodyResonator pair[] = {resonator, partner};
+  const auto summed = unwrap(movingBridgeModes(course, pair, 1));
+  CHECK(std::fabs(summed[0].frequencyHz - solved[0].frequencyHz) >
+        1.0e-4 * open);
+
+  const auto played =
+      unwrap(makeBodyResonator(BodyModeSpec{220.0, 25.0, 0.04}));
+  const double atResonance =
+      unwrap(bridgeResistance(played, played.resonanceHz));
+  CHECK(nearlyEqual(atResonance, played.damping, 0.0, 1e-12));
+  const auto mobility = unwrap(bodyMobility(played, played.resonanceHz));
+  CHECK(mobility.imag() == 0.0);
+  CHECK(nearlyEqual(atResonance,
+                    mobility.real() /
+                        (mobility.real() * mobility.real() +
+                         mobility.imag() * mobility.imag()),
+                    0.0, 1e-12));
+  const double below =
+      unwrap(bridgeResistance(played, 0.5 * played.resonanceHz));
+  CHECK(below != atResonance);
+
+  const auto violinInstrument = unwrap(violin());
+  const StringCourse& violinA = violinInstrument.courses[2];
+  const double beta = 1.0 / 9.0;
+  const double bowSpeed = 0.2;
+  const double muS = 0.8;
+  const double muD = 0.3;
+  const double violinWave =
+      std::sqrt(violinA.tension.value() / violinA.material.linearDensity.value());
+  const double violinZ = violinA.material.linearDensity.value() * violinWave;
+  const double maxNormal = 2.0 * violinZ * bowSpeed / (beta * (muS - muD));
+  const BowStroke stroke{beta, bowSpeed, 0.5 * maxNormal, {muS, muD}};
+  const auto motion = unwrap(makeHelmholtzStroke(violinA, stroke));
+  const auto minimum = unwrap(schellengMinimumForce(motion, atResonance));
+  CHECK(nearlyEqual(minimum,
+                    motion.maxNormalForce * motion.impedance /
+                        (4.0 * motion.beta * atResonance),
+                    0.0, 1e-12));
+  CHECK(makeHelmholtzStroke(violinA, stroke, atResonance).ok());
+  const auto violinHeavy =
+      unwrap(resistiveBridgeMode(violinA, 30.0 * violinZ, 1));
+  const auto violinHeavier =
+      unwrap(resistiveBridgeMode(violinA, 60.0 * violinZ, 1));
+  CHECK(violinHeavier.decayPerSecond < violinHeavy.decayPerSecond);
+  CHECK(nearlyEqual(violinHeavy.frequencyHz,
+                    unwrap(openStringFrequency(violinA)).value(), 0.0, 1e-12));
+  CHECK(30.0 * violinZ != violinInstrument.body.length.value());
+  CHECK(bridgeResistance(std::span<const BodyResonator>{}, 220.0).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(movingBridgeModes(course, std::span<const BodyResonator>{}, 1).error() ==
+        QuantityError::InvalidArgument);
+}

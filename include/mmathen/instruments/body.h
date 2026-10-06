@@ -16,15 +16,17 @@
 // factories is a hidden A0 or B1. A0–B1 coupling would be a mutual term
 // between two modes; the sum here is diagonal driving-point terms only.
 //
-// The drive is the rigid-bridge Helmholtz force from bow.h, open-loop.
-// The string is not re-solved with a moving end, so there is no
-// back-reaction and no wolf note. The bow itself is unchanged.
+// bodyVelocity is the rigid-bridge Helmholtz force from bow.h, open-loop.
+// movingBridgeModes re-solves the string: the nut stays fixed and the
+// bridge end is the caller’s mobility. A resistance R uses Y = 1/R. A
+// mode table uses bodyMobility. Neither stores a measured admittance.
+// The steady sawtooth is not rewritten, and a double-slip wolf cycle is
+// not stepped.
 //
-// The same mode has a resonant mechanical resistance r = m ω0 / Q, which
-// is the real driving-point impedance at ω0. Schelleng's minimum bow
-// force is not evaluated. It needs the bridge resistance the string
-// actually sees, and one mode's r is not that measurement. No numerical
-// R is invented for any instrument.
+// bridgeResistance is Re(1/Y) at a caller frequency. At one mode’s own
+// resonance it equals that mode’s r = m ω0 / Q, and that value may be
+// passed to schellengMinimumForce. No numerical R is stored for any
+// instrument.
 //
 // The cavity air resonance is makeCavityHelmholtz: Rayleigh's resonator
 // from a caller-supplied f-hole area, cavity volume, and effective neck
@@ -51,10 +53,12 @@
 // driven by the sawtooth's Fourier series. UNVALIDATED against a measured
 // bridge admittance or a radiated tone.
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstddef>
 #include <span>
+#include <vector>
 
 #include "../math/constants.h"
 #include "../physics/impedance.h"
@@ -625,6 +629,301 @@ struct MonopoleField {
       radiatingAreaM2 * normalVelocity.imag()};
   return compactMonopolePressure(volumeVelocity, distanceMeters, frequencyHz,
                                  airPressurePa, temperatureKelvin);
+}
+
+inline constexpr const char* kMovingBridgeSource =
+    "Ideal string fixed at the nut and re-solved on a moving bridge: "
+    "j sin(omega L/c) + Y Z cos(omega L/c) = 0, Z = mu c. "
+    "A caller resistance uses Y = 1/R. A caller mode table uses "
+    "bodyMobility. For a real R the oscillation is n c/(2L) when R > Z, "
+    "with decay (c/L) artanh(Z/R), and (2n-1) c/(4L) when R < Z, with "
+    "decay (c/L) artanh(R/Z). Velocity reflection "
+    "lambda = (Z - R)/(Z + R) "
+    "(Woodhouse, Euphonics 9.5.1: rigid is -1, and "
+    "lambda is about -1 + 2Z/R when R is large beside Z). "
+    "No measured bridge admittance is stored.";
+
+// Free motion of the string on a moving bridge. decayPerSecond is σ in
+// e^{j ω t} with ω = 2π f + j σ, so the amplitude decays as e^{-σ t}.
+// reflection is (Z − R)/(Z + R) for a resistive bridge, and 0 when the
+// termination is the modal sum.
+struct MovingBridgeMode {
+  double frequencyHz = 0.0;
+  double decayPerSecond = 0.0;
+  double reflection = 0.0;
+  const char* source = nullptr;
+};
+
+namespace body_detail {
+
+struct CourseWave {
+  double length = 0.0;
+  double speed = 0.0;
+  double impedance = 0.0;
+};
+
+[[nodiscard]] inline Result<CourseWave, QuantityError> courseWave(
+    const StringCourse& course) {
+  using R = Result<CourseWave, QuantityError>;
+  const double length = course.geometry.vibratingLength.value();
+  const double tension = course.tension.value();
+  const double density = course.material.linearDensity.value();
+  if (!std::isfinite(length) || !(length > 0.0) || !std::isfinite(tension) ||
+      !(tension > 0.0) || !std::isfinite(density) || !(density > 0.0))
+    return R::failure(QuantityError::InvalidArgument);
+  const double speed = std::sqrt(tension / density);
+  const double impedance = density * speed;
+  if (!std::isfinite(speed) || !(speed > 0.0) || !std::isfinite(impedance) ||
+      !(impedance > 0.0))
+    return R::failure(QuantityError::RangeError);
+  return R::success(CourseWave{length, speed, impedance});
+}
+
+// Y(ω) for complex ω, the same algebraic quotient as bodyMobility on the
+// real axis. The only divisor is m|D|².
+[[nodiscard]] inline Result<std::complex<double>, QuantityError>
+mobilityAt(const BodyResonator& mode, std::complex<double> omega) {
+  using R = Result<std::complex<double>, QuantityError>;
+  const double wr = omega.real();
+  const double wi = omega.imag();
+  if (!std::isfinite(wr) || !std::isfinite(wi))
+    return R::failure(QuantityError::InvalidArgument);
+  const double omega0 = mode.omega0;
+  const double damp = omega0 / mode.qualityFactor;
+  const double w2r = wr * wr - wi * wi;
+  const double w2i = 2.0 * wr * wi;
+  const double realPart = omega0 * omega0 - w2r - wi * damp;
+  const double imagPart = -w2i + wr * damp;
+  const double modulus2 = realPart * realPart + imagPart * imagPart;
+  const double divisor = mode.modalMassKg * modulus2;
+  if (!(divisor > 0.0) || !std::isfinite(divisor))
+    return R::failure(QuantityError::RangeError);
+  const double realY = (wr * imagPart - wi * realPart) / divisor;
+  const double imagY = (wr * realPart + wi * imagPart) / divisor;
+  if (!std::isfinite(realY) || !std::isfinite(imagY))
+    return R::failure(QuantityError::RangeError);
+  return R::success(std::complex<double>{realY, imagY});
+}
+
+[[nodiscard]] inline Result<std::complex<double>, QuantityError> mobilityAt(
+    std::span<const BodyResonator> modes, std::complex<double> omega) {
+  using R = Result<std::complex<double>, QuantityError>;
+  if (modes.empty()) return R::failure(QuantityError::InvalidArgument);
+  std::complex<double> sum{0.0, 0.0};
+  for (const BodyResonator& mode : modes) {
+    auto term = mobilityAt(mode, omega);
+    if (!term.ok()) return R::failure(term.error());
+    sum += term.value();
+  }
+  if (!std::isfinite(sum.real()) || !std::isfinite(sum.imag()))
+    return R::failure(QuantityError::RangeError);
+  return R::success(sum);
+}
+
+[[nodiscard]] inline std::complex<double> bridgeCharacteristic(
+    const CourseWave& wave, std::complex<double> omega,
+    std::complex<double> mobility) {
+  const std::complex<double> theta{omega.real() * wave.length / wave.speed,
+                                   omega.imag() * wave.length / wave.speed};
+  const std::complex<double> sine = std::sin(theta);
+  const std::complex<double> cosine = std::cos(theta);
+  const double zr = wave.impedance;
+  const double yzr = mobility.real() * cosine.real() - mobility.imag() * cosine.imag();
+  const double yzi = mobility.real() * cosine.imag() + mobility.imag() * cosine.real();
+  return std::complex<double>{-sine.imag() + zr * yzr, sine.real() + zr * yzi};
+}
+
+[[nodiscard]] inline bool sameRoot(std::complex<double> a, std::complex<double> b) {
+  const double scale =
+      std::max(1.0, std::max(std::fabs(a.real()), std::fabs(b.real())));
+  return std::fabs(a.real() - b.real()) <= 1e-5 * scale &&
+         std::fabs(a.imag() - b.imag()) <= 1e-4 * scale;
+}
+
+// Newton on j sin(θ) + Y Z cos(θ) = 0. A failed mobility sample or a
+// vanishing derivative abandons this guess.
+[[nodiscard]] inline bool newtonBridgeRoot(
+    const CourseWave& wave, std::span<const BodyResonator> modes,
+    std::complex<double> guess, std::complex<double>& root) {
+  std::complex<double> omega = guess;
+  for (int iteration = 0; iteration < 40; ++iteration) {
+    auto mobility = mobilityAt(modes, omega);
+    if (!mobility.ok()) return false;
+    const std::complex<double> value =
+        bridgeCharacteristic(wave, omega, mobility.value());
+    const double scale =
+        std::max(1.0, std::hypot(omega.real(), omega.imag()));
+    const double step = 1e-8 * scale;
+    auto shifted = mobilityAt(modes, std::complex<double>{omega.real() + step,
+                                                          omega.imag()});
+    if (!shifted.ok()) return false;
+    const std::complex<double> next =
+        bridgeCharacteristic(wave, std::complex<double>{omega.real() + step,
+                                                        omega.imag()},
+                            shifted.value());
+    const double derivativeReal = (next.real() - value.real()) / step;
+    const double derivativeImag = (next.imag() - value.imag()) / step;
+    const double denominator =
+        derivativeReal * derivativeReal + derivativeImag * derivativeImag;
+    if (!(denominator > 0.0) || !std::isfinite(denominator)) return false;
+    const double moveReal =
+        (value.real() * derivativeReal + value.imag() * derivativeImag) /
+        denominator;
+    const double moveImag =
+        (value.imag() * derivativeReal - value.real() * derivativeImag) /
+        denominator;
+    if (!std::isfinite(moveReal) || !std::isfinite(moveImag)) return false;
+    omega = std::complex<double>{omega.real() - moveReal,
+                                 omega.imag() - moveImag};
+    if (!(omega.real() > 0.0) || !std::isfinite(omega.real()) ||
+        !std::isfinite(omega.imag()))
+      return false;
+    if (std::hypot(moveReal, moveImag) <= 1e-12 * scale &&
+        std::hypot(value.real(), value.imag()) <= 1e-8)
+      break;
+  }
+  auto mobility = mobilityAt(modes, omega);
+  if (!mobility.ok()) return false;
+  const std::complex<double> value =
+      bridgeCharacteristic(wave, omega, mobility.value());
+  if (!(std::hypot(value.real(), value.imag()) <= 1e-6)) return false;
+  if (!(omega.real() > 0.0)) return false;
+  if (omega.imag() < 0.0) {
+    if (omega.imag() < -1e-8 * std::max(1.0, omega.real())) return false;
+    omega = std::complex<double>{omega.real(), 0.0};
+  }
+  root = omega;
+  return true;
+}
+
+}  // namespace body_detail
+
+// Resistive part of the bridge impedance, Re(1/Y), at a real frequency.
+// Y is bodyMobility. The quotient is G / |Y|²; there is no complex
+// division. InvalidArgument for an empty table or a bad frequency.
+// DomainError when that real part is not positive. At a single mode's
+// own resonance this is the mode's r.
+[[nodiscard]] inline Result<double, QuantityError> bridgeResistance(
+    std::span<const BodyResonator> modes, double frequencyHz) {
+  using R = Result<double, QuantityError>;
+  auto mobility = bodyMobility(modes, frequencyHz);
+  if (!mobility.ok()) return R::failure(mobility.error());
+  const double conductance = mobility.value().real();
+  const double susceptance = mobility.value().imag();
+  const double modulus2 =
+      conductance * conductance + susceptance * susceptance;
+  if (!(modulus2 > 0.0) || !std::isfinite(modulus2))
+    return R::failure(QuantityError::RangeError);
+  const double resistance = conductance / modulus2;
+  if (!std::isfinite(resistance) || !(resistance > 0.0))
+    return R::failure(QuantityError::DomainError);
+  return R::success(resistance);
+}
+
+[[nodiscard]] inline Result<double, QuantityError> bridgeResistance(
+    const BodyResonator& mode, double frequencyHz) {
+  const BodyResonator modes[] = {mode};
+  return bridgeResistance(std::span<const BodyResonator>{modes, 1}, frequencyHz);
+}
+
+// Exact roots for a frequency-independent bridge resistance R (N·s/m).
+// R > Z keeps the fixed-fixed pitches and adds decay. R < Z keeps the
+// fixed-free pitches. R = Z is the matched termination: DomainError,
+// there is no finite standing mode. modeIndex is 1-based.
+// InvalidArgument: R not strictly positive and finite, or modeIndex < 1.
+[[nodiscard]] inline Result<MovingBridgeMode, QuantityError>
+resistiveBridgeMode(const StringCourse& course, double resistance,
+                    int modeIndex) {
+  using R = Result<MovingBridgeMode, QuantityError>;
+  if (!std::isfinite(resistance) || !(resistance > 0.0) || modeIndex < 1 ||
+      modeIndex > 4096)
+    return R::failure(QuantityError::InvalidArgument);
+  auto wave = body_detail::courseWave(course);
+  if (!wave.ok()) return R::failure(wave.error());
+  const double impedance = wave.value().impedance;
+  const double speed = wave.value().speed;
+  const double length = wave.value().length;
+  if (resistance == impedance) return R::failure(QuantityError::DomainError);
+  const double ratio = resistance > impedance ? impedance / resistance
+                                             : resistance / impedance;
+  const double decay = (speed / length) * std::atanh(ratio);
+  const double harmonic = static_cast<double>(modeIndex);
+  const double frequency =
+      resistance > impedance
+          ? harmonic * speed / (2.0 * length)
+          : (2.0 * harmonic - 1.0) * speed / (4.0 * length);
+  const double reflection =
+      (impedance - resistance) / (impedance + resistance);
+  if (!std::isfinite(decay) || !(decay > 0.0) || !std::isfinite(frequency) ||
+      !(frequency > 0.0) || !std::isfinite(reflection))
+    return R::failure(QuantityError::RangeError);
+  return R::success(
+      MovingBridgeMode{frequency, decay, reflection, kMovingBridgeSource});
+}
+
+// Lowest `count` free modes of the string terminated by the modal sum.
+// Guesses march in wavenumber and Newton finishes each root. An empty
+// table, a non-positive count, or too few converged roots is refused.
+// bodyMobility's real-frequency quotient is not modified.
+[[nodiscard]] inline Result<std::vector<MovingBridgeMode>, QuantityError>
+movingBridgeModes(const StringCourse& course,
+                  std::span<const BodyResonator> modes, int count) {
+  using R = Result<std::vector<MovingBridgeMode>, QuantityError>;
+  if (modes.empty() || count < 1 || count > 64)
+    return R::failure(QuantityError::InvalidArgument);
+  auto wave = body_detail::courseWave(course);
+  if (!wave.ok()) return R::failure(wave.error());
+  const double length = wave.value().length;
+  const double speed = wave.value().speed;
+  const double step = constants::pi / (16.0 * length);
+  const double limit = (static_cast<double>(count) + 4.0) * constants::pi / length;
+  std::vector<std::complex<double>> roots;
+  for (double beta = step; beta < limit; beta += step) {
+    std::complex<double> root;
+    if (!body_detail::newtonBridgeRoot(
+            wave.value(), modes, std::complex<double>{speed * beta, 0.0},
+            root))
+      continue;
+    bool known = false;
+    for (const std::complex<double>& found : roots) {
+      if (body_detail::sameRoot(found, root)) {
+        known = true;
+        break;
+      }
+    }
+    if (!known) roots.push_back(root);
+  }
+  if (static_cast<int>(roots.size()) < count)
+    return R::failure(QuantityError::RangeError);
+  for (std::size_t i = 1; i < roots.size(); ++i) {
+    std::complex<double> value = roots[i];
+    std::size_t j = i;
+    while (j > 0 && roots[j - 1].real() > value.real()) {
+      roots[j] = roots[j - 1];
+      --j;
+    }
+    roots[j] = value;
+  }
+  std::vector<MovingBridgeMode> modesOut;
+  modesOut.reserve(static_cast<std::size_t>(count));
+  for (int i = 0; i < count; ++i) {
+    const std::complex<double>& root = roots[static_cast<std::size_t>(i)];
+    const double frequency = root.real() / constants::twoPi;
+    const double decay = root.imag();
+    if (!std::isfinite(frequency) || !(frequency > 0.0) || !std::isfinite(decay) ||
+        decay < 0.0)
+      return R::failure(QuantityError::RangeError);
+    modesOut.push_back(MovingBridgeMode{frequency, decay, 0.0, kMovingBridgeSource});
+  }
+  return R::success(std::move(modesOut));
+}
+
+[[nodiscard]] inline Result<std::vector<MovingBridgeMode>, QuantityError>
+movingBridgeModes(const StringCourse& course, const BodyResonator& mode,
+                  int count) {
+  const BodyResonator modes[] = {mode};
+  return movingBridgeModes(course, std::span<const BodyResonator>{modes, 1},
+                           count);
 }
 
 }  // namespace mmathen

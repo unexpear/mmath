@@ -25,4 +25,19 @@ TEST_CASE("instruments/body.h is self-contained", "[headers]") {
       std::complex<double>{0.001, 0.0}, 2.0, 200.0, 1.0e5, 300.0);
   REQUIRE(field.ok());
   CHECK(std::abs(field.value().pressure) > 0.0);
+  const mmathen::StringCourse course{
+      mmathen::StringGeometry{mmathen::DistanceMeters{0.5}},
+      mmathen::StringMaterial{mmathen::LinearDensityKgPerM{0.01}},
+      mmathen::StringTuning{"synthetic", mmathen::FrequencyHz{200.0}},
+      mmathen::TensionNewtons{400.0},
+      mmathen::TabulatedRange{},
+      mmathen::TabulatedRange{},
+      0.0,
+      false,
+      "synthetic"};
+  const auto moved = mmathen::resistiveBridgeMode(course, 40.0, 1);
+  REQUIRE(moved.ok());
+  CHECK(moved.value().decayPerSecond > 0.0);
+  CHECK(mmathen::bridgeResistance(mode.value(), 440.0).ok());
+  CHECK(mmathen::movingBridgeModes(course, mode.value(), 1).ok());
 }

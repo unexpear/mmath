@@ -35,7 +35,7 @@ interval.
 | `instruments/cello.h` | C2 G2 D3 A3, vibrating length 0.690 m, body 0.755 m, compass C2–E5 |
 | `instruments/double_bass.h` | Orchestral E1 A1 D2 G2, vibrating length 1.060 m, body 1.110 m, sounding compass E1–B3 (written E2–B4) |
 | `instruments/bow.h` | Steady Helmholtz stick/slip, bridge-force sawtooth, Schelleng maximum and minimum normal force, and a time-stepped stick-slip capture on rigid ends |
-| `instruments/body.h` | Sum of driving-point body modes, a cavity Helmholtz frequency, a mutual stiffness between two modes, and a compact-monopole far field. Resonances, Q, masses, f-hole area, volume, neck, mutual stiffness, radiating area or volume velocity, and distance are arguments. No stored admittance, f-hole, A0/B1, or radiating-area table |
+| `instruments/body.h` | Sum of driving-point body modes, a cavity Helmholtz frequency, a mutual stiffness between two modes, a compact-monopole far field, and a string re-solved on a moving bridge. Resonances, Q, masses, f-hole area, volume, neck, mutual stiffness, radiating area or volume velocity, distance, and bridge resistance are arguments. No stored admittance, f-hole, A0/B1, or radiating-area table |
 | `instruments/hammer.h` | Hard narrow hammer until the first reflection; first-image sum until the second image; felt law \(F=K\xi^{p}\). Mass, speed, strike, \(K\), and \(p\) are arguments |
 | `instruments/reed.h` | Quasi-static single reed; cylindrical bore; reed inertia. Area, closure, air state, bore length and cross-section, mass, tip area, closing displacement, and damping are arguments |
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
@@ -275,6 +275,14 @@ not a violin with the labels rewritten.
   linear density multiplies \(B\) by 16. A core heavier than the string
   is refused. A violin course has no stored core: two caller diameters
   produce two values of \(B\).
+- A resistive moving bridge keeps \(nc/(2L)\) when \(R>Z\), with decay
+  \((c/L)\operatorname{artanh}(Z/R)\) and reflection \((Z-R)/(Z+R)\).
+  \(R<Z\) keeps the fixed-free pitches. \(R=Z\) is refused. Doubling the
+  length halves the frequency and the decay. One high-Q body mode, used as
+  the termination, matches the lossless coupled-string root, and a second
+  caller mode moves that root. \(\operatorname{Re}(1/Y)\) at the mode's
+  own resonance equals its \(r\), and Schelleng's minimum accepts that
+  value. No instrument resistance is stored.
 - The stick-slip step has \(v=v_h+f/(2Z)\), and each rigid end returns
   the outgoing wave with a factor \(-1\) after the caller's delay. From
   rest, a bow whose static limit sits between \(2Z|v_b|\) and \(4Z|v_b|\)
@@ -422,10 +430,29 @@ where \(d_r = 0\).
 The steady bridge-foot velocity and displacement are the response to the
 Helmholtz sawtooth, summed from its Fourier coefficients
 \(c_n = -j\,\Delta/(2\pi n)\) (\(\Delta\) is the flyback) through the summed
-mobility. That response equals the sum of the one-mode responses. The
-string still sees a rigid bridge. This is an open-loop drive: the body
-does not move the string end, so wolf notes and other back-reaction are
-absent. `coupleBodyModes` is the missing mutual term: two caller-supplied
+mobility. That response equals the sum of the one-mode responses. That
+drive is still open-loop: it does not rewrite the sawtooth.
+
+`movingBridgeModes` does re-solve the string. The nut stays fixed. The
+bridge end satisfies
+
+\[
+j\sin(\omega L/c)+YZ\cos(\omega L/c)=0,\qquad Z=\mu c,
+\]
+
+with \(Y\) the summed mobility. A caller resistance uses \(Y=1/R\). For
+\(R>Z\) the pitches stay \(nc/(2L)\) and the decay is
+\((c/L)\operatorname{artanh}(Z/R)\). For \(R<Z\) the pitches are the
+fixed-free series \((2n-1)c/(4L)\) and the decay is
+\((c/L)\operatorname{artanh}(R/Z)\). \(R=Z\) is matched and is refused.
+The velocity reflection is \((Z-R)/(Z+R)\). A mode table uses the same
+equation; one high-Q oscillator agrees with the lossless coupled string.
+`bridgeResistance` is \(\operatorname{Re}(1/Y)\) at a caller frequency.
+At one mode's own resonance it equals that mode's \(r\), and that value
+may be passed to Schelleng's minimum. No instrument resistance is stored.
+A double-slip wolf cycle is not stepped.
+
+`coupleBodyModes` is the missing mutual term: two caller-supplied
 modes and one stiffness \(K\) off the diagonal. The driving-point sum
 itself stays diagonal. \(K=0\) returns the uncoupled resonances. A nonzero
 \(K\) pushes one root down and the other up, and
@@ -691,8 +718,7 @@ diameters and are not read. No instrument stores a core.
 
 ## Still planned
 
-A re-solved string with a moving bridge. The stick-slip capture uses rigid
-ends and does not include that bridge. Images after the first from each
-hammer end, a viscous reed channel, and a sounding clarinet are not in
-this layer. Snare wires, shell air, a bass-drum port, and a hi-hat clutch
-gap are not in the drum kit.
+Images after the first from each hammer end, a viscous reed channel, and a
+sounding clarinet are not in this layer. The stick-slip capture still uses
+rigid ends. Snare wires, shell air, a bass-drum port, and a hi-hat clutch
+gap are not in the drum kit. A double-slip wolf cycle is not stepped.
