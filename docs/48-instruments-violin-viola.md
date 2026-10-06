@@ -9,7 +9,7 @@ fingered stop shortens one open course. A Yamaha Tour Custom kit and a
 SABIAN XSR cymbal set add fixed circular membranes and free circular
 plates. Verified against the ideal-string
 law, Guettler's tables, the harp and harpsichord measurements named
-below, the Helmholtz/Schelleng identities, the driving-point modal sum, the cavity Helmholtz frequency,
+below, the Helmholtz/Schelleng identities, the driving-point modal sum, the cavity Helmholtz frequency, the mutual-stiffness split,
 the hard-hammer contact law, the first-image sum, the felt power law, the
 reed flow law, the circular-membrane Bessel frequencies, and the free-plate
 frequency law. Unvalidated as radiated sound: the body-mode sum is
@@ -35,7 +35,7 @@ interval.
 | `instruments/cello.h` | C2 G2 D3 A3, vibrating length 0.690 m, body 0.755 m, compass C2–E5 |
 | `instruments/double_bass.h` | Orchestral E1 A1 D2 G2, vibrating length 1.060 m, body 1.110 m, sounding compass E1–B3 (written E2–B4) |
 | `instruments/bow.h` | Steady Helmholtz stick/slip, bridge-force sawtooth, Schelleng maximum normal force |
-| `instruments/body.h` | Sum of driving-point body modes, plus a cavity Helmholtz frequency. Mode resonance, Q, and modal mass are arguments. F-hole area, cavity volume, and effective neck length are arguments. No stored admittance or f-hole table |
+| `instruments/body.h` | Sum of driving-point body modes, a cavity Helmholtz frequency, and a mutual stiffness between two modes. Resonances, Q, masses, f-hole area, volume, neck, and the mutual stiffness are arguments. No stored admittance, f-hole, or A0/B1 table |
 | `instruments/hammer.h` | Hard narrow hammer until the first reflection; first-image sum until the second image; felt law \(F=K\xi^{p}\). Mass, speed, strike, \(K\), and \(p\) are arguments |
 | `instruments/reed.h` | Quasi-static single reed; cylindrical bore; reed inertia. Area, closure, air state, bore length and cross-section, mass, tip area, closing displacement, and damping are arguments |
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
@@ -291,6 +291,13 @@ not a violin with the labels rewritten.
   \(\rho c^2=\gamma p\). A non-positive area, volume, or
   neck is refused. The violin's body length is not the neck. The frequency
   is not written into a body mode.
+- Two modes with a mutual stiffness \(K\) have coupled frequencies from
+  \((k_1-\omega^2 m_1)(k_2-\omega^2 m_2)-K^2=0\). \(K=0\) returns the two
+  resonances. The sign of \(K\) does not move them. Their squared angular
+  frequencies still add to \(\omega_1^2+\omega_2^2\), and a nonzero \(K\)
+  pushes the lower root down and the upper root up. Identical modes split
+  as \(\sqrt{\omega_0^2\pm|K|/m}\). \(K^2\ge k_1 k_2\) is refused. No A0
+  or B1 frequency is stored, and the driving-point sum stays diagonal.
 - A hard hammer's contact velocity is \(v_0 e^{-t/\tau}\) with
   \(\tau = m/(2Z)\) and \(Z=\mu c\), the force is \(2Zv\), and the
   contact displacement is the integral of that velocity. The impulse
@@ -365,8 +372,13 @@ Helmholtz sawtooth, summed from its Fourier coefficients
 mobility. That response equals the sum of the one-mode responses. The
 string still sees a rigid bridge. This is an open-loop drive: the body
 does not move the string end, so wolf notes and other back-reaction are
-absent. A0–B1 coupling would be a mutual term between two modes; this sum
-has no off-diagonal term.
+absent. `coupleBodyModes` is the missing mutual term: two caller-supplied
+modes and one stiffness \(K\) off the diagonal. The driving-point sum
+itself stays diagonal. \(K=0\) returns the uncoupled resonances. A nonzero
+\(K\) pushes one root down and the other up, and
+\(\omega_-^2+\omega_+^2=\omega_1^2+\omega_2^2\). \(K^2\ge k_1 k_2\) is not
+a pair of positive frequencies. No A0 or B1 number is stored, and the
+cavity's acoustic mass is not used as a mechanical modal mass.
 
 `makeCavityHelmholtz` is Rayleigh's resonator, not a measured A0:
 
@@ -392,8 +404,8 @@ resonant resistance \(r = m\omega_0/Q\), the reciprocal of that mode's own
 real mobility at \(\omega_0\). The summed mobility at that frequency is
 not \(1/r\), and neither number is the bridge resistance the string sees.
 Neither is substituted into the bow. Far-field pressure is not evaluated:
-it needs a radiating area or a volume velocity, and a distance. A0–B1
-coupling needs a mutual term. None of those constants is invented.
+it needs a radiating area or a volume velocity, and a distance. That
+constant is not invented.
 
 `physics/` does not include `instruments/`.
 
@@ -594,8 +606,7 @@ The hi-hat is two 14″ plates. No clutch gap is printed, and the plates are not
 
 ## Still planned
 
-A0–B1 coupling,
-far-field radiation, back-reaction of the body on the string (and with it
+Far-field radiation, back-reaction of the body on the string (and with it
 Schelleng's minimum bow force), stiffness of wound strings, and a
 time-stepped stick-slip capture. The Helmholtz stroke is the steady
 regime only. Images after the first from each hammer end, a viscous reed

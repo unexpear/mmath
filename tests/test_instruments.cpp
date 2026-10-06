@@ -788,6 +788,57 @@ TEST_CASE("a cavity Helmholtz frequency uses caller area, volume, and neck",
             .error() == QuantityError::RangeError);
 }
 
+TEST_CASE("two body modes couple through a caller mutual stiffness",
+          "[instruments]") {
+  // Arguments, not a measured A0 or B1.
+  const auto low = unwrap(makeBodyResonator(BodyModeSpec{200.0, 20.0, 0.05}));
+  const auto high = unwrap(makeBodyResonator(BodyModeSpec{350.0, 25.0, 0.02}));
+  const auto uncoupled = unwrap(coupleBodyModes(low, high, 0.0));
+  CHECK(nearlyEqual(uncoupled.lowerHz, low.resonanceHz, 0.0, 1e-12));
+  CHECK(nearlyEqual(uncoupled.upperHz, high.resonanceHz, 0.0, 1e-12));
+  const auto swapped = unwrap(coupleBodyModes(high, low, 0.0));
+  CHECK(nearlyEqual(swapped.lowerHz, uncoupled.lowerHz, 0.0, 1e-12));
+  CHECK(nearlyEqual(swapped.upperHz, uncoupled.upperHz, 0.0, 1e-12));
+
+  const double mutual = 2.0e4;
+  const auto split = unwrap(coupleBodyModes(low, high, mutual));
+  const auto flipped = unwrap(coupleBodyModes(low, high, -mutual));
+  CHECK(nearlyEqual(flipped.lowerHz, split.lowerHz, 0.0, 1e-12));
+  CHECK(nearlyEqual(flipped.upperHz, split.upperHz, 0.0, 1e-12));
+  CHECK(split.lowerHz < low.resonanceHz);
+  CHECK(split.upperHz > high.resonanceHz);
+  const double uncoupledSum =
+      low.omega0 * low.omega0 + high.omega0 * high.omega0;
+  const double coupledSum =
+      std::pow(constants::twoPi * split.lowerHz, 2.0) +
+      std::pow(constants::twoPi * split.upperHz, 2.0);
+  CHECK(nearlyEqual(coupledSum, uncoupledSum, 0.0, 1e-12));
+
+  const auto twin = unwrap(makeBodyResonator(BodyModeSpec{200.0, 20.0, 0.05}));
+  const double within = 0.25 * twin.stiffness;
+  const auto twins = unwrap(coupleBodyModes(low, twin, within));
+  const double raised =
+      std::sqrt(twin.omega0 * twin.omega0 + within / twin.modalMassKg) /
+      constants::twoPi;
+  const double lowered =
+      std::sqrt(twin.omega0 * twin.omega0 - within / twin.modalMassKg) /
+      constants::twoPi;
+  CHECK(nearlyEqual(twins.upperHz, raised, 0.0, 1e-12));
+  CHECK(nearlyEqual(twins.lowerHz, lowered, 0.0, 1e-12));
+  CHECK(twins.lowerHz < twin.resonanceHz);
+  CHECK(twins.upperHz > twin.resonanceHz);
+
+  const double limit = std::sqrt(low.stiffness * high.stiffness);
+  CHECK(coupleBodyModes(low, high, limit).error() == QuantityError::DomainError);
+  CHECK(coupleBodyModes(low, high, limit * 1.01).error() ==
+        QuantityError::DomainError);
+  CHECK(coupleBodyModes(low, high, std::numeric_limits<double>::quiet_NaN())
+            .error() == QuantityError::InvalidArgument);
+  BodyResonator blank;
+  CHECK(coupleBodyModes(low, blank, 0.0).error() ==
+        QuantityError::InvalidArgument);
+}
+
 TEST_CASE("a hard hammer follows the infinite-string law until the reflection",
           "[instruments]") {
   // Mass and speed are arguments, not a published piano hammer.

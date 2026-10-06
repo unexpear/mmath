@@ -33,9 +33,14 @@
 // neither is invented. Body length is not the neck, the volume, or the
 // area.
 //
+// coupleBodyModes adds one mutual stiffness between two caller-supplied
+// modes. The diagonals stay those modes' own stiffnesses. This is the
+// off-diagonal term an A0–B1 pair needs. It does not store an A0 or a B1
+// frequency, and it does not turn the cavity's acoustic mass into a
+// mechanical modal mass.
+//
 // Not evaluated, because each one needs data this layer does not have:
-//   far-field pressure (radiating area or volume velocity, and a distance),
-//   A0–B1 coupling (a mutual term).
+//   far-field pressure (radiating area or volume velocity, and a distance).
 // Hammer and reed are not this model.
 //
 // VERIFIED against the modal admittance and against the oscillator ODE
@@ -64,8 +69,9 @@ inline constexpr const char* kBodyResonatorSource =
     "or bass admittance table is stored, and no A0 or B1 frequency is "
     "stored. The Helmholtz force drives the sum open-loop. Schelleng's "
     "minimum bow force is not applied. The cavity Helmholtz frequency is "
-    "makeCavityHelmholtz and is not a term of this sum. Far-field pressure "
-    "and A0-B1 coupling (a mutual term) are not evaluated.";
+    "makeCavityHelmholtz and is not a term of this sum. A mutual stiffness "
+    "between two modes is coupleBodyModes. Far-field pressure is not "
+    "evaluated.";
 
 // Caller-supplied mode. Frequency in hertz, Q dimensionless, mass in kg.
 struct BodyModeSpec {
@@ -454,6 +460,75 @@ struct CavityHelmholtz {
   cavity.frequencyHz = frequency;
   cavity.source = kCavityHelmholtzSource;
   return R::success(cavity);
+}
+
+// Two oscillators with the caller's uncoupled stiffnesses on the diagonal
+// and one mutual stiffness K (N/m) off the diagonal:
+//   (k1 - ω² m1)(k2 - ω² m2) - K² = 0.
+// K = 0 leaves the resonances uncoupled. The sign of K does not move the
+// frequencies. The sum of the squared coupled angular frequencies equals
+// the sum of the uncoupled ones. A root that is not a positive frequency
+// (K² ≥ k1 k2) is DomainError. This is not a stored A0–B1 pair.
+inline constexpr const char* kCoupledModesSource =
+    "Two oscillators with uncoupled stiffnesses k = m omega0^2 and one "
+    "mutual stiffness K: (k1 - omega^2 m1)(k2 - omega^2 m2) - K^2 = 0. "
+    "K is a caller argument. No A0 or B1 frequency is stored. The cavity "
+    "acoustic mass is not used as a mechanical modal mass.";
+
+struct CoupledModePair {
+  double lowerHz = 0.0;
+  double upperHz = 0.0;
+  double mutualStiffness = 0.0;
+  const char* source = nullptr;
+};
+
+// InvalidArgument if K is non-finite or either mode has a non-positive
+// mass or stiffness. DomainError if K² is at least k1 k2, so the lower
+// root is not a positive frequency.
+[[nodiscard]] inline Result<CoupledModePair, QuantityError> coupleBodyModes(
+    const BodyResonator& first, const BodyResonator& second,
+    double mutualStiffness) {
+  using R = Result<CoupledModePair, QuantityError>;
+  const double m1 = first.modalMassKg;
+  const double m2 = second.modalMassKg;
+  const double k1 = first.stiffness;
+  const double k2 = second.stiffness;
+  if (!std::isfinite(mutualStiffness) || !std::isfinite(m1) ||
+      !std::isfinite(m2) || !std::isfinite(k1) || !std::isfinite(k2) ||
+      !(m1 > 0.0) || !(m2 > 0.0) || !(k1 > 0.0) || !(k2 > 0.0))
+    return R::failure(QuantityError::InvalidArgument);
+  const double stiffnessProduct = k1 * k2;
+  const double coupling = mutualStiffness * mutualStiffness;
+  if (!std::isfinite(stiffnessProduct) || !std::isfinite(coupling))
+    return R::failure(QuantityError::RangeError);
+  if (!(stiffnessProduct > coupling))
+    return R::failure(QuantityError::DomainError);
+  const double trace = m1 * k2 + m2 * k1;
+  const double split = m1 * k2 - m2 * k1;
+  // (m1 k2 - m2 k1)² + 4 m1 m2 K². A sum of squares, so it does not
+  // cancel through zero the way trace² - 4 m1 m2 k1 k2 can.
+  const double discriminant = split * split + 4.0 * m1 * m2 * coupling;
+  const double massProduct = 2.0 * m1 * m2;
+  if (!(discriminant >= 0.0) || !std::isfinite(discriminant) ||
+      !(massProduct > 0.0) || !std::isfinite(massProduct) ||
+      !std::isfinite(trace))
+    return R::failure(QuantityError::RangeError);
+  const double root = std::sqrt(discriminant);
+  const double omega2Upper = (trace + root) / massProduct;
+  const double omega2Lower = (trace - root) / massProduct;
+  if (!(omega2Lower > 0.0) || !(omega2Upper >= omega2Lower) ||
+      !std::isfinite(omega2Lower) || !std::isfinite(omega2Upper))
+    return R::failure(QuantityError::DomainError);
+  const double lowerHz = std::sqrt(omega2Lower) / constants::twoPi;
+  const double upperHz = std::sqrt(omega2Upper) / constants::twoPi;
+  if (!std::isfinite(lowerHz) || !std::isfinite(upperHz) || !(lowerHz > 0.0))
+    return R::failure(QuantityError::RangeError);
+  CoupledModePair pair;
+  pair.lowerHz = lowerHz;
+  pair.upperHz = upperHz;
+  pair.mutualStiffness = mutualStiffness;
+  pair.source = kCoupledModesSource;
+  return R::success(pair);
 }
 
 }  // namespace mmathen
