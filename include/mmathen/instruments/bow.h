@@ -28,12 +28,16 @@
 // Schelleng's maximum normal force (Woodhouse §9.3.1, eq. 4):
 //   f_max = 2 Z |v_b| / (β (μ_s - μ_d)).
 // A heavier bow is DomainError: this approximation will not pretend the
-// string is still in Helmholtz motion. Schelleng's minimum force is not
-// applied. It needs a bridge resistance R (a body), and no R is invented
-// here.
+// string is still in Helmholtz motion. Schelleng's minimum needs a bridge
+// resistance R. schellengMinimumForce takes that R as an argument.
+// Woodhouse eq. (9):
+//   f_min = Z² |v_b| / (2 R β² (μ_s - μ_d)),
+// and eq. (10): f_max / f_min = 4 β R / Z. No numerical R is stored.
+// The string is not re-solved with a moving bridge.
 //
 // Limits: no capture transient, no bow-hair width, no torsion, no thermal
-// rosin, no rounded corner, no minimum-force check, no radiated sound.
+// rosin, no rounded corner, no re-solved moving bridge. The minimum force
+// is a separate check once R is supplied.
 // Hammer and reed are not this model.
 //
 // VERIFIED against the identities above. UNVALIDATED against measured bow
@@ -53,7 +57,9 @@ inline constexpr const char* kHelmholtzBowSource =
     "Euphonics 9.3.1, https://euphonics.org/9-3-1-shellengs-bow-force-limits/ "
     "(slope T v_b/(beta L), flyback -2 Z v_b/beta, "
     "f_max = 2 Z |v_b|/(beta (mu_s-mu_d))). "
-    "Schelleng's minimum force is omitted: it needs a bridge resistance.";
+    "Schelleng minimum, same section eq. (9): "
+    "f_min = Z^2 |v_b| / (2 R beta^2 (mu_s-mu_d)), "
+    "with f_max/f_min = 4 beta R/Z. R is a caller argument.";
 
 // Caller-supplied friction. Not a hidden rosin table: μ_s must exceed μ_d.
 struct BowFriction {
@@ -157,6 +163,44 @@ namespace helmholtz_detail {
       -muD * normal * helmholtz_detail::signNonzero(relativeSlip);
   motion.source = kHelmholtzBowSource;
   return R::success(motion);
+}
+
+// Woodhouse eq. (9), written as f_max * Z / (4 β R) so it matches eq. (10).
+// R is the caller's bridge resistance in N·s/m. The model assumes R is
+// large beside Z; a small positive R is still evaluated, and no cutoff
+// ratio is invented. InvalidArgument if R is not strictly positive and
+// finite, or the stroke does not carry a usable Z, β, and maximum.
+// RangeError if the minimum overflows.
+[[nodiscard]] inline Result<double, QuantityError> schellengMinimumForce(
+    const HelmholtzStroke& motion, double bridgeResistance) {
+  using R = Result<double, QuantityError>;
+  if (!std::isfinite(bridgeResistance) || !(bridgeResistance > 0.0) ||
+      !std::isfinite(motion.impedance) || !(motion.impedance > 0.0) ||
+      !std::isfinite(motion.beta) || !(motion.beta > 0.0) ||
+      !(motion.beta < 1.0) || !std::isfinite(motion.maxNormalForce) ||
+      !(motion.maxNormalForce > 0.0))
+    return R::failure(QuantityError::InvalidArgument);
+  const double minimum = motion.maxNormalForce * motion.impedance /
+                         (4.0 * motion.beta * bridgeResistance);
+  if (!std::isfinite(minimum) || !(minimum > 0.0))
+    return R::failure(QuantityError::RangeError);
+  return R::success(minimum);
+}
+
+// The rigid-bridge stroke, additionally refused when the normal force is
+// below Schelleng's minimum for the caller's bridge resistance.
+// DomainError if the force is above the maximum or below the minimum.
+[[nodiscard]] inline Result<HelmholtzStroke, QuantityError> makeHelmholtzStroke(
+    const StringCourse& course, const BowStroke& stroke,
+    double bridgeResistance) {
+  using R = Result<HelmholtzStroke, QuantityError>;
+  auto motion = makeHelmholtzStroke(course, stroke);
+  if (!motion.ok()) return R::failure(motion.error());
+  auto minimum = schellengMinimumForce(motion.value(), bridgeResistance);
+  if (!minimum.ok()) return R::failure(minimum.error());
+  if (stroke.normalForceNewtons < minimum.value())
+    return R::failure(QuantityError::DomainError);
+  return R::success(std::move(motion).value());
 }
 
 // Bow-point transverse velocity. Stick on [0, stickDuration), slip after,

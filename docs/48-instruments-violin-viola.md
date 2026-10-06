@@ -262,6 +262,12 @@ not a violin with the labels rewritten.
   above. A normal force above Schelleng's maximum is refused. The cello's
   A string, at the same β and bow speed, has a different impedance and a
   longer period than the violin's A string.
+- Schelleng's minimum is \(Z^2|v_b|/(2R\beta^2(\mu_s-\mu_d))\), and
+  \(f_{\max}/f_{\min}=4\beta R/Z\). \(R\) is an argument. Doubling \(R\)
+  halves the minimum. A force below it is refused when \(R\) is supplied,
+  and the same stroke without \(R\) is still the rigid-bridge motion. An
+  up-bow has the same minimum. The cello's A string, at the same \(R\),
+  does not.
 - One body mode has stiffness \(m\omega_0^2\), damping \(m\omega_0/Q\), and
   mobility \(1/r\) exactly at resonance, with a positive imaginary part
   below resonance and a negative imaginary part above it. Driven by the
@@ -340,9 +346,19 @@ bridge. With bow speed \(v_b\) and period \(P = 2L/c\):
 
 Schelleng's maximum normal force \(2Z|v_b|/(\beta(\mu_s-\mu_d))\) is
 enforced (Woodhouse, Euphonics §9.3.1). A heavier bow is `DomainError`.
-Schelleng's minimum force is not enforced: it needs a bridge resistance,
-and this slice does not invent one. Friction coefficients are arguments,
-not a hidden rosin table.
+Schelleng's minimum, same section eq. (9), is
+
+\[
+f_{\min}=\frac{Z^2|v_b|}{2R\beta^2(\mu_s-\mu_d)},\qquad
+\frac{f_{\max}}{f_{\min}}=\frac{4\beta R}{Z}.
+\]
+
+\(R\) is the caller's bridge resistance. It is not read off a mode, and no
+violin, viola, cello, or bass value is stored. Supplying \(R\) refuses a
+bow lighter than \(f_{\min}\). Omitting \(R\) leaves the rigid-bridge
+stroke, which does not know a minimum. The string is not re-solved with a
+moving end, so this is not a wolf note. Friction coefficients are
+arguments, not a hidden rosin table.
 
 Not in this bow: capture transients, bow-hair width, torsion, thermal
 rosin, a rounded corner, and any body filter on the bridge force. The
@@ -408,7 +424,8 @@ violin, viola, cello, or bass area, volume, or neck is stored, and the
 body length is not substituted for any of the three. The frequency is not
 inserted into the modal sum: that would need a modal mass and a \(Q\).
 
-Schelleng's minimum bow force stays unevaluated. Each mode carries its
+Schelleng's minimum is `schellengMinimumForce` once the caller supplies
+\(R\). Each mode carries its
 resonant resistance \(r = m\omega_0/Q\), the reciprocal of that mode's own
 real mobility at \(\omega_0\). The summed mobility at that frequency is
 not \(1/r\), and neither number is the bridge resistance the string sees.
@@ -626,8 +643,7 @@ The hi-hat is two 14″ plates. No clutch gap is printed, and the plates are not
 
 ## Still planned
 
-Back-reaction of the body on the string (and with it
-Schelleng's minimum bow force), stiffness of wound strings, and a
+A re-solved string with a moving bridge, stiffness of wound strings, and a
 time-stepped stick-slip capture. The Helmholtz stroke is the steady
 regime only. Images after the first from each hammer end, a viscous reed
 channel, and a sounding clarinet are not in this layer. Snare wires, shell air, a bass-drum port, and a hi-hat clutch gap are not in the drum kit.

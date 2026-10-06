@@ -9,5 +9,7 @@ TEST_CASE("instruments/bow.h is self-contained", "[headers]") {
       mmathen::DistanceMeters{0.328}, row, mmathen::kGuettlerBowedStringSource);
   const mmathen::BowStroke stroke{1.0 / 9.0, 0.2, 0.1, {0.8, 0.3}};
   CHECK(course.ok());
-  CHECK(mmathen::makeHelmholtzStroke(course.value(), stroke).ok());
+  const auto motion = mmathen::makeHelmholtzStroke(course.value(), stroke);
+  REQUIRE(motion.ok());
+  CHECK(mmathen::schellengMinimumForce(motion.value(), 50.0).ok());
 }

@@ -419,6 +419,70 @@ TEST_CASE("a bow stroke is steady Helmholtz motion", "[instruments]") {
   CHECK(celloMotion.period > motion.period);
 }
 
+TEST_CASE("Schelleng's minimum bow force uses a caller bridge resistance",
+          "[instruments]") {
+  const auto violinInstrument = unwrap(violin());
+  const StringCourse& course = violinInstrument.courses[2];
+  const double beta = 1.0 / 9.0;
+  const double speed = 0.2;
+  const double muS = 0.8;
+  const double muD = 0.3;
+  const double density = course.material.linearDensity.value();
+  const double wave = std::sqrt(course.tension.value() / density);
+  const double impedance = density * wave;
+  const double maxNormal = 2.0 * impedance * speed / (beta * (muS - muD));
+  const BowStroke stroke{beta, speed, 0.5 * maxNormal, {muS, muD}};
+  const auto motion = unwrap(makeHelmholtzStroke(course, stroke));
+  // Built from this string's Z. Not a measured bridge resistance.
+  const double resistance = 20.0 * impedance / beta;
+  const auto minimum = unwrap(schellengMinimumForce(motion, resistance));
+  const double direct = impedance * impedance * std::fabs(speed) /
+                        (2.0 * resistance * beta * beta * (muS - muD));
+  CHECK(nearlyEqual(minimum, direct, 0.0, 1e-12));
+  CHECK(nearlyEqual(motion.maxNormalForce / minimum,
+                    4.0 * beta * resistance / impedance, 0.0, 1e-12));
+  CHECK(minimum < stroke.normalForceNewtons);
+  CHECK(makeHelmholtzStroke(course, stroke, resistance).ok());
+
+  const auto doubled =
+      unwrap(schellengMinimumForce(motion, 2.0 * resistance));
+  CHECK(nearlyEqual(doubled, 0.5 * minimum, 0.0, 1e-12));
+
+  BowStroke upBow = stroke;
+  upBow.speedMetersPerSecond = -speed;
+  const auto upward = unwrap(makeHelmholtzStroke(course, upBow));
+  CHECK(nearlyEqual(unwrap(schellengMinimumForce(upward, resistance)), minimum,
+                    0.0, 1e-12));
+
+  BowStroke light = stroke;
+  light.normalForceNewtons = minimum * 0.5;
+  CHECK(light.normalForceNewtons < motion.maxNormalForce);
+  CHECK(makeHelmholtzStroke(course, light).ok());
+  CHECK(makeHelmholtzStroke(course, light, resistance).error() ==
+        QuantityError::DomainError);
+  BowStroke atMinimum = stroke;
+  atMinimum.normalForceNewtons = minimum;
+  CHECK(makeHelmholtzStroke(course, atMinimum, resistance).ok());
+
+  const auto celloInstrument = unwrap(cello());
+  const StringCourse* celloA = findCourse(celloInstrument, "A3");
+  REQUIRE(celloA != nullptr);
+  const auto celloMotion = unwrap(makeHelmholtzStroke(*celloA, stroke));
+  CHECK(unwrap(schellengMinimumForce(celloMotion, resistance)) != minimum);
+
+  CHECK(schellengMinimumForce(motion, 0.0).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(schellengMinimumForce(motion, -resistance).error() ==
+        QuantityError::InvalidArgument);
+  HelmholtzStroke blank;
+  CHECK(schellengMinimumForce(blank, resistance).error() ==
+        QuantityError::InvalidArgument);
+  BowStroke tooHeavy = stroke;
+  tooHeavy.normalForceNewtons = motion.maxNormalForce * 1.01;
+  CHECK(makeHelmholtzStroke(course, tooHeavy, resistance).error() ==
+        QuantityError::DomainError);
+}
+
 TEST_CASE("one body mode filters the Helmholtz bridge force", "[instruments]") {
   // Arguments, not a published mode of any of the four instruments.
   const auto mode = unwrap(makeBodyResonator(BodyModeSpec{300.0, 20.0, 0.05}));
