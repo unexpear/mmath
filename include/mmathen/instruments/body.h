@@ -39,8 +39,12 @@
 // frequency, and it does not turn the cavity's acoustic mass into a
 // mechanical modal mass.
 //
-// Not evaluated, because each one needs data this layer does not have:
-//   far-field pressure (radiating area or volume velocity, and a distance).
+// compactMonopolePressure is the spherical wave of a compact source,
+//   P = j ω ρ U exp(-j k r) / (4 π r),
+// with k = ω/c. U is the caller's volume velocity, or the caller's
+// radiating area times a normal velocity. Distance is an argument. No
+// violin, viola, cello, or bass radiating area is stored. Body length is
+// not the distance.
 // Hammer and reed are not this model.
 //
 // VERIFIED against the modal admittance and against the oscillator ODE
@@ -70,8 +74,8 @@ inline constexpr const char* kBodyResonatorSource =
     "stored. The Helmholtz force drives the sum open-loop. Schelleng's "
     "minimum bow force is not applied. The cavity Helmholtz frequency is "
     "makeCavityHelmholtz and is not a term of this sum. A mutual stiffness "
-    "between two modes is coupleBodyModes. Far-field pressure is not "
-    "evaluated.";
+    "between two modes is coupleBodyModes. Far-field pressure is "
+    "compactMonopolePressure; no radiating area is stored.";
 
 // Caller-supplied mode. Frequency in hertz, Q dimensionless, mass in kg.
 struct BodyModeSpec {
@@ -529,6 +533,98 @@ struct CoupledModePair {
   pair.mutualStiffness = mutualStiffness;
   pair.source = kCoupledModesSource;
   return R::success(pair);
+}
+
+// Compact monopole. P = j ω ρ U exp(-j k r) / (4 π r), k = ω/c.
+// U is the caller's complex volume velocity (m³/s). The factor j exp(-jkr)
+// is written with real sine and cosine, so the pressure is not a complex
+// division. ρ and c are the dry-air model. No instrument area is stored.
+inline constexpr const char* kMonopoleSource =
+    "Compact monopole: P = j omega rho U exp(-j k r) / (4 pi r), "
+    "k = omega/c. U is a caller volume velocity, or a caller radiating "
+    "area times a normal velocity. Distance is a caller argument. "
+    "rho and c are the dry-air model. No violin, viola, cello, or bass "
+    "radiating area is stored.";
+
+struct MonopoleField {
+  std::complex<double> pressure{};
+  std::complex<double> volumeVelocity{};
+  double distanceMeters = 0.0;
+  double frequencyHz = 0.0;
+  double waveNumber = 0.0;
+  double soundSpeedMetersPerSecond = 0.0;
+  double airDensityKgPerM3 = 0.0;
+  const char* source = nullptr;
+};
+
+// InvalidArgument if distance is not strictly positive, frequency is
+// negative, or U is non-finite. Frequency 0 returns zero pressure.
+// Air-density and sound-speed errors propagate. RangeError if the
+// pressure overflows.
+[[nodiscard]] inline Result<MonopoleField, QuantityError> compactMonopolePressure(
+    std::complex<double> volumeVelocity, double distanceMeters,
+    double frequencyHz, double airPressurePa, double temperatureKelvin) {
+  using R = Result<MonopoleField, QuantityError>;
+  if (!std::isfinite(distanceMeters) || !(distanceMeters > 0.0) ||
+      !std::isfinite(frequencyHz) || frequencyHz < 0.0 ||
+      !std::isfinite(volumeVelocity.real()) ||
+      !std::isfinite(volumeVelocity.imag()))
+    return R::failure(QuantityError::InvalidArgument);
+  auto density = airDensity(PressurePascals{airPressurePa},
+                            TemperatureKelvin{temperatureKelvin});
+  if (!density.ok()) return R::failure(density.error());
+  auto air = makeAir(TemperatureKelvin{temperatureKelvin});
+  if (!air.ok()) return R::failure(air.error());
+  auto speed = speedOfSound(air.value());
+  if (!speed.ok()) return R::failure(speed.error());
+  const double rho = density.value().value();
+  const double c = speed.value().value();
+  const double omega = constants::twoPi * frequencyHz;
+  const double waveNumber = omega / c;
+  std::complex<double> pressure{0.0, 0.0};
+  if (frequencyHz != 0.0) {
+    const double kr = waveNumber * distanceMeters;
+    const double scale =
+        omega * rho / (4.0 * constants::pi * distanceMeters);
+    const double sine = std::sin(kr);
+    const double cosine = std::cos(kr);
+    const double realU = volumeVelocity.real();
+    const double imagU = volumeVelocity.imag();
+    pressure = std::complex<double>{scale * (sine * realU - cosine * imagU),
+                                    scale * (cosine * realU + sine * imagU)};
+  }
+  if (!std::isfinite(waveNumber) || !std::isfinite(pressure.real()) ||
+      !std::isfinite(pressure.imag()))
+    return R::failure(QuantityError::RangeError);
+  MonopoleField field;
+  field.pressure = pressure;
+  field.volumeVelocity = volumeVelocity;
+  field.distanceMeters = distanceMeters;
+  field.frequencyHz = frequencyHz;
+  field.waveNumber = waveNumber;
+  field.soundSpeedMetersPerSecond = c;
+  field.airDensityKgPerM3 = rho;
+  field.source = kMonopoleSource;
+  return R::success(field);
+}
+
+// U = S v. Area is the caller's radiating area (m²). Normal velocity is
+// the caller's surface velocity (m/s), not a bridge velocity and not a
+// body length.
+[[nodiscard]] inline Result<MonopoleField, QuantityError> compactMonopolePressure(
+    double radiatingAreaM2, std::complex<double> normalVelocity,
+    double distanceMeters, double frequencyHz, double airPressurePa,
+    double temperatureKelvin) {
+  using R = Result<MonopoleField, QuantityError>;
+  if (!std::isfinite(radiatingAreaM2) || !(radiatingAreaM2 > 0.0) ||
+      !std::isfinite(normalVelocity.real()) ||
+      !std::isfinite(normalVelocity.imag()))
+    return R::failure(QuantityError::InvalidArgument);
+  const std::complex<double> volumeVelocity{
+      radiatingAreaM2 * normalVelocity.real(),
+      radiatingAreaM2 * normalVelocity.imag()};
+  return compactMonopolePressure(volumeVelocity, distanceMeters, frequencyHz,
+                                 airPressurePa, temperatureKelvin);
 }
 
 }  // namespace mmathen

@@ -21,4 +21,8 @@ TEST_CASE("instruments/body.h is self-contained", "[headers]") {
       mmathen::makeBodyResonator(mmathen::BodyModeSpec{660.0, 15.0, 0.2});
   REQUIRE(partner.ok());
   CHECK(mmathen::coupleBodyModes(mode.value(), partner.value(), 1000.0).ok());
+  const auto field = mmathen::compactMonopolePressure(
+      std::complex<double>{0.001, 0.0}, 2.0, 200.0, 1.0e5, 300.0);
+  REQUIRE(field.ok());
+  CHECK(std::abs(field.value().pressure) > 0.0);
 }

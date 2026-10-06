@@ -15,7 +15,7 @@ Status: planning · Nothing below may shape Phase 0–2 APIs
    geometry ≠ material; coupling `H(f)` chains; excitation position → modal weights.
    Landed: `instruments/` with violin, viola, cello, and double bass ideal strings, a
    concert pedal harp, a French double harpsichord, a
-   pluck, a bridge hook, a steady Helmholtz bow, a sum of open-loop driving-point body modes, a cavity Helmholtz frequency, a mutual body-mode stiffness, a
+   pluck, a bridge hook, a steady Helmholtz bow, a sum of open-loop driving-point body modes, a cavity Helmholtz frequency, a mutual body-mode stiffness, a compact-monopole far field, a
    hard narrow hammer, the hammer's first reflected images and felt compliance,
    a quasi-static single reed, a cylindrical bore, reed inertia, a fingered
    stop, a Yamaha Tour Custom drum kit (circular membranes), and a SABIAN XSR

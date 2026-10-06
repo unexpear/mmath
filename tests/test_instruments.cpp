@@ -839,6 +839,94 @@ TEST_CASE("two body modes couple through a caller mutual stiffness",
         QuantityError::InvalidArgument);
 }
 
+TEST_CASE("far-field pressure is a compact monopole with caller area or volume velocity",
+          "[instruments]") {
+  // Synthetic source. Not a measured violin, viola, cello, or bass area.
+  const double pressure = 1.0e5;
+  const double temperature = 300.0;
+  const double distance = 3.0;
+  const double frequency = 220.0;
+  const std::complex<double> volume{1.5e-4, 0.0};
+  const auto field = unwrap(compactMonopolePressure(
+      volume, distance, frequency, pressure, temperature));
+  CHECK(field.distanceMeters == distance);
+  CHECK(field.distanceMeters != unwrap(violin()).body.length.value());
+  CHECK(field.distanceMeters != unwrap(cello()).body.length.value());
+
+  const double rho =
+      unwrap(airDensity(PressurePascals{pressure}, TemperatureKelvin{temperature}))
+          .value();
+  const double c =
+      unwrap(speedOfSound(unwrap(makeAir(TemperatureKelvin{temperature})))).value();
+  CHECK(field.airDensityKgPerM3 == rho);
+  CHECK(field.soundSpeedMetersPerSecond == c);
+  const double omega = constants::twoPi * frequency;
+  const double wave = omega / c;
+  CHECK(nearlyEqual(field.waveNumber, wave, 0.0, 1e-12));
+  const double scale = omega * rho / (4.0 * constants::pi * distance);
+  const double kr = wave * distance;
+  const std::complex<double> expected{scale * std::sin(kr) * volume.real(),
+                                      scale * std::cos(kr) * volume.real()};
+  CHECK(nearlyEqual(field.pressure.real(), expected.real(), 0.0, 1e-12));
+  CHECK(nearlyEqual(field.pressure.imag(), expected.imag(), 0.0, 1e-12));
+  CHECK(nearlyEqual(std::abs(field.pressure), scale * std::abs(volume), 0.0,
+                    1e-12));
+
+  const auto farther = unwrap(compactMonopolePressure(
+      volume, 2.0 * distance, frequency, pressure, temperature));
+  CHECK(nearlyEqual(std::abs(farther.pressure), 0.5 * std::abs(field.pressure),
+                    0.0, 1e-12));
+  const auto higher = unwrap(compactMonopolePressure(
+      volume, distance, 2.0 * frequency, pressure, temperature));
+  CHECK(nearlyEqual(std::abs(higher.pressure), 2.0 * std::abs(field.pressure),
+                    0.0, 1e-12));
+
+  const double area = 0.02;
+  const std::complex<double> normal{volume.real() / area, 0.0};
+  const auto fromArea = unwrap(compactMonopolePressure(
+      area, normal, distance, frequency, pressure, temperature));
+  CHECK(nearlyEqual(fromArea.pressure.real(), field.pressure.real(), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(fromArea.pressure.imag(), field.pressure.imag(), 0.0,
+                    1e-12));
+  const auto wider = unwrap(compactMonopolePressure(
+      2.0 * area, normal, distance, frequency, pressure, temperature));
+  CHECK(nearlyEqual(std::abs(wider.pressure), 2.0 * std::abs(field.pressure),
+                    0.0, 1e-12));
+
+  const auto denser = unwrap(compactMonopolePressure(
+      volume, distance, frequency, 2.0 * pressure, temperature));
+  CHECK(nearlyEqual(denser.pressure.real(), 2.0 * field.pressure.real(), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(denser.pressure.imag(), 2.0 * field.pressure.imag(), 0.0,
+                    1e-12));
+  CHECK(denser.waveNumber == field.waveNumber);
+
+  const auto hotter = unwrap(compactMonopolePressure(
+      volume, distance, frequency, pressure, 4.0 * temperature));
+  CHECK(nearlyEqual(std::abs(hotter.pressure), 0.25 * std::abs(field.pressure),
+                    0.0, 1e-12));
+  CHECK(nearlyEqual(hotter.soundSpeedMetersPerSecond,
+                    2.0 * field.soundSpeedMetersPerSecond, 0.0, 1e-12));
+  CHECK(nearlyEqual(hotter.waveNumber, 0.5 * field.waveNumber, 0.0, 1e-12));
+
+  const auto steady = unwrap(
+      compactMonopolePressure(volume, distance, 0.0, pressure, temperature));
+  CHECK(steady.pressure.real() == 0.0);
+  CHECK(steady.pressure.imag() == 0.0);
+
+  CHECK(compactMonopolePressure(volume, 0.0, frequency, pressure, temperature)
+            .error() == QuantityError::InvalidArgument);
+  CHECK(compactMonopolePressure(volume, distance, -frequency, pressure,
+                                temperature)
+            .error() == QuantityError::InvalidArgument);
+  CHECK(compactMonopolePressure(0.0, normal, distance, frequency, pressure,
+                                temperature)
+            .error() == QuantityError::InvalidArgument);
+  CHECK(compactMonopolePressure(volume, distance, frequency, 0.0, temperature)
+            .error() == QuantityError::DomainError);
+}
+
 TEST_CASE("a hard hammer follows the infinite-string law until the reflection",
           "[instruments]") {
   // Mass and speed are arguments, not a published piano hammer.
