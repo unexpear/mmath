@@ -12,4 +12,7 @@ TEST_CASE("instruments/bow.h is self-contained", "[headers]") {
   const auto motion = mmathen::makeHelmholtzStroke(course.value(), stroke);
   REQUIRE(motion.ok());
   CHECK(mmathen::schellengMinimumForce(motion.value(), 50.0).ok());
+  const auto captured =
+      mmathen::captureStickSlip(course.value(), stroke, 4, 32, 1);
+  CHECK(captured.ok());
 }

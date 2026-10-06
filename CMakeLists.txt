@@ -224,6 +224,7 @@ if(BUILD_TESTING)
     tests/headers/th_instruments_cello.cpp
     tests/headers/th_instruments_double_bass.cpp
     tests/headers/th_instruments_bow.cpp
+    tests/headers/th_instruments_wound.cpp
     tests/headers/th_instruments_body.cpp
     tests/headers/th_instruments_hammer.cpp
     tests/headers/th_instruments_reed.cpp

@@ -1,12 +1,15 @@
 #pragma once
 
-// Bow — steady ideal Helmholtz motion on one ideal string (docs/48).
+// Bow — steady ideal Helmholtz motion, and a separate time-stepped
+// stick-slip capture, on one ideal string (docs/48).
 //
-// This is a friction model with a closed-form response, not a time-stepped
-// stick-slip capture and not a body. The string is the fixed-fixed course
-// from instrument.h (lossless, non-stiff). The bridge is rigid: the
-// response at the bridge is the transverse force the string exerts there,
-// not a velocity obtained by dividing by a body resistance.
+// The steady stroke is a closed form. The capture steps the same friction
+// pair on rigid ends. Neither is a body. The string is the fixed-fixed
+// course from instrument.h (lossless, non-stiff). The bridge is rigid:
+// the steady response at the bridge is the transverse force the string
+// exerts there, not a velocity obtained by dividing by a body resistance.
+// The capture's end reflection is −1. A dashpot, and the bridge resistance
+// Schelleng's minimum takes as an argument, are not applied here.
 //
 // β is the bow's distance from the bridge divided by the vibrating length
 // (Guettler, "The Helmholtz motion"; Woodhouse, Euphonics §9.3.1). It is
@@ -35,15 +38,29 @@
 // and eq. (10): f_max / f_min = 4 β R / Z. No numerical R is stored.
 // The string is not re-solved with a moving bridge.
 //
-// Limits: no capture transient, no bow-hair width, no torsion, no thermal
-// rosin, no rounded corner, no re-solved moving bridge. The minimum force
-// is a separate check once R is supplied.
-// Hammer and reed are not this model.
+// The time step is Woodhouse, Euphonics 9.2.1: outgoing waves are the
+// other side's incoming wave plus f/(2Z), and v_h is the sum of the two
+// incoming waves. On this ideal string each reflection function is a
+// delay and a factor −1 (Euphonics 9.5.1, rigid end, no corner rounding).
+// Friction is the same pair as the steady stroke: stick while the required
+// force lies inside μ_s N, and, once slipping, |f| = μ_d N until the
+// required force falls to μ_d N. That hysteresis is the Coulomb case of
+// the three-intersection rule (Woodhouse and Galluzzo, Acta Acustica 90,
+// 2004). No falling rosin curve is stored. Friedlander and Keller showed
+// that periodic motion on a lossless rigid string is unstable, so a long
+// run is not claimed to lock to Helmholtz. The string is not re-solved
+// with a moving bridge.
+//
+// Limits of the steady stroke: no bow-hair width, no torsion, no thermal
+// rosin, no rounded corner. The minimum force is a separate check once R
+// is supplied. Hammer and reed are not this model.
 //
 // VERIFIED against the identities above. UNVALIDATED against measured bow
 // force or bridge force.
 
 #include <cmath>
+#include <limits>
+#include <vector>
 
 #include "instrument.h"
 
@@ -236,6 +253,149 @@ namespace helmholtz_detail {
   if (sinceSlip < 0.0) sinceSlip += motion.period;
   return 0.5 * motion.bridgeForceFlyback +
          motion.bridgeForceSlope * sinceSlip;
+}
+
+inline constexpr const char* kStickSlipSource =
+    "Time-stepped stick-slip: Jim Woodhouse, Euphonics 9.2.1, "
+    "https://euphonics.org/9-2-1-time-domain-simulation-of-a-bowed-string/ "
+    "(v = v_h + f/(2Z), outgoing = the other incoming + f/(2Z)). "
+    "Rigid ends, reflection -1, no corner rounding: Euphonics 9.5.1. "
+    "Constant mu_d while slipping; stick while |f| <= mu_s N, and "
+    "recapture only at mu_d N. No bridge resistance and no rosin curve.";
+
+// One sample at the bow. historyVelocity is v_h. Incoming waves are the
+// two travelling-wave contributions that sum to it.
+struct StickSlipSample {
+  double stringVelocity = 0.0;
+  double frictionForce = 0.0;
+  double historyVelocity = 0.0;
+  double incomingBridge = 0.0;
+  double incomingNut = 0.0;
+  bool stuck = false;
+};
+
+struct StickSlipCapture {
+  double timeStep = 0.0;
+  double impedance = 0.0;
+  int bridgeRoundTripSamples = 0;
+  int nutRoundTripSamples = 0;
+  std::vector<StickSlipSample> samples;
+  const char* source = nullptr;
+};
+
+// One Friedlander-Keller intersection. The string starts a capture at rest,
+// so the first call uses wasStuck = true (static friction).
+// InvalidArgument: impedance, normal force, or a friction coefficient not
+// strictly usable, zero or non-finite bow speed, or a non-finite v_h.
+// The division by 2Z sits after the impedance check in this function.
+[[nodiscard]] inline Result<StickSlipSample, QuantityError> stickSlipJunction(
+    double historyVelocity, double incomingBridge, double incomingNut,
+    double bowSpeed, double impedance, double normalForce, BowFriction friction,
+    bool wasStuck) {
+  using R = Result<StickSlipSample, QuantityError>;
+  const double muS = friction.staticCoefficient;
+  const double muD = friction.slidingCoefficient;
+  if (!std::isfinite(historyVelocity) || !std::isfinite(incomingBridge) ||
+      !std::isfinite(incomingNut) || !std::isfinite(bowSpeed) || bowSpeed == 0.0 ||
+      !std::isfinite(impedance) || !(impedance > 0.0) ||
+      !std::isfinite(normalForce) || !(normalForce > 0.0) ||
+      !std::isfinite(muS) || !std::isfinite(muD) || !(muD >= 0.0) ||
+      !(muS > muD))
+    return R::failure(QuantityError::InvalidArgument);
+  const double twoZ = 2.0 * impedance;
+  const double required = twoZ * (bowSpeed - historyVelocity);
+  const double staticLimit = muS * normalForce;
+  const double dynamicLimit = muD * normalForce;
+  const double absRequired = std::fabs(required);
+  StickSlipSample sample;
+  sample.historyVelocity = historyVelocity;
+  sample.incomingBridge = incomingBridge;
+  sample.incomingNut = incomingNut;
+  if (wasStuck ? absRequired <= staticLimit : absRequired <= dynamicLimit) {
+    sample.frictionForce = required;
+    sample.stuck = true;
+    sample.stringVelocity = bowSpeed;
+  } else {
+    sample.frictionForce =
+        dynamicLimit * helmholtz_detail::signNonzero(required);
+    sample.stuck = false;
+    sample.stringVelocity = historyVelocity + sample.frictionForce / twoZ;
+  }
+  if (!std::isfinite(sample.stringVelocity) ||
+      !std::isfinite(sample.frictionForce))
+    return R::failure(QuantityError::RangeError);
+  return R::success(sample);
+}
+
+// Step the rigid-end string from rest. Bridge and nut arguments are the
+// round-trip delays in samples, so β is bridge / (bridge + nut) and must
+// match the stroke. The string reflection is −1. Schelleng's force window
+// is not applied: this is the friction law, not the steady regime.
+// InvalidArgument: delays that are not positive, a delay ratio that is not
+// the stroke's β, a non-positive period count, or a stroke the junction
+// refuses. The product of periods and samples must fit in an int.
+[[nodiscard]] inline Result<StickSlipCapture, QuantityError> captureStickSlip(
+    const StringCourse& course, const BowStroke& stroke,
+    int bridgeRoundTripSamples, int nutRoundTripSamples, int periodCount) {
+  using R = Result<StickSlipCapture, QuantityError>;
+  if (bridgeRoundTripSamples < 1 || nutRoundTripSamples < 1 || periodCount < 1)
+    return R::failure(QuantityError::InvalidArgument);
+  if (bridgeRoundTripSamples >
+      std::numeric_limits<int>::max() - nutRoundTripSamples)
+    return R::failure(QuantityError::InvalidArgument);
+  const int steps = bridgeRoundTripSamples + nutRoundTripSamples;
+  if (periodCount > std::numeric_limits<int>::max() / steps)
+    return R::failure(QuantityError::InvalidArgument);
+  const double beta = stroke.bridgeFraction;
+  const double delayBeta =
+      static_cast<double>(bridgeRoundTripSamples) / static_cast<double>(steps);
+  if (!std::isfinite(beta) || !(std::fabs(delayBeta - beta) <= 1e-9))
+    return R::failure(QuantityError::InvalidArgument);
+  const double length = course.geometry.vibratingLength.value();
+  const double tension = course.tension.value();
+  const double density = course.material.linearDensity.value();
+  if (!std::isfinite(length) || !(length > 0.0) || !std::isfinite(tension) ||
+      !(tension > 0.0) || !std::isfinite(density) || !(density > 0.0))
+    return R::failure(QuantityError::InvalidArgument);
+  const double waveSpeed = std::sqrt(tension / density);
+  const double impedance = density * waveSpeed;
+  const double period = 2.0 * length / waveSpeed;
+  if (!std::isfinite(waveSpeed) || !(waveSpeed > 0.0) || !std::isfinite(period) ||
+      !(period > 0.0) || !std::isfinite(impedance) || !(impedance > 0.0))
+    return R::failure(QuantityError::RangeError);
+  const int total = periodCount * steps;
+  std::vector<double> outBridge(static_cast<std::size_t>(total), 0.0);
+  std::vector<double> outNut(static_cast<std::size_t>(total), 0.0);
+  StickSlipCapture capture;
+  capture.timeStep = period / static_cast<double>(steps);
+  capture.impedance = impedance;
+  capture.bridgeRoundTripSamples = bridgeRoundTripSamples;
+  capture.nutRoundTripSamples = nutRoundTripSamples;
+  capture.samples.reserve(static_cast<std::size_t>(total));
+  capture.source = kStickSlipSource;
+  bool wasStuck = true;
+  for (int i = 0; i < total; ++i) {
+    double incomingBridge = 0.0;
+    double incomingNut = 0.0;
+    if (i >= bridgeRoundTripSamples)
+      incomingBridge = -outBridge[static_cast<std::size_t>(i - bridgeRoundTripSamples)];
+    if (i >= nutRoundTripSamples)
+      incomingNut = -outNut[static_cast<std::size_t>(i - nutRoundTripSamples)];
+    const double history = incomingBridge + incomingNut;
+    auto sample = stickSlipJunction(history, incomingBridge, incomingNut,
+                                    stroke.speedMetersPerSecond, impedance,
+                                    stroke.normalForceNewtons, stroke.friction,
+                                    wasStuck);
+    if (!sample.ok()) return R::failure(sample.error());
+    const double twoZ = 2.0 * impedance;
+    outBridge[static_cast<std::size_t>(i)] =
+        incomingNut + sample.value().frictionForce / twoZ;
+    outNut[static_cast<std::size_t>(i)] =
+        incomingBridge + sample.value().frictionForce / twoZ;
+    wasStuck = sample.value().stuck;
+    capture.samples.push_back(sample.value());
+  }
+  return R::success(std::move(capture));
 }
 
 }  // namespace mmathen

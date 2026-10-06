@@ -37,6 +37,9 @@
 #include <mmathen/instruments/harp.h>
 #include <mmathen/instruments/harpsichord.h>
 #include <mmathen/instruments/reed.h>
+#include <mmathen/instruments/wound.h>
+#include <mmathen/physics/materials.h>
+#include <mmathen/signal/inharmonic.h>
 #include <mmathen/instruments/cello.h>
 #include <mmathen/instruments/double_bass.h>
 #include <mmathen/instruments/viola.h>
@@ -1985,4 +1988,257 @@ TEST_CASE("cymbals are free plates and the XSR set keeps alloy numbers as argume
   const auto felt = unwrap(feltContactRate(2.0e-4, 5.0e6, 1.5, 0.03));
   CHECK(felt.forceNewtons > 0.0);
   CHECK(felt.acceleration < 0.0);
+}
+
+TEST_CASE("wound-string stiffness uses a caller core and not an outer diameter",
+          "[instruments]") {
+  auto courseOf = [](double length, double mu, double tension) {
+    return StringCourse{
+        StringGeometry{DistanceMeters{length}},
+        StringMaterial{LinearDensityKgPerM{mu}},
+        StringTuning{"synthetic",
+                     FrequencyHz{std::sqrt(tension / mu) / (2.0 * length)}},
+        TensionNewtons{tension},
+        TabulatedRange{},
+        TabulatedRange{},
+        0.0,
+        false,
+        "synthetic"};
+  };
+
+  const double diameter = 1.0e-3;
+  const double young = 2.0e11;
+  const double rho = 8000.0;
+  const double length = 0.5;
+  const double wave = 200.0;
+  const double factor = 4.0;
+  const double area = constants::pi * diameter * diameter / 4.0;
+  const double mu = rho * factor * area;
+  const double tension = mu * wave * wave;
+  const StringCourse course = courseOf(length, mu, tension);
+  const auto wound = unwrap(makeWoundString(course, diameter, young, rho));
+  CHECK(nearlyEqual(wound.windingFactor, factor, 0.0, 1e-12));
+  const double kappa = 0.25 * diameter * std::sqrt(young / (rho * factor));
+  CHECK(nearlyEqual(wound.stiffness, kappa, 0.0, 1e-12));
+  CHECK(nearlyEqual(wound.inharmonicity, inharmonicityB(wound.system), 0.0,
+                    1e-15));
+  CHECK(wound.system.stiffLeft == StiffEnd::Hinged);
+  CHECK(wound.system.stiffRight == StiffEnd::Hinged);
+  const double ideal =
+      std::sqrt(tension / mu) / (2.0 * length);
+  const auto spectrum =
+      unwrap(makeStiffSpectrum(FrequencyHz{ideal}, wound.inharmonicity, 6));
+  for (int n = 1; n <= 6; ++n) {
+    CHECK(nearlyEqual(unwrap(modeFrequency(wound.system, n)).value(),
+                      unwrap(partialFrequency(spectrum, n)).value(), 0.0,
+                      1e-12));
+  }
+
+  const auto doubledModulus =
+      unwrap(makeWoundString(course, diameter, 2.0 * young, rho));
+  CHECK(nearlyEqual(doubledModulus.inharmonicity, 2.0 * wound.inharmonicity,
+                    0.0, 1e-12));
+
+  const StringCourse heavier =
+      courseOf(length, 2.0 * mu, 2.0 * tension);
+  const auto doubledMass =
+      unwrap(makeWoundString(heavier, diameter, young, rho));
+  CHECK(nearlyEqual(doubledMass.windingFactor, 2.0 * factor, 0.0, 1e-12));
+  CHECK(nearlyEqual(doubledMass.inharmonicity, 0.5 * wound.inharmonicity, 0.0,
+                    1e-12));
+
+  const auto wider =
+      unwrap(makeWoundString(course, 2.0 * diameter, young, rho));
+  CHECK(nearlyEqual(wider.windingFactor, 1.0, 0.0, 1e-12));
+  CHECK(nearlyEqual(wider.inharmonicity, 16.0 * wound.inharmonicity, 0.0,
+                    1e-12));
+
+  // An outer diameter passed as a core weighs more than the string.
+  CHECK(makeWoundString(course, 4.0 * diameter, young, rho).error() ==
+        QuantityError::DomainError);
+  CHECK(makeWoundString(course, 0.0, young, rho).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(makeWoundString(course, diameter, -young, rho).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(makeWoundString(course, diameter, young, 0.0).error() ==
+        QuantityError::InvalidArgument);
+  StringCourse blank = course;
+  blank.tension = TensionNewtons{0.0};
+  CHECK(makeWoundString(blank, diameter, young, rho).error() ==
+        QuantityError::InvalidArgument);
+
+  // Chabassier's Table III, including its wound rows and its plain F = 1
+  // rows. Those cores are not a violin, viola, cello, bass, or harp.
+  const auto material = steelPianoWireChabassier2013();
+  const auto specs = chabassier2013Strings();
+  for (const PianoStringSpec& spec : specs) {
+    const auto piano = unwrap(pianoString(spec, material));
+    const double d = spec.diameter.value();
+    const double specMu = material.densityKgPerM3 * spec.densityFactor *
+                          constants::pi * d * d / 4.0;
+    const StringCourse built =
+        courseOf(spec.length.value(), specMu, spec.tension.value());
+    const auto matched = unwrap(makeWoundString(
+        built, d, material.youngsModulusPa, material.densityKgPerM3));
+    CHECK(nearlyEqual(matched.stiffness, piano.stiffness, 0.0, 1e-12));
+    CHECK(nearlyEqual(matched.windingFactor, spec.densityFactor, 0.0, 1e-12));
+    if (!spec.plainWire) CHECK(matched.windingFactor > 1.0);
+  }
+  const PianoStringSpec& lowest = specs.front();
+  const double lowestMu = material.densityKgPerM3 * lowest.densityFactor *
+                          constants::pi * lowest.diameter.value() *
+                          lowest.diameter.value() / 4.0;
+  const StringCourse lowestCourse = courseOf(
+      lowest.length.value(), lowestMu, lowest.tension.value());
+  CHECK(makeWoundString(lowestCourse, 10.0 * lowest.diameter.value(),
+                        material.youngsModulusPa, material.densityKgPerM3)
+            .error() == QuantityError::DomainError);
+
+  // A bowed course accepts a caller core. Nothing on the violin supplies one.
+  // Le Carrou's printed harp diameters are outer diameters and are not read.
+  const auto violinInstrument = unwrap(violin());
+  const auto thin = unwrap(makeWoundString(violinInstrument.courses[0], 2.0e-4,
+                                           1.0e11, 7000.0));
+  const auto thick = unwrap(makeWoundString(violinInstrument.courses[0], 4.0e-4,
+                                            1.0e11, 7000.0));
+  CHECK(thin.windingFactor > 1.0);
+  CHECK(thick.windingFactor > 1.0);
+  CHECK(thick.inharmonicity > thin.inharmonicity);
+  CHECK(std::strstr(thin.source, "caller arguments") != nullptr);
+}
+
+TEST_CASE("time-stepped stick-slip uses rigid reflections and caller friction",
+          "[instruments]") {
+  const auto violinInstrument = unwrap(violin());
+  const StringCourse& course = violinInstrument.courses[2];
+  const double beta = 1.0 / 9.0;
+  const double speed = 0.2;
+  const double muS = 0.8;
+  const double muD = 0.3;
+  const double density = course.material.linearDensity.value();
+  const double wave = std::sqrt(course.tension.value() / density);
+  const double impedance = density * wave;
+  const double twoZ = 2.0 * impedance;
+  // Above the at-rest demand 2 Z |v_b| and below the first bridge echo 4 Z |v_b|.
+  const double normal = 3.0 * impedance * speed / muS;
+  CHECK(muS * normal > twoZ * speed);
+  CHECK(muS * normal < 2.0 * twoZ * speed);
+  const BowFriction friction{muS, muD};
+  const BowStroke stroke{beta, speed, normal, friction};
+  const int bridge = 4;
+  const int nut = 32;
+  const auto capture = unwrap(captureStickSlip(course, stroke, bridge, nut, 2));
+  CHECK(capture.samples.size() == 72);
+  CHECK(nearlyEqual(capture.timeStep,
+                    (2.0 * course.geometry.vibratingLength.value() / wave) /
+                        36.0,
+                    0.0, 1e-12));
+  CHECK(nearlyEqual(capture.impedance, impedance, 0.0, 1e-12));
+
+  std::vector<double> outBridge(capture.samples.size(), 0.0);
+  std::vector<double> outNut(capture.samples.size(), 0.0);
+  bool wasStuck = true;
+  for (std::size_t i = 0; i < capture.samples.size(); ++i) {
+    const StickSlipSample& sample = capture.samples[i];
+    CHECK(nearlyEqual(sample.historyVelocity,
+                      sample.incomingBridge + sample.incomingNut, 0.0, 0.0));
+    if (sample.stuck) {
+      CHECK(sample.stringVelocity == stroke.speedMetersPerSecond);
+      CHECK(std::fabs(sample.frictionForce) <= muS * normal);
+    } else {
+      CHECK(nearlyEqual(std::fabs(sample.frictionForce), muD * normal, 0.0,
+                        1e-12));
+      CHECK(sample.frictionForce * (sample.stringVelocity - speed) < 0.0);
+      CHECK(nearlyEqual(sample.stringVelocity,
+                        sample.historyVelocity + sample.frictionForce / twoZ,
+                        0.0, 1e-12));
+    }
+    const auto again = unwrap(stickSlipJunction(
+        sample.historyVelocity, sample.incomingBridge, sample.incomingNut,
+        speed, impedance, normal, friction, wasStuck));
+    CHECK(again.stuck == sample.stuck);
+    CHECK(nearlyEqual(again.frictionForce, sample.frictionForce, 0.0, 1e-12));
+    wasStuck = sample.stuck;
+    outBridge[i] = sample.incomingNut + sample.frictionForce / twoZ;
+    outNut[i] = sample.incomingBridge + sample.frictionForce / twoZ;
+    if (i >= static_cast<std::size_t>(bridge)) {
+      CHECK(nearlyEqual(sample.incomingBridge,
+                        -outBridge[i - static_cast<std::size_t>(bridge)], 0.0,
+                        1e-12));
+    } else {
+      CHECK(sample.incomingBridge == 0.0);
+    }
+    if (i >= static_cast<std::size_t>(nut)) {
+      CHECK(nearlyEqual(sample.incomingNut,
+                        -outNut[i - static_cast<std::size_t>(nut)], 0.0,
+                        1e-12));
+    } else {
+      CHECK(sample.incomingNut == 0.0);
+    }
+  }
+  for (int i = 0; i < bridge; ++i) CHECK(capture.samples[static_cast<std::size_t>(i)].stuck);
+  const StickSlipSample& released = capture.samples[static_cast<std::size_t>(bridge)];
+  CHECK(!released.stuck);
+  CHECK(nearlyEqual(released.incomingBridge, -speed, 0.0, 1e-12));
+  CHECK(released.incomingNut == 0.0);
+  CHECK(nearlyEqual(released.frictionForce, muD * normal, 0.0, 1e-12));
+
+  BowStroke heavy = stroke;
+  heavy.normalForceNewtons = 5.0 * impedance * speed / muS;
+  CHECK(muS * heavy.normalForceNewtons > 2.0 * twoZ * speed);
+  const auto held = unwrap(captureStickSlip(course, heavy, bridge, nut, 1));
+  CHECK(held.samples[static_cast<std::size_t>(bridge)].stuck);
+  CHECK(held.samples[static_cast<std::size_t>(bridge)].stringVelocity == speed);
+
+  const double maxNormal = twoZ * speed / (beta * (muS - muD));
+  BowStroke tooHeavy = stroke;
+  tooHeavy.normalForceNewtons = maxNormal * 1.1;
+  CHECK(makeHelmholtzStroke(course, tooHeavy).error() ==
+        QuantityError::DomainError);
+  CHECK(captureStickSlip(course, tooHeavy, bridge, nut, 1).ok());
+
+  BowStroke upBow = stroke;
+  upBow.speedMetersPerSecond = -speed;
+  const auto upward = unwrap(captureStickSlip(course, upBow, bridge, nut, 1));
+  CHECK(upward.samples.front().stringVelocity == -speed);
+  CHECK(!upward.samples[static_cast<std::size_t>(bridge)].stuck);
+  CHECK(nearlyEqual(
+      upward.samples[static_cast<std::size_t>(bridge)].frictionForce,
+      -muD * normal, 0.0, 1e-12));
+
+  const double band = 0.5 * (muS + muD) * normal;
+  const double bandHistory = speed - band / twoZ;
+  CHECK(unwrap(stickSlipJunction(bandHistory, bandHistory, 0.0, speed,
+                                 impedance, normal, friction, true))
+            .stuck);
+  const auto slipping = unwrap(stickSlipJunction(
+      bandHistory, bandHistory, 0.0, speed, impedance, normal, friction, false));
+  CHECK(!slipping.stuck);
+  CHECK(nearlyEqual(slipping.frictionForce, muD * normal, 0.0, 1e-12));
+  const double dynamicHistory = speed - (muD * normal) / twoZ;
+  CHECK(unwrap(stickSlipJunction(dynamicHistory, dynamicHistory, 0.0, speed,
+                                 impedance, normal, friction, false))
+            .stuck);
+  const double over = muS * normal * (1.0 + 1e-6);
+  const double overHistory = speed - over / twoZ;
+  CHECK(!unwrap(stickSlipJunction(overHistory, overHistory, 0.0, speed,
+                                  impedance, normal, friction, true))
+             .stuck);
+  const double staticHistory = speed - (muS * normal) / twoZ;
+  CHECK(unwrap(stickSlipJunction(staticHistory, staticHistory, 0.0, speed,
+                                 impedance, normal, friction, true))
+            .stuck);
+
+  BowStroke wrongBeta = stroke;
+  wrongBeta.bridgeFraction = 0.2;
+  CHECK(captureStickSlip(course, wrongBeta, bridge, nut, 1).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(captureStickSlip(course, stroke, 0, nut, 1).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(captureStickSlip(course, stroke, bridge, nut, 0).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(stickSlipJunction(0.0, 0.0, 0.0, 0.0, impedance, normal, friction, true)
+            .error() == QuantityError::InvalidArgument);
+  CHECK(stickSlipJunction(0.0, 0.0, 0.0, speed, 0.0, normal, friction, true)
+            .error() == QuantityError::InvalidArgument);
 }

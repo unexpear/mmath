@@ -9,7 +9,7 @@ fingered stop shortens one open course. A Yamaha Tour Custom kit and a
 SABIAN XSR cymbal set add fixed circular membranes and free circular
 plates. Verified against the ideal-string
 law, Guettler's tables, the harp and harpsichord measurements named
-below, the Helmholtz/Schelleng identities, the driving-point modal sum, the cavity Helmholtz frequency, the mutual-stiffness split, the compact-monopole pressure,
+below, the Helmholtz/Schelleng identities, the rigid-end stick-slip step, the wound-string inharmonicity, the driving-point modal sum, the cavity Helmholtz frequency, the mutual-stiffness split, the compact-monopole pressure,
 the hard-hammer contact law, the first-image sum, the felt power law, the
 reed flow law, the circular-membrane Bessel frequencies, and the free-plate
 frequency law. Unvalidated as radiated sound: the body-mode sum is
@@ -34,7 +34,7 @@ interval.
 | `instruments/viola.h` | C3 G3 D4 A4, vibrating length 0.375 m, body 0.410 m, compass C3–C6 |
 | `instruments/cello.h` | C2 G2 D3 A3, vibrating length 0.690 m, body 0.755 m, compass C2–E5 |
 | `instruments/double_bass.h` | Orchestral E1 A1 D2 G2, vibrating length 1.060 m, body 1.110 m, sounding compass E1–B3 (written E2–B4) |
-| `instruments/bow.h` | Steady Helmholtz stick/slip, bridge-force sawtooth, Schelleng maximum normal force |
+| `instruments/bow.h` | Steady Helmholtz stick/slip, bridge-force sawtooth, Schelleng maximum and minimum normal force, and a time-stepped stick-slip capture on rigid ends |
 | `instruments/body.h` | Sum of driving-point body modes, a cavity Helmholtz frequency, a mutual stiffness between two modes, and a compact-monopole far field. Resonances, Q, masses, f-hole area, volume, neck, mutual stiffness, radiating area or volume velocity, and distance are arguments. No stored admittance, f-hole, A0/B1, or radiating-area table |
 | `instruments/hammer.h` | Hard narrow hammer until the first reflection; first-image sum until the second image; felt law \(F=K\xi^{p}\). Mass, speed, strike, \(K\), and \(p\) are arguments |
 | `instruments/reed.h` | Quasi-static single reed; cylindrical bore; reed inertia. Area, closure, air state, bore length and cross-section, mass, tip area, closing displacement, and damping are arguments |
@@ -42,6 +42,7 @@ interval.
 | `instruments/harpsichord.h` | Goermans/Taskin 1764/1783–4 French double: 2×8′ + 4′, compass F1–F6 |
 | `instruments/drum.h` | Yamaha Tour Custom shells: bass, two rack toms, floor tom, two snares. Head tension and areal density are arguments |
 | `instruments/cymbal.h` | SABIAN XSR5006B: splash, hi-hat pair, two crashes, china, ride. Thickness and alloy constants are arguments |
+| `instruments/wound.h` | Bending stiffness of a wound string. Core diameter, Young's modulus, and core density are arguments |
 | `physics/circular_plate.h` | Free circular plate eigenvalues and frequencies. No alloy table |
 
 `physics/` does not include `instruments/`. The only music dependency is
@@ -268,6 +269,20 @@ not a violin with the labels rewritten.
   and the same stroke without \(R\) is still the rigid-bridge motion. An
   up-bow has the same minimum. The cello's A string, at the same \(R\),
   does not.
+- A wound string's \(\kappa\) matches the core-only Table III formula.
+  Doubling Young's modulus doubles \(B\). Doubling the winding factor at
+  fixed wave speed halves \(B\). Doubling the core diameter at fixed
+  linear density multiplies \(B\) by 16. A core heavier than the string
+  is refused. A violin course has no stored core: two caller diameters
+  produce two values of \(B\).
+- The stick-slip step has \(v=v_h+f/(2Z)\), and each rigid end returns
+  the outgoing wave with a factor \(-1\) after the caller's delay. From
+  rest, a bow whose static limit sits between \(2Z|v_b|\) and \(4Z|v_b|\)
+  sticks until the bridge echo and then slips. A heavier bow is still
+  stuck at that echo. In the band \(\mu_d N<|f|\le\mu_s N\), a stuck
+  sample stays stuck and a slipping sample stays at \(\mu_d N\). A force
+  above Schelleng's maximum is refused by the steady stroke and is still
+  stepped. No bridge resistance is applied.
 - One body mode has stiffness \(m\omega_0^2\), damping \(m\omega_0/Q\), and
   mobility \(1/r\) exactly at resonance, with a positive imaginary part
   below resonance and a negative imaginary part above it. Driven by the
@@ -360,10 +375,23 @@ stroke, which does not know a minimum. The string is not re-solved with a
 moving end, so this is not a wolf note. Friction coefficients are
 arguments, not a hidden rosin table.
 
-Not in this bow: capture transients, bow-hair width, torsion, thermal
-rosin, a rounded corner, and any body filter on the bridge force. The
-body-mode sum below is applied after the force is known. It does not change
-the bow.
+`captureStickSlip` is the separate time step (Woodhouse, Euphonics 9.2.1).
+The bow force and the string velocity meet where \(v=v_h+f/(2Z)\). Each
+end reflection is a delay and a factor \(-1\) (Euphonics 9.5.1, rigid
+termination). Round-trip delays in samples are arguments, and their ratio
+is \(\beta\). The string starts at rest, so the first sample uses static
+friction. It keeps sticking while the required force stays inside
+\(\mu_s N\). Once it is slipping, \(|f|=\mu_d N\) until that required
+force falls to \(\mu_d N\). A normal force above Schelleng's maximum is
+still stepped: the steady stroke is what refuses it. No falling rosin
+curve is stored. Friedlander and Keller showed that periodic motion on a
+lossless rigid string is unstable, so a long run is not a Helmholtz tone.
+No dashpot is applied, because that would be a bridge impedance, and none
+is stored.
+
+Not in this bow: bow-hair width, torsion, thermal rosin, a rounded corner,
+and any body filter on the bridge force. The body-mode sum below is
+applied after the steady force is known. It does not change the bow.
 
 ## Body
 
@@ -641,9 +669,30 @@ f=\frac{\lambda^2 h}{2\pi a^2}\sqrt{\frac{E}{12\rho(1-\nu^2)}}.
 
 The hi-hat is two 14″ plates. No clutch gap is printed, and the plates are not coupled by an invented contact stiffness. A strike is an impulse on one plate. The edge is part of a free plate, so it may be struck; it is not held at zero the way a drum rim is. Felt uses the same `feltContactRate` and not the string impedance.
 
+## Wound string
+
+`wound.h` attaches hinged bending stiffness to one course. The convention
+is Chabassier, Chaigne, and Joly, JASA 134(1) (2013), Table III, the same
+one `pianoString` uses: \(I=\pi d^4/64\) from the core, mass from the
+course, \(\kappa=(d/4)\sqrt{E/(\rho F)}\), and \(F=\mu/(\rho A_{\mathrm{core}})\).
+Partial \(n\) is \(n f_0\sqrt{1+Bn^2}\) with \(f_0=c/(2L)\). Doubling \(E\)
+doubles \(B\). Doubling \(F\) at fixed wave speed halves \(B\). Doubling
+the core diameter at fixed \(\mu\) multiplies \(B\) by 16 when the wider
+core is still no heavier than the string.
+
+\(F\) below 1 by more than rounding is `DomainError`. That is the result
+of passing an outer diameter as a core. \(F=1\) is a plain core and is
+accepted; a one-ulp miss of \(\rho A\) is still that plain core. Core diameter, Young's
+modulus, and core density are arguments. Young's 1952 specific modulus is
+plain wire and is not substituted. Chabassier's steel constants are not
+substituted either; a test may pass them, and they are not a violin,
+viola, cello, bass, or harp core. Le Carrou's printed diameters are outer
+diameters and are not read. No instrument stores a core.
+
 ## Still planned
 
-A re-solved string with a moving bridge, stiffness of wound strings, and a
-time-stepped stick-slip capture. The Helmholtz stroke is the steady
-regime only. Images after the first from each hammer end, a viscous reed
-channel, and a sounding clarinet are not in this layer. Snare wires, shell air, a bass-drum port, and a hi-hat clutch gap are not in the drum kit.
+A re-solved string with a moving bridge. The stick-slip capture uses rigid
+ends and does not include that bridge. Images after the first from each
+hammer end, a viscous reed channel, and a sounding clarinet are not in
+this layer. Snare wires, shell air, a bass-drum port, and a hi-hat clutch
+gap are not in the drum kit.
