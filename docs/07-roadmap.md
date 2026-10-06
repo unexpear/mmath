@@ -17,8 +17,9 @@ Status: planning · Nothing below may shape Phase 0–2 APIs
    concert pedal harp, a French double harpsichord, a
    pluck, a bridge hook, a steady Helmholtz bow, one open-loop body mode, a
    hard narrow hammer, the hammer's first reflected images and felt compliance,
-   a quasi-static single reed, a cylindrical bore, reed inertia, and a fingered
-   stop (`docs/48-instruments-violin-viola.md`). A sounding clarinet, a stored
+   a quasi-static single reed, a cylindrical bore, reed inertia, a fingered
+   stop, a Yamaha Tour Custom drum kit (circular membranes), and a SABIAN XSR
+   cymbal set (free plates) (`docs/48-instruments-violin-viola.md`). A sounding clarinet, a stored
    hammer or reed table, measured bridge admittance, and radiated pressure are
    not built. This slice does not change Phase 0–2 APIs.
 5. **Spatial + hearing:** `t=d/c`, Doppler from first principles, reverb/HRTF;

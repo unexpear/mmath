@@ -21,6 +21,8 @@ struct DimForce {};
 struct DimLinearDensity {};
 struct DimImpedance {};
 struct DimDensity {};
+struct DimSurfaceTension {};
+struct DimArealDensity {};
 struct DimAttenuation {};
 
 }  // namespace mmathen

@@ -1,15 +1,18 @@
-# Instruments — bowed strings, harp, harpsichord, bow, body, hammer, reed
+# Instruments — bowed strings, harp, harpsichord, drums, cymbals
 
 Status: assembly layer for four bowed strings, a concert pedal harp, a
 French double harpsichord, a steady Helmholtz bow on one ideal string,
 one body mode driven by that bow's bridge force, a hard narrow hammer,
 the first fixed-end images of that hammer, a felt contact law, a
 quasi-static single reed, a cylindrical bore, and reed inertia. A
-fingered stop shortens one open course. Verified against the ideal-string
+fingered stop shortens one open course. A Yamaha Tour Custom kit and a
+SABIAN XSR cymbal set add fixed circular membranes and free circular
+plates. Verified against the ideal-string
 law, Guettler's tables, the harp and harpsichord measurements named
 below, the Helmholtz/Schelleng identities, the single-mode admittance,
-the hard-hammer contact law, the first-image sum, the felt power law, and
-the reed flow law. Unvalidated as radiated sound: the body mode is
+the hard-hammer contact law, the first-image sum, the felt power law, the
+reed flow law, the circular-membrane Bessel frequencies, and the free-plate
+frequency law. Unvalidated as radiated sound: the body mode is
 open-loop, and there is no measured bridge admittance and no far-field
 pressure. The bore is an ideal cylinder with the caller's length and
 cross-section; there is no clarinet. The harp and the harpsichord are
@@ -37,6 +40,9 @@ interval.
 | `instruments/reed.h` | Quasi-static single reed; cylindrical bore; reed inertia. Area, closure, air state, bore length and cross-section, mass, tip area, closing displacement, and damping are arguments |
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
 | `instruments/harpsichord.h` | Goermans/Taskin 1764/1783–4 French double: 2×8′ + 4′, compass F1–F6 |
+| `instruments/drum.h` | Yamaha Tour Custom shells: bass, two rack toms, floor tom, two snares. Head tension and areal density are arguments |
+| `instruments/cymbal.h` | SABIAN XSR5006B: splash, hi-hat pair, two crashes, china, ride. Thickness and alloy constants are arguments |
+| `physics/circular_plate.h` | Free circular plate eigenvalues and frequencies. No alloy table |
 
 `physics/` does not include `instruments/`. The only music dependency is
 the pitch→frequency adapter (`makePitch`), so open-string hertz are the
@@ -485,6 +491,55 @@ different hertz value, because \(L\) and the open pitch differ. No
 fingerboard length and no fret table is stored. Factories still hold
 open courses only.
 
+## Drum kit
+
+`drum.h` is the Yamaha Tour Custom series printed at
+<https://usa.yamaha.com/products/musical_instruments/drums/ac_drums/drum_sets/tour_custom2/specs.html>.
+
+| Piece | Model | Diameter × depth |
+|---|---|---|
+| Bass drum | TMB-2216 | 22″ × 16″ |
+| Rack tom | TMT-1007 | 10″ × 7″ |
+| Rack tom | TMT-1208 | 12″ × 8″ |
+| Floor tom | TMF-1615 | 16″ × 15″ |
+| Snare | TMS-1455 | 14″ × 5.5″ |
+| Snare | TMS-1465 | 14″ × 6.5″ |
+
+TMP2F4 is the bass, the two rack toms, and the floor tom. The two snares are components on the same page, not a column of TMP2F4. Shells are 5.6 mm, 6-ply maple. The bearing edge is 45° for the bass and the toms; the page does not print one for the snares, so those shells do not store an angle. Radii are half the printed diameter times the international inch, 0.0254 m. Shell depth and shell thickness are stored and are not the head radius.
+
+Each head is a fixed circular membrane (Rayleigh): \(c=\sqrt{T/\sigma}\) and
+
+\[
+f_{mn}=\frac{\alpha_{mn}\,c}{2\pi a},
+\]
+
+where \(\alpha_{mn}\) is the n-th positive zero of \(J_m\), computed by bisection. The (0,1) and (1,1) zeros are the usual 2.4048… and 3.8317…. Mode ratios are \(\alpha_{mn}/\alpha_{01}\) and do not depend on tension. `tuneMembraneHead` takes an areal-density range and a tension-per-length range, because the page names Remo heads and does not print either number. Nominal density is the midpoint. Tension is
+
+\[
+T=\sigma\left(\frac{2\pi a f}{\alpha_{01}}\right)^2
+\]
+
+and construction fails if \(T\) leaves the caller's interval. The same requested pitch on the 22″ and 10″ heads needs tensions in the ratio of the squared diameters. The two snares share a diameter, so the same density and pitch produce the same tension; the 5.5″ and 6.5″ depths do not enter \(f\).
+
+A strike is an impulse of momentum \(P\) at a point inside the head. The rim is refused. The modal velocity coefficient is \(b=(P/\sigma)\varphi/N\) on \(\varphi=J_m(\alpha r/a)\cos m(\theta-\theta_s)\). A center strike leaves every \(m>0\) coefficient at zero. Displacement starts at zero and the rim stays at zero. Felt contact is `feltContactRate`: \(F=K\xi^p\) and \(a=-F/m\). The string driving-point law \(F/(2Z)\) is not applied to a head.
+
+Not evaluated, because the page does not give the numbers: snare-wire mass and tension, the air in the shell, coupling of the batter head to the resonant head, and a bass-drum port.
+
+## Cymbals
+
+`cymbal.h` is the SABIAN XSR Complete Set XSR5006B
+(<https://sabian.com/product/xsr5006b-xsr-complete-set/>): 10″ splash, 14″ hi-hats, 16″ and 18″ fast crashes, 18″ china, 20″ ride. Splash and china are in that sentence, so they are separate plates. The alloy is named B20. The page does not print thickness, density, Young's modulus, Poisson's ratio, or a frequency. A reviewer's "fairly thin" is not a thickness.
+
+A cymbal is a free Kirchhoff plate, not a membrane. With bending stiffness \(D=Eh^3/(12(1-\nu^2))\),
+
+\[
+f=\frac{\lambda^2 h}{2\pi a^2}\sqrt{\frac{E}{12\rho(1-\nu^2)}}.
+\]
+
+\(\lambda\) is a positive root of the free-edge moment and shear determinant, computed for the caller's \(\nu\in(-1,1/2)\). The rigid-body root is not returned. The lowest elastic mode has two nodal diameters. Frequency scales as \(h/a^2\) and as \(\sqrt{E/\rho}\). The 18″ crash and the 18″ china have the same ideal-plate spectrum: the china's flange is not given a height, so none is invented.
+
+The hi-hat is two 14″ plates. No clutch gap is printed, and the plates are not coupled by an invented contact stiffness. A strike is an impulse on one plate. The edge is part of a free plate, so it may be struck; it is not held at zero the way a drum rim is. Felt uses the same `feltContactRate` and not the string impedance.
+
 ## Still planned
 
 A sum of measured body modes, cavity Helmholtz frequency, A0–B1 coupling,
@@ -492,4 +547,4 @@ far-field radiation, back-reaction of the body on the string (and with it
 Schelleng's minimum bow force), stiffness of wound strings, and a
 time-stepped stick-slip capture. The Helmholtz stroke is the steady
 regime only. Images after the first from each hammer end, a viscous reed
-channel, and a sounding clarinet are not in this layer.
+channel, and a sounding clarinet are not in this layer. Snare wires, shell air, a bass-drum port, and a hi-hat clutch gap are not in the drum kit.

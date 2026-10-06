@@ -29,6 +29,8 @@
 
 #include <mmathen/instruments/body.h>
 #include <mmathen/instruments/bow.h>
+#include <mmathen/instruments/cymbal.h>
+#include <mmathen/instruments/drum.h>
 #include <mmathen/instruments/hammer.h>
 #include <mmathen/instruments/harp.h>
 #include <mmathen/instruments/harpsichord.h>
@@ -1281,4 +1283,248 @@ TEST_CASE("French double keeps case length off the speaking lengths",
   CHECK(realizeExcitation(longCourse,
                           Excitation{ExcitationKind::Reed, 0.2, 1.0e-4})
             .error() == QuantityError::DomainError);
+}
+
+TEST_CASE("a drum kit head is a circular membrane with caller tension",
+          "[instruments]") {
+  CHECK(nearlyEqual(unwrap(besselJZero(0, 1)), 2.404825557695773, 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(besselJZero(1, 1)), 3.8317059702075125, 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(besselJZero(2, 1)), 5.135622301840683, 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(besselJZero(0, 2)), 5.520078110286311, 0.0, 1e-12));
+  CHECK(besselJZero(-1, 1).error() == QuantityError::InvalidArgument);
+  CHECK(besselJZero(0, 0).error() == QuantityError::InvalidArgument);
+
+  const auto kit = unwrap(yamahaTourCustomKit());
+  CHECK(kit.bassDrum.diameterInches == 22.0);
+  CHECK(kit.bassDrum.depthInches == 16.0);
+  CHECK(kit.rackTom10.diameterInches == 10.0);
+  CHECK(kit.rackTom10.depthInches == 7.0);
+  CHECK(kit.rackTom12.diameterInches == 12.0);
+  CHECK(kit.rackTom12.depthInches == 8.0);
+  CHECK(kit.floorTom.diameterInches == 16.0);
+  CHECK(kit.floorTom.depthInches == 15.0);
+  CHECK(kit.snare55.diameterInches == 14.0);
+  CHECK(kit.snare55.depthInches == 5.5);
+  CHECK(kit.snare65.diameterInches == 14.0);
+  CHECK(kit.snare65.depthInches == 6.5);
+  CHECK(kit.bassDrum.model != nullptr);
+  CHECK(std::strcmp(kit.bassDrum.model, "TMB-2216") == 0);
+  CHECK(std::strcmp(kit.rackTom10.model, "TMT-1007") == 0);
+  CHECK(std::strcmp(kit.rackTom12.model, "TMT-1208") == 0);
+  CHECK(std::strcmp(kit.floorTom.model, "TMF-1615") == 0);
+  CHECK(std::strcmp(kit.snare55.model, "TMS-1455") == 0);
+  CHECK(std::strcmp(kit.snare65.model, "TMS-1465") == 0);
+  CHECK(nearlyEqual(kit.bassDrum.headRadius.value(), 11.0 * 0.0254, 0.0, 1e-15));
+  CHECK(nearlyEqual(kit.snare55.shellDepth.value(), 5.5 * 0.0254, 0.0, 1e-15));
+  CHECK(kit.snare55.headRadius.value() == kit.snare65.headRadius.value());
+  CHECK(kit.snare55.shellDepth.value() != kit.snare65.shellDepth.value());
+  CHECK(kit.bassDrum.shellThicknessMeters == 0.0056);
+  CHECK(kit.bassDrum.shellThicknessMeters != kit.bassDrum.headRadius.value());
+  CHECK(kit.bassDrum.bearingEdgePrinted);
+  CHECK(kit.bassDrum.bearingEdgeDegrees == 45.0);
+  CHECK(!kit.snare55.bearingEdgePrinted);
+  CHECK(std::strcmp(formula(kit).c_str(),
+                    "Yamaha Tour Custom TMB-2216 TMT-1007 TMT-1208 TMF-1615 "
+                    "TMS-1455 TMS-1465") == 0);
+
+  const double densityMin = 0.20;
+  const double densityMax = 0.30;
+  const double density = 0.5 * (densityMin + densityMax);
+  const double frequency = 100.0;
+  const double alpha = unwrap(besselJZero(0, 1));
+  auto requiredTension = [&](const MembraneShell& shell) {
+    const double wave =
+        constants::twoPi * shell.headRadius.value() * frequency / alpha;
+    return density * wave * wave;
+  };
+  const double bassTension = requiredTension(kit.bassDrum);
+  const double rackTension = requiredTension(kit.rackTom10);
+  CHECK(nearlyEqual(bassTension / rackTension,
+                    (22.0 / 10.0) * (22.0 / 10.0), 0.0, 1e-12));
+
+  const auto bass = unwrap(tuneMembraneHead(kit.bassDrum, frequency, densityMin,
+                                            densityMax, bassTension * 0.5,
+                                            bassTension * 1.5));
+  const auto rack = unwrap(tuneMembraneHead(kit.rackTom10, frequency, densityMin,
+                                            densityMax, rackTension * 0.5,
+                                            rackTension * 1.5));
+  CHECK(nearlyEqual(bass.tension.value(), bassTension, 0.0, 1e-12));
+  CHECK(nearlyEqual(rack.tension.value(), rackTension, 0.0, 1e-12));
+  CHECK(bass.arealDensity.value() == density);
+  CHECK(nearlyEqual(unwrap(circularMembraneMode(bass.radius, bass.tension,
+                                                bass.arealDensity, 0, 1))
+                        .value(),
+                    frequency, 0.0, 1e-12));
+  const double ratio01 =
+      unwrap(besselJZero(1, 1)) / unwrap(besselJZero(0, 1));
+  const double heard =
+      unwrap(circularMembraneMode(bass.radius, bass.tension, bass.arealDensity, 1, 1))
+          .value() /
+      unwrap(circularMembraneMode(bass.radius, bass.tension, bass.arealDensity, 0, 1))
+          .value();
+  CHECK(nearlyEqual(heard, ratio01, 0.0, 1e-12));
+  const auto louder = unwrap(tuneMembraneHead(
+      kit.bassDrum, frequency * 2.0, densityMin, densityMax, bassTension * 2.0,
+      bassTension * 6.0));
+  CHECK(nearlyEqual(louder.tension.value(), 4.0 * bassTension, 0.0, 1e-12));
+  CHECK(tuneMembraneHead(kit.bassDrum, frequency, densityMin, densityMax,
+                         bassTension + 1.0, bassTension + 2.0)
+            .error() == QuantityError::RangeError);
+  CHECK(tuneMembraneHead(kit.snare55, 0.0, densityMin, densityMax, 1.0, 2.0)
+            .error() == QuantityError::InvalidArgument);
+
+  const auto snareShallow = unwrap(tuneMembraneHead(
+      kit.snare55, frequency, densityMin, densityMax, requiredTension(kit.snare55) * 0.5,
+      requiredTension(kit.snare55) * 1.5));
+  const auto snareDeep = unwrap(tuneMembraneHead(
+      kit.snare65, frequency, densityMin, densityMax, requiredTension(kit.snare65) * 0.5,
+      requiredTension(kit.snare65) * 1.5));
+  CHECK(snareShallow.tension.value() == snareDeep.tension.value());
+  CHECK(kit.snare55.shellDepth.value() != kit.snare65.shellDepth.value());
+  const SurfaceTensionNewtonsPerMeter sharedTension{1000.0};
+  const ArealDensityKgPerSquareMeter sharedDensity{density};
+  const double bassOpen =
+      unwrap(circularMembraneMode(kit.bassDrum.headRadius, sharedTension,
+                                  sharedDensity, 0, 1))
+          .value();
+  const double rackOpen =
+      unwrap(circularMembraneMode(kit.rackTom10.headRadius, sharedTension,
+                                  sharedDensity, 0, 1))
+          .value();
+  CHECK(nearlyEqual(rackOpen / bassOpen,
+                    kit.bassDrum.headRadius.value() / kit.rackTom10.headRadius.value(),
+                    0.0, 1e-12));
+
+  const double momentum = 0.01;
+  const MembraneImpulse center{0.0, 0.3, momentum};
+  const auto axis =
+      unwrap(membraneStrikeCoefficient(bass, center, 0, 1));
+  const auto diametral =
+      unwrap(membraneStrikeCoefficient(bass, center, 1, 1));
+  CHECK(diametral.velocityCoefficient == 0.0);
+  const double norm =
+      constants::twoPi * 0.5 * bass.radius.value() * bass.radius.value() *
+      std::pow(std::cyl_bessel_j(1.0, axis.besselZero), 2.0);
+  const double expectedB = momentum / bass.arealDensity.value() * 1.0 / norm;
+  CHECK(nearlyEqual(axis.velocityCoefficient, expectedB, 0.0, 1e-12));
+  CHECK(unwrap(membraneStrikeDisplacement(bass, center, 0.0, 0.0, 0.0, 2, 2)) ==
+        0.0);
+  const double time = 1.0e-4;
+  const double oneMode =
+      (axis.velocityCoefficient / axis.angularFrequency) * std::sin(axis.angularFrequency * time);
+  CHECK(nearlyEqual(unwrap(membraneStrikeDisplacement(bass, center, 0.0, 0.0, time, 0, 1)),
+                    oneMode, 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(membraneStrikeVelocity(bass, center, 1.0, 0.0, time, 2, 2)),
+                    0.0, 1.0e-9, 1.0e-6));
+  CHECK(membraneStrikeCoefficient(bass, MembraneImpulse{1.0, 0.0, momentum}, 0, 1)
+            .error() == QuantityError::InvalidArgument);
+  const MembraneImpulse off{0.4, 0.2, momentum};
+  CHECK(unwrap(membraneStrikeCoefficient(bass, off, 1, 1)).velocityCoefficient !=
+        0.0);
+  const auto doubled = unwrap(
+      membraneStrikeCoefficient(bass, MembraneImpulse{0.0, 0.0, 2.0 * momentum}, 0, 1));
+  CHECK(nearlyEqual(doubled.velocityCoefficient, 2.0 * axis.velocityCoefficient, 0.0,
+                    1e-12));
+
+  const double compression = 1.0e-4;
+  const double stiffness = 1.0e7;
+  const double exponent = 2.0;
+  const double mass = 0.02;
+  const auto contact =
+      unwrap(feltContactRate(compression, stiffness, exponent, mass));
+  const double felt = stiffness * compression * compression;
+  CHECK(nearlyEqual(contact.forceNewtons, felt, 0.0, 1e-12));
+  CHECK(nearlyEqual(contact.acceleration, -felt / mass, 0.0, 1e-12));
+  CHECK(unwrap(feltContactRate(-compression, stiffness, exponent, mass)).forceNewtons ==
+        0.0);
+  CHECK(feltContactRate(compression, stiffness, exponent, 0.0).error() ==
+        QuantityError::InvalidArgument);
+}
+
+TEST_CASE("cymbals are free plates and the XSR set keeps alloy numbers as arguments",
+          "[instruments]") {
+  const auto set = unwrap(sabianXsrCompleteSet());
+  CHECK(set.splash.diameterInches == 10.0);
+  CHECK(set.hiHatTop.diameterInches == 14.0);
+  CHECK(set.hiHatBottom.diameterInches == 14.0);
+  CHECK(set.hiHatTop.radius.value() == set.hiHatBottom.radius.value());
+  CHECK(set.crash16.diameterInches == 16.0);
+  CHECK(set.crash18.diameterInches == 18.0);
+  CHECK(set.china.diameterInches == 18.0);
+  CHECK(set.ride.diameterInches == 20.0);
+  CHECK(std::strcmp(set.alloyName, "B20") == 0);
+  CHECK(nearlyEqual(set.ride.radius.value(), 10.0 * 0.0254, 0.0, 1e-15));
+  CHECK(std::strcmp(formula(set).c_str(),
+                    "SABIAN XSR Complete Set XSR5006B splash hi-hat top "
+                    "hi-hat bottom fast crash fast crash chinese ride") == 0);
+
+  const CymbalMaterial material{0.001, 1.0e11, 7800.0, 0.33};
+  const auto fundamental =
+      unwrap(freeCircularPlateMode(2, 1, material.poisson));
+  const double lambdaSquared = fundamental.lambda * fundamental.lambda;
+  CHECK(lambdaSquared > 4.5);
+  CHECK(lambdaSquared < 6.5);
+  const double below =
+      unwrap(freePlateCharacteristic(2, fundamental.lambda * (1.0 - 1.0e-8),
+                                    material.poisson));
+  const double above =
+      unwrap(freePlateCharacteristic(2, fundamental.lambda * (1.0 + 1.0e-8),
+                                    material.poisson));
+  CHECK(below * above <= 0.0);
+  const auto axisymmetric =
+      unwrap(freeCircularPlateMode(0, 1, material.poisson));
+  CHECK(axisymmetric.lambda > fundamental.lambda);
+
+  const double ride =
+      unwrap(cymbalModeFrequency(set.ride, material, 2, 1)).value();
+  const double crash =
+      unwrap(cymbalModeFrequency(set.crash16, material, 2, 1)).value();
+  CHECK(nearlyEqual(crash / ride,
+                    (set.ride.radius.value() / set.crash16.radius.value()) *
+                        (set.ride.radius.value() / set.crash16.radius.value()),
+                    0.0, 1e-9));
+  const CymbalMaterial thicker{0.002, material.youngsModulusPa,
+                               material.densityKgPerM3, material.poisson};
+  CHECK(nearlyEqual(unwrap(cymbalModeFrequency(set.ride, thicker, 2, 1)).value(),
+                    2.0 * ride, 0.0, 1e-12));
+  const CymbalMaterial stiffer{material.thicknessMeters, 4.0 * material.youngsModulusPa,
+                               material.densityKgPerM3, material.poisson};
+  CHECK(nearlyEqual(unwrap(cymbalModeFrequency(set.ride, stiffer, 2, 1)).value(),
+                    2.0 * ride, 0.0, 1e-12));
+  CHECK(cymbalModeFrequency(set.ride, CymbalMaterial{0.001, 1.0e11, 7800.0, 0.5}, 2, 1)
+            .error() == QuantityError::InvalidArgument);
+  const double hats =
+      unwrap(cymbalModeFrequency(set.hiHatTop, material, 2, 1)).value();
+  CHECK(unwrap(cymbalModeFrequency(set.hiHatBottom, material, 2, 1)).value() ==
+        hats);
+  CHECK(unwrap(cymbalModeFrequency(set.china, material, 2, 1)).value() ==
+        unwrap(cymbalModeFrequency(set.crash18, material, 2, 1)).value());
+
+  const auto edge = unwrap(freePlateRadialShape(
+      fundamental, set.ride.radius.value(), set.ride.radius.value()));
+  CHECK(edge != 0.0);
+  const CymbalImpulse center{0.0, 0.4, 0.002};
+  CHECK(unwrap(cymbalStrikeCoefficient(set.ride, material, center, 2, 1))
+            .velocityCoefficient == 0.0);
+  const auto driven =
+      unwrap(cymbalStrikeCoefficient(set.ride, material, center, 0, 1));
+  CHECK(driven.velocityCoefficient != 0.0);
+  CHECK(unwrap(cymbalStrikeDisplacement(set.ride, material, center, 0.2, 0.4, 0.0, 2,
+                                        1)) == 0.0);
+  const double later = 1.0e-5;
+  const auto shape = unwrap(freePlateRadialShape(
+      unwrap(freeCircularPlateMode(0, 1, material.poisson)), set.ride.radius.value(),
+      0.0));
+  const double expected = (driven.velocityCoefficient / driven.angularFrequency) *
+                          std::sin(driven.angularFrequency * later) * shape;
+  CHECK(nearlyEqual(unwrap(cymbalStrikeDisplacement(set.ride, material, center, 0.0, 0.0,
+                                                    later, 0, 1)),
+                    expected, 0.0, 1e-9));
+  const auto heavy = unwrap(cymbalStrikeCoefficient(
+      set.ride, material, CymbalImpulse{0.0, 0.0, 0.004}, 0, 1));
+  CHECK(nearlyEqual(heavy.velocityCoefficient, 2.0 * driven.velocityCoefficient, 0.0,
+                    1e-12));
+  const auto felt = unwrap(feltContactRate(2.0e-4, 5.0e6, 1.5, 0.03));
+  CHECK(felt.forceNewtons > 0.0);
+  CHECK(felt.acceleration < 0.0);
 }

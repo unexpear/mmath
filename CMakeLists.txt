@@ -192,6 +192,7 @@ if(BUILD_TESTING)
     tests/headers/th_signal_inharmonic.cpp
     tests/headers/th_analysis_consonance.cpp
     tests/headers/th_physics_modes.cpp
+    tests/headers/th_physics_circular_plate.cpp
     tests/headers/th_physics_impedance.cpp
     tests/headers/th_physics_absorption.cpp
     tests/headers/th_music_pcset.cpp
@@ -228,6 +229,8 @@ if(BUILD_TESTING)
     tests/headers/th_instruments_reed.cpp
     tests/headers/th_instruments_harp.cpp
     tests/headers/th_instruments_harpsichord.cpp
+    tests/headers/th_instruments_drum.cpp
+    tests/headers/th_instruments_cymbal.cpp
     tests/headers/th_hearing_loudness.cpp
     tests/headers/th_hearing_scales.cpp
     tests/headers/th_hearing_masking.cpp

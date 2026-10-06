@@ -433,4 +433,26 @@ feltHammerDerivative(const HardHammerBlow& blow, const FeltHammerState& state,
                                          acceleration, stringVelocity});
 }
 
+// Felt contact without a string impedance. Force is feltHammerForce.
+// Acceleration is -F/m from the mallet mass alone. A drum head or a
+// cymbal does not use F/(2Z): that quotient is the string's driving
+// point. ξ ≤ 0 is zero force. Mass must be strictly positive.
+struct FeltContactRate {
+  double compressionMeters = 0.0;
+  double forceNewtons = 0.0;
+  double acceleration = 0.0;
+};
+
+[[nodiscard]] inline Result<FeltContactRate, QuantityError> feltContactRate(
+    double compressionMeters, double stiffness, double exponent, double massKg) {
+  using R = Result<FeltContactRate, QuantityError>;
+  if (!std::isfinite(massKg) || !(massKg > 0.0))
+    return R::failure(QuantityError::InvalidArgument);
+  auto force = feltHammerForce(compressionMeters, stiffness, exponent);
+  if (!force.ok()) return R::failure(force.error());
+  const double acceleration = -force.value() / massKg;
+  if (!std::isfinite(acceleration)) return R::failure(QuantityError::RangeError);
+  return R::success(FeltContactRate{compressionMeters, force.value(), acceleration});
+}
+
 }  // namespace mmathen
