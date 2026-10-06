@@ -1,20 +1,20 @@
 #pragma once
 
-// Body — one mode of driving-point admittance, driven by the Helmholtz
-// bridge force (docs/48).
+// Body — driving-point admittance as a sum of modes, driven by the
+// Helmholtz bridge force (docs/48).
 //
-// Woodhouse's modal sum for the body admittance at a drive point is one
-// term per mode,
-//   Y(ω) = jω / (m (ω0² - ω² + j ω ω0 / Q)),
+// Woodhouse's modal sum for the body admittance at a drive point is
+//   Y(ω) = Σ_k jω / (m_k (ω_k² - ω² + j ω ω_k / Q_k)),
 // with Q = 1/(2ζ) and the mode-shape factor absorbed into the effective
-// mass m ("On the 'bridge hill' of the violin", eq. (4)). This header
-// keeps a single term. A measured bridge admittance is a sum of many
-// terms; that sum is not stored here.
+// mass m ("On the 'bridge hill' of the violin", eq. (4)). Each term is
+// that quotient. The sum is the caller’s table of terms, added. This
+// header does not store a measured bridge admittance.
 //
-// Resonance frequency, Q, and m are arguments. Body length does not
-// determine them, and this library has no measured mode table for the
-// violin, viola, cello, or double bass. Nothing in those factories is a
-// hidden A0 or B1.
+// Resonance frequency, Q, and m of every mode are arguments. Body length
+// does not determine them, and this library has no measured mode table
+// for the violin, viola, cello, or double bass. Nothing in those
+// factories is a hidden A0 or B1. A0–B1 coupling would be a mutual term
+// between two modes; the sum here is diagonal driving-point terms only.
 //
 // The drive is the rigid-bridge Helmholtz force from bow.h, open-loop.
 // The string is not re-solved with a moving end, so there is no
@@ -39,6 +39,8 @@
 
 #include <cmath>
 #include <complex>
+#include <cstddef>
+#include <span>
 
 #include "../math/constants.h"
 #include "bow.h"
@@ -46,15 +48,18 @@
 namespace mmathen {
 
 inline constexpr const char* kBodyResonatorSource =
-    "One driving-point term of Jim Woodhouse, \"On the 'bridge hill' of "
+    "Driving-point terms of Jim Woodhouse, \"On the 'bridge hill' of "
     "the violin\", eq. (4): "
-    "Y(omega) = j omega / (m (omega0^2 - omega^2 + j omega omega0 / Q)), "
+    "Y(omega) = sum_k j omega / (m_k (omega_k^2 - omega^2 + "
+    "j omega omega_k / Q_k)), "
     "Q = 1/(2 zeta), mode-shape factor absorbed into the effective mass m. "
     "https://archive.violinbridges.co.uk/wp-content/uploads/2015/06/Bridgehill.pdf . "
-    "Resonance, Q, and m are caller arguments; no instrument mode table is "
-    "stored. The Helmholtz force drives the mode open-loop. Schelleng's "
+    "Each resonance, Q, and m is a caller argument. No violin, viola, cello, "
+    "or bass admittance table is stored, and no A0 or B1 frequency is "
+    "stored. The Helmholtz force drives the sum open-loop. Schelleng's "
     "minimum bow force is not applied. Far-field pressure, the cavity "
-    "Helmholtz frequency, and A0-B1 coupling are not evaluated.";
+    "Helmholtz frequency, and A0-B1 coupling (a mutual term) are not "
+    "evaluated.";
 
 // Caller-supplied mode. Frequency in hertz, Q dimensionless, mass in kg.
 struct BodyModeSpec {
@@ -106,6 +111,27 @@ struct BodyResonator {
   return R::success(mode);
 }
 
+// Build every row of a caller-supplied table. `specs` and `modes` must be
+// the same non-zero length. On failure `modes` is left unchanged.
+// InvalidArgument if the table is empty, the lengths differ, or any row
+// fails the single-mode checks. RangeError if any row overflows.
+[[nodiscard]] inline Result<std::size_t, QuantityError> makeBodyResonators(
+    std::span<const BodyModeSpec> specs, std::span<BodyResonator> modes) {
+  using R = Result<std::size_t, QuantityError>;
+  if (specs.empty() || specs.size() != modes.size())
+    return R::failure(QuantityError::InvalidArgument);
+  for (const BodyModeSpec& spec : specs) {
+    auto built = makeBodyResonator(spec);
+    if (!built.ok()) return R::failure(built.error());
+  }
+  for (std::size_t i = 0; i < specs.size(); ++i) {
+    auto built = makeBodyResonator(specs[i]);
+    if (!built.ok()) return R::failure(built.error());
+    modes[i] = built.value();
+  }
+  return R::success(specs.size());
+}
+
 // Driving-point mobility Y(f) = v/F, metres per second per newton.
 // f = 0 returns 0. A negative or non-finite frequency is InvalidArgument.
 //
@@ -136,6 +162,27 @@ struct BodyResonator {
   if (!std::isfinite(mobility.real()) || !std::isfinite(mobility.imag()))
     return R::failure(QuantityError::RangeError);
   return R::success(mobility);
+}
+
+// Sum of the driving-point terms. An empty table is InvalidArgument.
+// Each term uses the algebraic quotient above; the sum adds those
+// complexes and does not divide them. A negative or non-finite frequency
+// is InvalidArgument. f = 0 returns 0.
+[[nodiscard]] inline Result<std::complex<double>, QuantityError> bodyMobility(
+    std::span<const BodyResonator> modes, double frequencyHz) {
+  using R = Result<std::complex<double>, QuantityError>;
+  if (modes.empty() || !std::isfinite(frequencyHz) || frequencyHz < 0.0)
+    return R::failure(QuantityError::InvalidArgument);
+  std::complex<double> sum{0.0, 0.0};
+  for (const BodyResonator& mode : modes) {
+    auto term = bodyMobility(mode, frequencyHz);
+    if (!term.ok()) return R::failure(term.error());
+    const std::complex<double>& value = term.value();
+    sum += value;
+  }
+  if (!std::isfinite(sum.real()) || !std::isfinite(sum.imag()))
+    return R::failure(QuantityError::RangeError);
+  return R::success(sum);
 }
 
 namespace body_detail {
@@ -231,6 +278,76 @@ bodyVelocityCoefficient(const BodyResonator& mode, const HelmholtzStroke& stroke
     // Written out for the same reason as bodyMobility: the divisor would
     // otherwise be complex(0, ω), and MSVC's complex divide splits on
     // that zero real part.
+    if (!(omega > 0.0) || !std::isfinite(omega))
+      return R::failure(QuantityError::RangeError);
+    const std::complex<double>& harmonicVelocity = velocity.value();
+    const std::complex<double> displacement{harmonicVelocity.imag() / omega,
+                                            -harmonicVelocity.real() / omega};
+    const double angle = omega * slip;
+    sum += displacement * std::exp(std::complex<double>(0.0, angle));
+  }
+  const double metres = 2.0 * sum.real();
+  if (!std::isfinite(metres)) return R::failure(QuantityError::RangeError);
+  return R::success(metres);
+}
+
+// Coefficient of the steady velocity when the bridge force drives every
+// mode in the table. Same sawtooth coefficient as one mode, times the
+// summed mobility. An empty table is InvalidArgument.
+[[nodiscard]] inline Result<std::complex<double>, QuantityError>
+bodyVelocityCoefficient(std::span<const BodyResonator> modes,
+                        const HelmholtzStroke& stroke, int harmonic) {
+  using R = Result<std::complex<double>, QuantityError>;
+  if (modes.empty() || !body_detail::usableStroke(stroke) || harmonic < 1 ||
+      harmonic > 4096)
+    return R::failure(QuantityError::InvalidArgument);
+  const double frequency = static_cast<double>(harmonic) / stroke.period;
+  auto mobility = bodyMobility(modes, frequency);
+  if (!mobility.ok()) return R::failure(mobility.error());
+  return R::success(mobility.value() *
+                    body_detail::forceCoefficient(stroke, harmonic));
+}
+
+// Steady bridge-foot velocity under the Helmholtz force through the summed
+// mobility. Linear in the modes: it equals the sum of the one-mode
+// velocities.
+[[nodiscard]] inline Result<double, QuantityError> bodyVelocity(
+    std::span<const BodyResonator> modes, const HelmholtzStroke& stroke,
+    double timeSeconds, int harmonics) {
+  using R = Result<double, QuantityError>;
+  if (modes.empty() || !std::isfinite(timeSeconds) || harmonics < 1 ||
+      harmonics > 4096 || !body_detail::usableStroke(stroke))
+    return R::failure(QuantityError::InvalidArgument);
+  const double slip = body_detail::sinceSlip(stroke, timeSeconds);
+  std::complex<double> sum{0.0, 0.0};
+  for (int n = 1; n <= harmonics; ++n) {
+    auto coefficient = bodyVelocityCoefficient(modes, stroke, n);
+    if (!coefficient.ok()) return R::failure(coefficient.error());
+    const double angle =
+        constants::twoPi * static_cast<double>(n) * slip / stroke.period;
+    sum += coefficient.value() * std::exp(std::complex<double>(0.0, angle));
+  }
+  const double velocity = 2.0 * sum.real();
+  if (!std::isfinite(velocity)) return R::failure(QuantityError::RangeError);
+  return R::success(velocity);
+}
+
+// Steady bridge-foot displacement, the integral of the summed velocity.
+// The division by ω is real, as in the one-mode displacement.
+[[nodiscard]] inline Result<double, QuantityError> bodyDisplacement(
+    std::span<const BodyResonator> modes, const HelmholtzStroke& stroke,
+    double timeSeconds, int harmonics) {
+  using R = Result<double, QuantityError>;
+  if (modes.empty() || !std::isfinite(timeSeconds) || harmonics < 1 ||
+      harmonics > 4096 || !body_detail::usableStroke(stroke))
+    return R::failure(QuantityError::InvalidArgument);
+  const double slip = body_detail::sinceSlip(stroke, timeSeconds);
+  std::complex<double> sum{0.0, 0.0};
+  for (int n = 1; n <= harmonics; ++n) {
+    auto velocity = bodyVelocityCoefficient(modes, stroke, n);
+    if (!velocity.ok()) return R::failure(velocity.error());
+    const double omega =
+        constants::twoPi * static_cast<double>(n) / stroke.period;
     if (!(omega > 0.0) || !std::isfinite(omega))
       return R::failure(QuantityError::RangeError);
     const std::complex<double>& harmonicVelocity = velocity.value();

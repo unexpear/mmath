@@ -2,17 +2,17 @@
 
 Status: assembly layer for four bowed strings, a concert pedal harp, a
 French double harpsichord, a steady Helmholtz bow on one ideal string,
-one body mode driven by that bow's bridge force, a hard narrow hammer,
+a sum of driving-point body modes driven by that bow's bridge force, a hard narrow hammer,
 the first fixed-end images of that hammer, a felt contact law, a
 quasi-static single reed, a cylindrical bore, and reed inertia. A
 fingered stop shortens one open course. A Yamaha Tour Custom kit and a
 SABIAN XSR cymbal set add fixed circular membranes and free circular
 plates. Verified against the ideal-string
 law, Guettler's tables, the harp and harpsichord measurements named
-below, the Helmholtz/Schelleng identities, the single-mode admittance,
+below, the Helmholtz/Schelleng identities, the driving-point modal sum,
 the hard-hammer contact law, the first-image sum, the felt power law, the
 reed flow law, the circular-membrane Bessel frequencies, and the free-plate
-frequency law. Unvalidated as radiated sound: the body mode is
+frequency law. Unvalidated as radiated sound: the body-mode sum is
 open-loop, and there is no measured bridge admittance and no far-field
 pressure. The bore is an ideal cylinder with the caller's length and
 cross-section; there is no clarinet. The harp and the harpsichord are
@@ -35,7 +35,7 @@ interval.
 | `instruments/cello.h` | C2 G2 D3 A3, vibrating length 0.690 m, body 0.755 m, compass C2–E5 |
 | `instruments/double_bass.h` | Orchestral E1 A1 D2 G2, vibrating length 1.060 m, body 1.110 m, sounding compass E1–B3 (written E2–B4) |
 | `instruments/bow.h` | Steady Helmholtz stick/slip, bridge-force sawtooth, Schelleng maximum normal force |
-| `instruments/body.h` | One driving-point body mode. Resonance, Q, and modal mass are arguments |
+| `instruments/body.h` | Sum of driving-point body modes. Each resonance, Q, and modal mass is an argument; no stored admittance table |
 | `instruments/hammer.h` | Hard narrow hammer until the first reflection; first-image sum until the second image; felt law \(F=K\xi^{p}\). Mass, speed, strike, \(K\), and \(p\) are arguments |
 | `instruments/reed.h` | Quasi-static single reed; cylindrical bore; reed inertia. Area, closure, air state, bore length and cross-section, mass, tip area, closing displacement, and damping are arguments |
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
@@ -135,7 +135,7 @@ G2 are not the cello's. A double bass is not a cello with the labels
 rewritten, and the body length is not used as \(L\).
 
 The Helmholtz bow is unchanged and can be applied to a bass course the
-same way as to a violin, viola, or cello course. The body mode and the
+same way as to a violin, viola, or cello course. The body-mode sum and the
 hard hammer are the same functions for any of the four courses. The reed
 does not take a course. None of the factories stores a resonance, a
 hammer mass, a strike speed, or a reed.
@@ -270,6 +270,16 @@ not a violin with the labels rewritten.
   harmonic. Mean damper power matches mean input power. The same mode on
   the lowest string of each of the four instruments sees a different
   flyback, so the first velocity coefficient changes with the instrument.
+- Several caller-supplied modes add. The mobility of the table equals the
+  sum of the one-mode mobilities, a one-mode table matches that mode, and
+  doubling every modal mass halves the sum. At one mode's resonance the
+  imaginary part is the other modes' imaginary part. Below every resonance
+  the imaginary part is positive; above every resonance it is negative and
+  the magnitude follows \(\sum 1/(m_k\omega)\). The Helmholtz velocity and
+  displacement of the table equal the sum of the one-mode responses, and
+  the sum of the modal damper powers matches the input power through
+  \(\operatorname{Re} Y\). An empty table is refused. No A0 or B1 frequency
+  is stored.
 - A hard hammer's contact velocity is \(v_0 e^{-t/\tau}\) with
   \(\tau = m/(2Z)\) and \(Z=\mu c\), the force is \(2Zv\), and the
   contact displacement is the integral of that velocity. The impulse
@@ -309,39 +319,53 @@ not a hidden rosin table.
 
 Not in this bow: capture transients, bow-hair width, torsion, thermal
 rosin, a rounded corner, and any body filter on the bridge force. The
-body mode below is applied after the force is known. It does not change
+body-mode sum below is applied after the force is known. It does not change
 the bow.
 
 ## Body
 
-`body.h` is one term of the modal driving-point admittance (Woodhouse,
-"On the 'bridge hill' of the violin", eq. (4)):
+`body.h` is the modal driving-point admittance (Woodhouse, "On the 'bridge
+hill' of the violin", eq. (4)), one term per mode and the sum of a
+caller-supplied table:
 
 \[
-Y(\omega) = \frac{j\omega}{m\left(\omega_0^2 - \omega^2 + j\omega\omega_0/Q\right)},
+Y(\omega) = \sum_k \frac{j\omega}{m_k\left(\omega_k^2 - \omega^2 + j\omega\omega_k/Q_k\right)},
 \quad Q = \frac{1}{2\zeta}.
 \]
 
 The mode-shape factor at the driven point is absorbed into the effective
-mass \(m\). Resonance frequency, \(Q\), and \(m\) are arguments. They are
-not derived from body length, and there is no stored A0 or B1 for the
-violin, viola, cello, or double bass: those are measurements this layer
-does not have.
+mass \(m_k\). Each resonance, \(Q\), and \(m\) is an argument. None is
+derived from body length, and there is no stored A0 or B1, and no measured
+admittance table, for the violin, viola, cello, or double bass. An empty
+table is refused. A table of one mode is that single term: at its
+resonance the mobility is the real value \(1/r\) with \(r = m\omega_0/Q\).
+With more than one mode, the mobility at one resonance keeps the imaginary
+part of the other terms. Doubling every modal mass halves \(Y\). Far below
+every resonance the imaginary part is positive; far above every resonance
+it is negative and \(|Y|\) follows \(\sum_k 1/(m_k\omega)\).
+
+Each term is evaluated as \((\omega d_i + j\omega d_r)/(m|D|^2)\). The sum
+adds those values. There is no complex division, including at a resonance
+where \(d_r = 0\).
 
 The steady bridge-foot velocity and displacement are the response to the
 Helmholtz sawtooth, summed from its Fourier coefficients
-\(c_n = -j\,\Delta/(2\pi n)\) (\(\Delta\) is the flyback). The string still
-sees a rigid bridge. This is an open-loop drive: the body does not move
-the string end, so wolf notes and other back-reaction are absent.
+\(c_n = -j\,\Delta/(2\pi n)\) (\(\Delta\) is the flyback) through the summed
+mobility. That response equals the sum of the one-mode responses. The
+string still sees a rigid bridge. This is an open-loop drive: the body
+does not move the string end, so wolf notes and other back-reaction are
+absent. A0–B1 coupling would be a mutual term between two modes; this sum
+has no off-diagonal term.
 
-Schelleng's minimum bow force stays unevaluated. The mode does carry its
-resonant resistance \(r = m\omega_0/Q\), which is \(1/|Y(\omega_0)|\), but
-that number is not the bridge resistance the string sees, and it is not
-substituted into the bow. Far-field pressure is not evaluated: it needs a
-radiating area or a volume velocity, and a distance. The cavity Helmholtz
-frequency is not evaluated: it needs f-hole area, cavity volume, and an
-effective neck length. A0–B1 coupling needs a mutual term. None of those
-constants is invented.
+Schelleng's minimum bow force stays unevaluated. Each mode carries its
+resonant resistance \(r = m\omega_0/Q\), the reciprocal of that mode's own
+real mobility at \(\omega_0\). The summed mobility at that frequency is
+not \(1/r\), and neither number is the bridge resistance the string sees.
+Neither is substituted into the bow. Far-field pressure is not evaluated:
+it needs a radiating area or a volume velocity, and a distance. The cavity
+Helmholtz frequency is not evaluated: it needs f-hole area, cavity volume,
+and an effective neck length. A0–B1 coupling needs a mutual term. None of
+those constants is invented.
 
 `physics/` does not include `instruments/`.
 
@@ -542,7 +566,7 @@ The hi-hat is two 14″ plates. No clutch gap is printed, and the plates are not
 
 ## Still planned
 
-A sum of measured body modes, cavity Helmholtz frequency, A0–B1 coupling,
+Cavity Helmholtz frequency, A0–B1 coupling,
 far-field radiation, back-reaction of the body on the string (and with it
 Schelleng's minimum bow force), stiffness of wound strings, and a
 time-stepped stick-slip capture. The Helmholtz stroke is the steady

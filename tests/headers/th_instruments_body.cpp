@@ -8,4 +8,9 @@ TEST_CASE("instruments/body.h is self-contained", "[headers]") {
       mmathen::makeBodyResonator(mmathen::BodyModeSpec{440.0, 10.0, 0.1});
   REQUIRE(mode.ok());
   CHECK(mmathen::bodyMobility(mode.value(), 440.0).ok());
+  const mmathen::BodyModeSpec specs[] = {{440.0, 10.0, 0.1},
+                                          {880.0, 12.0, 0.2}};
+  mmathen::BodyResonator modes[2];
+  REQUIRE(mmathen::makeBodyResonators(specs, modes).ok());
+  CHECK(mmathen::bodyMobility(modes, 440.0).ok());
 }

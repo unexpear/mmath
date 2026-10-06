@@ -1,5 +1,5 @@
 // Instruments — bowed strings, a concert pedal harp, a French double
-// harpsichord, Helmholtz bow, and one body mode (docs/48).
+// harpsichord, Helmholtz bow, and a sum of body modes (docs/48).
 //
 // The open string is the ideal-string fundamental at the pitch-adapter
 // frequency. The nominal density is Guettler's range midpoint, and the
@@ -8,8 +8,8 @@
 // within the truncation bound. The bridge hook is the coupled-string
 // limits (rigid end, free end). Hammer and reed are refused. A bow is a
 // steady Helmholtz stroke: stick/slip velocity, bridge-force sawtooth,
-// and Schelleng's maximum normal force. A body mode filters that force
-// with a caller-supplied resonance, Q, and modal mass. A hard hammer is
+// and Schelleng's maximum normal force. A sum of body modes filters that
+// force. Each resonance, Q, and modal mass is caller-supplied. A hard hammer is
 // the infinite-string contact law until the first reflection returns. A
 // reed is the quasi-static Bernoulli slit. A fingered stop shortens the
 // vibrating length at the open course's tension. A cylindrical bore and
@@ -531,6 +531,160 @@ TEST_CASE("one body mode filters the Helmholtz bridge force", "[instruments]") {
       unwrap(makeHelmholtzStroke(unwrap(violin()).courses[0], stroke));
   CHECK(bodyVelocity(mode, violinMotion, 0.0, 0).error() ==
         QuantityError::InvalidArgument);
+}
+
+TEST_CASE("body mobility is the sum of caller-supplied modes", "[instruments]") {
+  // Round arguments. Not a measured A0, B1, or bridge admittance.
+  const BodyModeSpec specs[] = {
+      {200.0, 20.0, 0.05},
+      {400.0, 30.0, 0.02},
+      {800.0, 10.0, 0.01},
+  };
+  BodyResonator modes[3];
+  modes[0].resonanceHz = -1.0;
+  const BodyModeSpec rejected[] = {{200.0, 20.0, 0.05}, {400.0, 0.0, 0.02}};
+  CHECK(makeBodyResonators(rejected, std::span<BodyResonator>(modes, 2)).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(modes[0].resonanceHz == -1.0);
+  CHECK(makeBodyResonators(std::span<const BodyModeSpec>{},
+                           std::span<BodyResonator>{})
+            .error() == QuantityError::InvalidArgument);
+  BodyResonator tooSmall[2];
+  CHECK(makeBodyResonators(specs, tooSmall).error() ==
+        QuantityError::InvalidArgument);
+  const BodyModeSpec overflowing[] = {{1.0e200, 10.0, 1.0e200}};
+  BodyResonator overflowOut[1];
+  CHECK(makeBodyResonators(overflowing, overflowOut).error() ==
+        QuantityError::RangeError);
+  REQUIRE(makeBodyResonators(specs, modes).ok());
+  CHECK(makeBodyResonators(specs, modes).value() == 3);
+
+  const double probeHz = 250.0;
+  std::complex<double> byHand{0.0, 0.0};
+  for (const BodyResonator& mode : modes)
+    byHand += unwrap(bodyMobility(mode, probeHz));
+  const auto summed = unwrap(bodyMobility(modes, probeHz));
+  CHECK(nearlyEqual(summed.real(), byHand.real(), 0.0, 1e-12));
+  CHECK(nearlyEqual(summed.imag(), byHand.imag(), 0.0, 1e-12));
+
+  const BodyResonator only[] = {modes[0]};
+  const auto one = unwrap(bodyMobility(only, probeHz));
+  const auto direct = unwrap(bodyMobility(modes[0], probeHz));
+  CHECK(nearlyEqual(one.real(), direct.real(), 0.0, 1e-15));
+  CHECK(nearlyEqual(one.imag(), direct.imag(), 0.0, 1e-15));
+
+  const BodyResonator twins[] = {modes[0], modes[0]};
+  const auto doubled = unwrap(bodyMobility(twins, modes[0].resonanceHz));
+  const auto twinTerm = unwrap(bodyMobility(modes[0], modes[0].resonanceHz));
+  CHECK(nearlyEqual(doubled.real(), 2.0 * twinTerm.real(), 0.0, 1e-12));
+  CHECK(nearlyEqual(doubled.imag(), 0.0, 1e-12, 1e-12));
+
+  const auto atFirst = unwrap(bodyMobility(modes, modes[0].resonanceHz));
+  const auto others =
+      unwrap(bodyMobility(modes[1], modes[0].resonanceHz)) +
+      unwrap(bodyMobility(modes[2], modes[0].resonanceHz));
+  CHECK(nearlyEqual(atFirst.real(), twinTerm.real() + others.real(), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(atFirst.imag(), others.imag(), 0.0, 1e-12));
+  CHECK(atFirst.imag() != 0.0);
+
+  const auto atRest = unwrap(bodyMobility(modes, 0.0));
+  CHECK(atRest.real() == 0.0);
+  CHECK(atRest.imag() == 0.0);
+  const auto below = unwrap(bodyMobility(modes, 20.0));
+  CHECK(below.imag() > 0.0);
+  const auto above = unwrap(bodyMobility(modes, 8000.0));
+  CHECK(above.imag() < 0.0);
+  const double omegaHigh = constants::twoPi * 8000.0;
+  double massAsymptote = 0.0;
+  for (const BodyResonator& mode : modes)
+    massAsymptote += 1.0 / (mode.modalMassKg * omegaHigh);
+  CHECK(std::fabs(std::abs(above) - massAsymptote) / massAsymptote < 0.02);
+
+  BodyModeSpec heavySpecs[3];
+  for (int i = 0; i < 3; ++i) {
+    heavySpecs[i] = specs[i];
+    heavySpecs[i].modalMassKg *= 2.0;
+  }
+  BodyResonator heavy[3];
+  REQUIRE(makeBodyResonators(heavySpecs, heavy).ok());
+  const auto lightY = unwrap(bodyMobility(modes, probeHz));
+  const auto heavyY = unwrap(bodyMobility(heavy, probeHz));
+  CHECK(nearlyEqual(lightY.real(), 2.0 * heavyY.real(), 0.0, 1e-12));
+  CHECK(nearlyEqual(lightY.imag(), 2.0 * heavyY.imag(), 0.0, 1e-12));
+
+  CHECK(bodyMobility(std::span<const BodyResonator>{}, probeHz).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(bodyMobility(modes, -1.0).error() == QuantityError::InvalidArgument);
+
+  const double beta = 1.0 / 9.0;
+  const BowStroke stroke{beta, 0.2, 0.05, {0.8, 0.3}};
+  const int harmonics = 16;
+  const auto violinMotion =
+      unwrap(makeHelmholtzStroke(unwrap(violin()).courses[0], stroke));
+  const auto celloMotion =
+      unwrap(makeHelmholtzStroke(unwrap(cello()).courses[0], stroke));
+  const auto violinCoefficient =
+      unwrap(bodyVelocityCoefficient(modes, violinMotion, 1));
+  const auto celloCoefficient =
+      unwrap(bodyVelocityCoefficient(modes, celloMotion, 1));
+  CHECK(violinCoefficient != celloCoefficient);
+  std::complex<double> coefficientSum{0.0, 0.0};
+  for (const BodyResonator& mode : modes)
+    coefficientSum += unwrap(bodyVelocityCoefficient(mode, violinMotion, 1));
+  CHECK(nearlyEqual(violinCoefficient.real(), coefficientSum.real(), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(violinCoefficient.imag(), coefficientSum.imag(), 0.0,
+                    1e-12));
+
+  for (double fraction : {0.0, 0.2, 0.6}) {
+    const double time = fraction * violinMotion.period;
+    double velocity = 0.0;
+    double displacement = 0.0;
+    for (const BodyResonator& mode : modes) {
+      velocity += unwrap(bodyVelocity(mode, violinMotion, time, harmonics));
+      displacement +=
+          unwrap(bodyDisplacement(mode, violinMotion, time, harmonics));
+    }
+    CHECK(nearlyEqual(unwrap(bodyVelocity(modes, violinMotion, time, harmonics)),
+                      velocity, 0.0, 1e-9));
+    CHECK(nearlyEqual(
+        unwrap(bodyDisplacement(modes, violinMotion, time, harmonics)),
+        displacement, 0.0, 1e-9));
+    CHECK(nearlyEqual(
+        unwrap(bodyVelocity(only, violinMotion, time, harmonics)),
+        unwrap(bodyVelocity(modes[0], violinMotion, time, harmonics)), 0.0,
+        1e-12));
+  }
+
+  double meanPower = 0.0;
+  for (int n = 1; n <= harmonics; ++n) {
+    const double sineForce =
+        violinMotion.bridgeForceFlyback /
+        (constants::pi * static_cast<double>(n));
+    const auto mobilityN = unwrap(
+        bodyMobility(modes, static_cast<double>(n) / violinMotion.period));
+    meanPower += 0.5 * sineForce * sineForce * mobilityN.real();
+  }
+  constexpr int samples = 1024;
+  double damper = 0.0;
+  for (int i = 0; i < samples; ++i) {
+    const double time =
+        violinMotion.period * static_cast<double>(i) / samples;
+    for (const BodyResonator& mode : modes) {
+      const double velocity =
+          unwrap(bodyVelocity(mode, violinMotion, time, harmonics));
+      damper += mode.damping * velocity * velocity;
+    }
+  }
+  damper /= static_cast<double>(samples);
+  CHECK(nearlyEqual(damper, meanPower, 0.0, 1e-6));
+
+  HelmholtzStroke blank;
+  CHECK(bodyVelocity(modes, blank, 0.0, 8).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(bodyVelocity(std::span<const BodyResonator>{}, violinMotion, 0.0, 8)
+            .error() == QuantityError::InvalidArgument);
 }
 
 TEST_CASE("a hard hammer follows the infinite-string law until the reflection",
