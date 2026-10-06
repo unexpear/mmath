@@ -2,14 +2,14 @@
 
 Status: assembly layer for four bowed strings, a concert pedal harp, a
 French double harpsichord, a steady Helmholtz bow on one ideal string,
-a sum of driving-point body modes driven by that bow's bridge force, a hard narrow hammer,
+a sum of driving-point body modes driven by that bow's bridge force, a cavity Helmholtz frequency from caller area, volume, and neck, a hard narrow hammer,
 the first fixed-end images of that hammer, a felt contact law, a
 quasi-static single reed, a cylindrical bore, and reed inertia. A
 fingered stop shortens one open course. A Yamaha Tour Custom kit and a
 SABIAN XSR cymbal set add fixed circular membranes and free circular
 plates. Verified against the ideal-string
 law, Guettler's tables, the harp and harpsichord measurements named
-below, the Helmholtz/Schelleng identities, the driving-point modal sum,
+below, the Helmholtz/Schelleng identities, the driving-point modal sum, the cavity Helmholtz frequency,
 the hard-hammer contact law, the first-image sum, the felt power law, the
 reed flow law, the circular-membrane Bessel frequencies, and the free-plate
 frequency law. Unvalidated as radiated sound: the body-mode sum is
@@ -35,7 +35,7 @@ interval.
 | `instruments/cello.h` | C2 G2 D3 A3, vibrating length 0.690 m, body 0.755 m, compass C2–E5 |
 | `instruments/double_bass.h` | Orchestral E1 A1 D2 G2, vibrating length 1.060 m, body 1.110 m, sounding compass E1–B3 (written E2–B4) |
 | `instruments/bow.h` | Steady Helmholtz stick/slip, bridge-force sawtooth, Schelleng maximum normal force |
-| `instruments/body.h` | Sum of driving-point body modes. Each resonance, Q, and modal mass is an argument; no stored admittance table |
+| `instruments/body.h` | Sum of driving-point body modes, plus a cavity Helmholtz frequency. Mode resonance, Q, and modal mass are arguments. F-hole area, cavity volume, and effective neck length are arguments. No stored admittance or f-hole table |
 | `instruments/hammer.h` | Hard narrow hammer until the first reflection; first-image sum until the second image; felt law \(F=K\xi^{p}\). Mass, speed, strike, \(K\), and \(p\) are arguments |
 | `instruments/reed.h` | Quasi-static single reed; cylindrical bore; reed inertia. Area, closure, air state, bore length and cross-section, mass, tip area, closing displacement, and damping are arguments |
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
@@ -280,6 +280,17 @@ not a violin with the labels rewritten.
   the sum of the modal damper powers matches the input power through
   \(\operatorname{Re} Y\). An empty table is refused. No A0 or B1 frequency
   is stored.
+- A cavity Helmholtz frequency is \(f=(c/2\pi)\sqrt{A/(VL)}\), with
+  \(M_a=\rho L/A\), \(C_a=V/(\rho c^2)\), and \(\omega=1/\sqrt{M_a C_a}\).
+  \(c\) and \(\rho\) are the dry-air model. Doubling the opening area
+  multiplies \(f\) by \(\sqrt{2}\) and halves \(M_a\). Doubling the volume
+  or the neck divides \(f\) by \(\sqrt{2}\). Doubling pressure leaves \(f\)
+  and \(c\) unchanged and swaps a factor of two between \(M_a\) and \(C_a\).
+  Quadrupling temperature doubles \(c\) and \(f\), quarters \(M_a\) because
+  \(\rho\propto 1/T\), and leaves \(C_a\) unchanged because
+  \(\rho c^2=\gamma p\). A non-positive area, volume, or
+  neck is refused. The violin's body length is not the neck. The frequency
+  is not written into a body mode.
 - A hard hammer's contact velocity is \(v_0 e^{-t/\tau}\) with
   \(\tau = m/(2Z)\) and \(Z=\mu c\), the force is \(2Zv\), and the
   contact displacement is the integral of that velocity. The impulse
@@ -357,15 +368,32 @@ does not move the string end, so wolf notes and other back-reaction are
 absent. A0–B1 coupling would be a mutual term between two modes; this sum
 has no off-diagonal term.
 
+`makeCavityHelmholtz` is Rayleigh's resonator, not a measured A0:
+
+\[
+M_a=\frac{\rho L}{A},\qquad C_a=\frac{V}{\rho c^2},\qquad
+\omega=\frac{1}{\sqrt{M_a C_a}}=c\sqrt{\frac{A}{VL}},\qquad
+f=\frac{\omega}{2\pi}.
+\]
+
+\(A\) is the caller's total f-hole area, \(V\) the cavity volume, and \(L\)
+the effective neck length. An end correction is already inside \(L\) if the
+caller put one there; the function does not add \(0.6r\) or any other
+correction. \(c=\sqrt{\gamma RT}\) and \(\rho=p/(RT)\) are the dry-air
+model, so pressure and temperature are arguments the way they are on a
+reed bore. Frequency does not depend on pressure, because \(\rho\) cancels.
+\(C_a\) does not depend on temperature, because \(\rho c^2=\gamma p\). No
+violin, viola, cello, or bass area, volume, or neck is stored, and the
+body length is not substituted for any of the three. The frequency is not
+inserted into the modal sum: that would need a modal mass and a \(Q\).
+
 Schelleng's minimum bow force stays unevaluated. Each mode carries its
 resonant resistance \(r = m\omega_0/Q\), the reciprocal of that mode's own
 real mobility at \(\omega_0\). The summed mobility at that frequency is
 not \(1/r\), and neither number is the bridge resistance the string sees.
 Neither is substituted into the bow. Far-field pressure is not evaluated:
-it needs a radiating area or a volume velocity, and a distance. The cavity
-Helmholtz frequency is not evaluated: it needs f-hole area, cavity volume,
-and an effective neck length. A0–B1 coupling needs a mutual term. None of
-those constants is invented.
+it needs a radiating area or a volume velocity, and a distance. A0–B1
+coupling needs a mutual term. None of those constants is invented.
 
 `physics/` does not include `instruments/`.
 
@@ -566,7 +594,7 @@ The hi-hat is two 14″ plates. No clutch gap is printed, and the plates are not
 
 ## Still planned
 
-Cavity Helmholtz frequency, A0–B1 coupling,
+A0–B1 coupling,
 far-field radiation, back-reaction of the body on the string (and with it
 Schelleng's minimum bow force), stiffness of wound strings, and a
 time-stepped stick-slip capture. The Helmholtz stroke is the steady

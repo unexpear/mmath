@@ -28,6 +28,8 @@
 #include <utility>
 
 #include <mmathen/instruments/body.h>
+#include <mmathen/physics/impedance.h>
+#include <mmathen/physics/medium.h>
 #include <mmathen/instruments/bow.h>
 #include <mmathen/instruments/cymbal.h>
 #include <mmathen/instruments/drum.h>
@@ -685,6 +687,105 @@ TEST_CASE("body mobility is the sum of caller-supplied modes", "[instruments]") 
         QuantityError::InvalidArgument);
   CHECK(bodyVelocity(std::span<const BodyResonator>{}, violinMotion, 0.0, 8)
             .error() == QuantityError::InvalidArgument);
+}
+
+TEST_CASE("a cavity Helmholtz frequency uses caller area, volume, and neck",
+          "[instruments]") {
+  // Synthetic cavity. Not a measured violin, viola, cello, or bass.
+  const double area = 0.04;
+  const double volume = 0.2;
+  const double neck = 0.1;
+  const double pressure = 1.0e5;
+  const double temperature = 300.0;
+  const CavityHelmholtzSpec spec{area, volume, neck, pressure, temperature};
+  const auto cavity = unwrap(makeCavityHelmholtz(spec));
+  CHECK(cavity.fHoleAreaM2 == area);
+  CHECK(cavity.volumeM3 == volume);
+  CHECK(cavity.effectiveNeckMeters == neck);
+
+  const double violinBody = unwrap(violin()).body.length.value();
+  const double celloBody = unwrap(cello()).body.length.value();
+  CHECK(cavity.effectiveNeckMeters != violinBody);
+  CHECK(cavity.volumeM3 != violinBody);
+  CHECK(cavity.fHoleAreaM2 != celloBody);
+
+  const double rho =
+      unwrap(airDensity(PressurePascals{pressure}, TemperatureKelvin{temperature}))
+          .value();
+  const double c =
+      unwrap(speedOfSound(unwrap(makeAir(TemperatureKelvin{temperature})))).value();
+  CHECK(cavity.airDensityKgPerM3 == rho);
+  CHECK(cavity.soundSpeedMetersPerSecond == c);
+  const double acousticMass = rho * neck / area;
+  const double acousticCompliance = volume / (rho * c * c);
+  CHECK(nearlyEqual(cavity.acousticMass, acousticMass, 0.0, 1e-15));
+  CHECK(nearlyEqual(cavity.acousticCompliance, acousticCompliance, 0.0, 1e-15));
+  const double fromNeck =
+      c / constants::twoPi * std::sqrt(area / (volume * neck));
+  const double fromLumped =
+      1.0 / (constants::twoPi *
+             std::sqrt(cavity.acousticMass * cavity.acousticCompliance));
+  CHECK(nearlyEqual(cavity.frequencyHz, fromNeck, 0.0, 1e-12));
+  CHECK(nearlyEqual(cavity.frequencyHz, fromLumped, 0.0, 1e-12));
+
+  const auto wider = unwrap(makeCavityHelmholtz(
+      CavityHelmholtzSpec{2.0 * area, volume, neck, pressure, temperature}));
+  CHECK(nearlyEqual(wider.frequencyHz, cavity.frequencyHz * std::sqrt(2.0), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(wider.acousticMass, 0.5 * cavity.acousticMass, 0.0, 1e-12));
+  CHECK(nearlyEqual(wider.acousticCompliance, cavity.acousticCompliance, 0.0,
+                    1e-15));
+
+  const auto larger = unwrap(makeCavityHelmholtz(
+      CavityHelmholtzSpec{area, 2.0 * volume, neck, pressure, temperature}));
+  CHECK(nearlyEqual(larger.frequencyHz, cavity.frequencyHz / std::sqrt(2.0), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(larger.acousticCompliance, 2.0 * cavity.acousticCompliance,
+                    0.0, 1e-12));
+  CHECK(nearlyEqual(larger.acousticMass, cavity.acousticMass, 0.0, 1e-15));
+
+  const auto longer = unwrap(makeCavityHelmholtz(
+      CavityHelmholtzSpec{area, volume, 2.0 * neck, pressure, temperature}));
+  CHECK(nearlyEqual(longer.frequencyHz, cavity.frequencyHz / std::sqrt(2.0), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(longer.acousticMass, 2.0 * cavity.acousticMass, 0.0, 1e-12));
+
+  const auto denserAir = unwrap(makeCavityHelmholtz(
+      CavityHelmholtzSpec{area, volume, neck, 2.0 * pressure, temperature}));
+  CHECK(nearlyEqual(denserAir.frequencyHz, cavity.frequencyHz, 0.0, 1e-12));
+  CHECK(nearlyEqual(denserAir.acousticMass, 2.0 * cavity.acousticMass, 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(denserAir.acousticCompliance, 0.5 * cavity.acousticCompliance,
+                    0.0, 1e-12));
+  CHECK(denserAir.soundSpeedMetersPerSecond == cavity.soundSpeedMetersPerSecond);
+
+  const auto hotter = unwrap(makeCavityHelmholtz(
+      CavityHelmholtzSpec{area, volume, neck, pressure, 4.0 * temperature}));
+  CHECK(nearlyEqual(hotter.frequencyHz, 2.0 * cavity.frequencyHz, 0.0, 1e-12));
+  CHECK(nearlyEqual(hotter.soundSpeedMetersPerSecond,
+                    2.0 * cavity.soundSpeedMetersPerSecond, 0.0, 1e-12));
+  CHECK(nearlyEqual(hotter.acousticMass, 0.25 * cavity.acousticMass, 0.0, 1e-12));
+  CHECK(nearlyEqual(hotter.acousticCompliance, cavity.acousticCompliance, 0.0,
+                    1e-12));
+
+  CHECK(makeCavityHelmholtz(CavityHelmholtzSpec{0.0, volume, neck, pressure,
+                                                temperature})
+            .error() == QuantityError::InvalidArgument);
+  CHECK(makeCavityHelmholtz(CavityHelmholtzSpec{area, -volume, neck, pressure,
+                                                temperature})
+            .error() == QuantityError::InvalidArgument);
+  CHECK(makeCavityHelmholtz(CavityHelmholtzSpec{area, volume,
+                                                std::numeric_limits<double>::quiet_NaN(),
+                                                pressure, temperature})
+            .error() == QuantityError::InvalidArgument);
+  CHECK(makeCavityHelmholtz(CavityHelmholtzSpec{area, volume, neck, 0.0,
+                                                temperature})
+            .error() == QuantityError::DomainError);
+  CHECK(makeCavityHelmholtz(CavityHelmholtzSpec{area, volume, neck, pressure, 0.0})
+            .error() == QuantityError::DomainError);
+  CHECK(makeCavityHelmholtz(CavityHelmholtzSpec{1.0e-300, 1.0, 1.0e300, pressure,
+                                                temperature})
+            .error() == QuantityError::RangeError);
 }
 
 TEST_CASE("a hard hammer follows the infinite-string law until the reflection",

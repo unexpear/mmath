@@ -26,10 +26,15 @@
 // actually sees, and one mode's r is not that measurement. No numerical
 // R is invented for any instrument.
 //
+// The cavity air resonance is makeCavityHelmholtz: Rayleigh's resonator
+// from a caller-supplied f-hole area, cavity volume, and effective neck
+// length, with c and ρ from the dry-air model. It is not a row of the
+// modal sum. Inserting it there would need a modal mass and a Q, and
+// neither is invented. Body length is not the neck, the volume, or the
+// area.
+//
 // Not evaluated, because each one needs data this layer does not have:
 //   far-field pressure (radiating area or volume velocity, and a distance),
-//   the cavity Helmholtz frequency (f-hole area, cavity volume, neck
-//   length; body length is not those),
 //   A0–B1 coupling (a mutual term).
 // Hammer and reed are not this model.
 //
@@ -43,6 +48,7 @@
 #include <span>
 
 #include "../math/constants.h"
+#include "../physics/impedance.h"
 #include "bow.h"
 
 namespace mmathen {
@@ -57,9 +63,9 @@ inline constexpr const char* kBodyResonatorSource =
     "Each resonance, Q, and m is a caller argument. No violin, viola, cello, "
     "or bass admittance table is stored, and no A0 or B1 frequency is "
     "stored. The Helmholtz force drives the sum open-loop. Schelleng's "
-    "minimum bow force is not applied. Far-field pressure, the cavity "
-    "Helmholtz frequency, and A0-B1 coupling (a mutual term) are not "
-    "evaluated.";
+    "minimum bow force is not applied. The cavity Helmholtz frequency is "
+    "makeCavityHelmholtz and is not a term of this sum. Far-field pressure "
+    "and A0-B1 coupling (a mutual term) are not evaluated.";
 
 // Caller-supplied mode. Frequency in hertz, Q dimensionless, mass in kg.
 struct BodyModeSpec {
@@ -359,6 +365,95 @@ bodyVelocityCoefficient(std::span<const BodyResonator> modes,
   const double metres = 2.0 * sum.real();
   if (!std::isfinite(metres)) return R::failure(QuantityError::RangeError);
   return R::success(metres);
+}
+
+// Rayleigh's Helmholtz resonator for a cavity with one effective neck.
+// A is the caller's total opening area (both f-holes, if that is what was
+// measured). L is the effective neck length: an end correction is the
+// caller's responsibility and is not added here. V is the cavity volume.
+// Body length is none of these three.
+//
+//   Ma = ρ L / A,   Ca = V / (ρ c²),   ω = 1/√(Ma Ca) = c √(A / (V L)).
+//
+// c = √(γ R T) and ρ = p / (R T) from the dry-air model. No violin, viola,
+// cello, or bass area, volume, or neck is stored. The frequency is not
+// written into a BodyResonator.
+inline constexpr const char* kCavityHelmholtzSource =
+    "Rayleigh Helmholtz resonator: omega = c * sqrt(A / (V * L)), "
+    "Ma = rho * L / A, Ca = V / (rho * c * c). "
+    "c = sqrt(gamma * R * T) and rho = p / (R * T) from physics/medium.h "
+    "and physics/impedance.h. A, V, and L are caller arguments. L already "
+    "includes any end correction; none is added here. No violin, viola, "
+    "cello, or bass f-hole, volume, or neck is stored. The frequency is "
+    "not inserted into the body-mode sum.";
+
+// Opening area (m²), cavity volume (m³), effective neck (m), and the
+// static air state. Pressure and temperature are the dry-air arguments,
+// as on a reed bore.
+struct CavityHelmholtzSpec {
+  double fHoleAreaM2;
+  double volumeM3;
+  double effectiveNeckMeters;
+  double airPressurePa;
+  double temperatureKelvin;
+};
+
+// acousticMass is Ma (kg/m⁴). acousticCompliance is Ca (m³/Pa).
+struct CavityHelmholtz {
+  double fHoleAreaM2 = 0.0;
+  double volumeM3 = 0.0;
+  double effectiveNeckMeters = 0.0;
+  double soundSpeedMetersPerSecond = 0.0;
+  double airDensityKgPerM3 = 0.0;
+  double acousticMass = 0.0;
+  double acousticCompliance = 0.0;
+  double frequencyHz = 0.0;
+  const char* source = nullptr;
+};
+
+// InvalidArgument if area, volume, or neck is non-finite or not strictly
+// positive. Air-density and sound-speed errors propagate (non-positive
+// pressure or temperature is DomainError). RangeError if Ma, Ca, or the
+// frequency overflows.
+[[nodiscard]] inline Result<CavityHelmholtz, QuantityError> makeCavityHelmholtz(
+    const CavityHelmholtzSpec& spec) {
+  using R = Result<CavityHelmholtz, QuantityError>;
+  const double area = spec.fHoleAreaM2;
+  const double volume = spec.volumeM3;
+  const double neck = spec.effectiveNeckMeters;
+  if (!std::isfinite(area) || !(area > 0.0) || !std::isfinite(volume) ||
+      !(volume > 0.0) || !std::isfinite(neck) || !(neck > 0.0))
+    return R::failure(QuantityError::InvalidArgument);
+  auto density = airDensity(PressurePascals{spec.airPressurePa},
+                            TemperatureKelvin{spec.temperatureKelvin});
+  if (!density.ok()) return R::failure(density.error());
+  auto air = makeAir(TemperatureKelvin{spec.temperatureKelvin});
+  if (!air.ok()) return R::failure(air.error());
+  auto speed = speedOfSound(air.value());
+  if (!speed.ok()) return R::failure(speed.error());
+  const double rho = density.value().value();
+  const double c = speed.value().value();
+  const double acousticMass = rho * neck / area;
+  const double acousticCompliance = volume / (rho * c * c);
+  const double product = acousticMass * acousticCompliance;
+  if (!(product > 0.0) || !std::isfinite(product))
+    return R::failure(QuantityError::RangeError);
+  const double omega = 1.0 / std::sqrt(product);
+  const double frequency = omega / constants::twoPi;
+  if (!std::isfinite(acousticMass) || !std::isfinite(acousticCompliance) ||
+      !std::isfinite(omega) || !std::isfinite(frequency) || !(frequency > 0.0))
+    return R::failure(QuantityError::RangeError);
+  CavityHelmholtz cavity;
+  cavity.fHoleAreaM2 = area;
+  cavity.volumeM3 = volume;
+  cavity.effectiveNeckMeters = neck;
+  cavity.soundSpeedMetersPerSecond = c;
+  cavity.airDensityKgPerM3 = rho;
+  cavity.acousticMass = acousticMass;
+  cavity.acousticCompliance = acousticCompliance;
+  cavity.frequencyHz = frequency;
+  cavity.source = kCavityHelmholtzSource;
+  return R::success(cavity);
 }
 
 }  // namespace mmathen

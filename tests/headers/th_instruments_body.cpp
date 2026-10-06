@@ -13,4 +13,8 @@ TEST_CASE("instruments/body.h is self-contained", "[headers]") {
   mmathen::BodyResonator modes[2];
   REQUIRE(mmathen::makeBodyResonators(specs, modes).ok());
   CHECK(mmathen::bodyMobility(modes, 440.0).ok());
+  const auto cavity = mmathen::makeCavityHelmholtz(
+      mmathen::CavityHelmholtzSpec{0.04, 0.2, 0.1, 1.0e5, 300.0});
+  REQUIRE(cavity.ok());
+  CHECK(cavity.value().frequencyHz > 0.0);
 }
