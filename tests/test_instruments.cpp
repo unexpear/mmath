@@ -15,7 +15,9 @@
 // vibrating length at the open course's tension. A cylindrical bore and
 // reed inertia take length, area, mass, and damping as arguments. A
 // clarinet wires that characteristic, an open bore, and the inertia on
-// one air state; length and the reed numbers stay arguments. The
+// one air state; length and the reed numbers stay arguments. A flute is
+// an open-open pipe and an embouchure jet; length, bore area, and the
+// jet numbers stay arguments. The
 // hard hammer stays refused at the first reflection; the first-image sum
 // continues until the second image, and felt compliance is K ξ^p.
 
@@ -42,6 +44,7 @@
 #include <mmathen/instruments/harp.h>
 #include <mmathen/instruments/harpsichord.h>
 #include <mmathen/instruments/clarinet.h>
+#include <mmathen/instruments/flute.h>
 #include <mmathen/instruments/reed.h>
 #include <mmathen/instruments/wound.h>
 #include <mmathen/physics/materials.h>
@@ -1507,6 +1510,209 @@ TEST_CASE("a clarinet is an open cylinder on the reed characteristic",
   ClarinetSpec cold = spec;
   cold.temperatureKelvin = 0.0;
   CHECK(makeClarinet(cold).error() == QuantityError::DomainError);
+}
+
+TEST_CASE("a flute is an open pipe driven by an embouchure jet",
+          "[instruments]") {
+  // Length, bore area, and the jet numbers are arguments. They are not
+  // a measured flute and not a stored convection ratio.
+  const double length = 0.6;
+  const double area = 2.8e-4;
+  const double airPressure = 101325.0;
+  const double temperature = 293.15;
+  const double jetArea = 4.0e-6;
+  const double thickness = 1.0e-3;
+  const double span = 8.0e-3;
+  const double sigma = 0.5;
+  const FluteSpec spec{length,     area,     airPressure, temperature,
+                       jetArea,    thickness, span,        sigma};
+  const auto flute = unwrap(makeFlute(spec));
+  const double density =
+      unwrap(airDensity(PressurePascals{airPressure},
+                        TemperatureKelvin{temperature}))
+          .value();
+  const double speed =
+      unwrap(speedOfSound(Air{TemperatureKelvin{temperature}})).value();
+  CHECK(flute.lengthMeters == length);
+  CHECK(flute.crossSectionM2 == area);
+  CHECK(flute.jetAreaM2 == jetArea);
+  CHECK(flute.jetThicknessMeters == thickness);
+  CHECK(flute.flueToEdgeMeters == span);
+  CHECK(flute.convectionRatio == sigma);
+  CHECK(flute.airDensityKgPerM3 == density);
+  CHECK(flute.soundSpeedMetersPerSecond == speed);
+  CHECK(flute.pressureReflection == -1.0);
+  CHECK(flute.source == kFluteSource);
+  CHECK(nearlyEqual(flute.fundamentalHz, speed / (2.0 * length), 0.0, 1e-12));
+  CHECK(nearlyEqual(flute.fundamentalHz * flute.roundTripSeconds, 1.0, 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(flute.acousticImpedance, density * speed / area, 0.0,
+                    1e-12));
+  CHECK(unwrap(flutePipeMode(flute, 1)).value() == flute.fundamentalHz);
+  const double octave = unwrap(flutePipeMode(flute, 2)).value();
+  CHECK(nearlyEqual(octave, 2.0 * flute.fundamentalHz, 0.0, 1e-12));
+  CHECK(flutePipeMode(flute, 0).error() == QuantityError::InvalidArgument);
+
+  // Same length and air as a clarinet cylinder: the flute fundamental is
+  // twice the quarter-wave, and the octave is a flute mode.
+  const auto clarinet = unwrap(makeClarinet(ClarinetSpec{
+      length, area, airPressure, temperature, 1.5e-5, 6.0e3, 2.0e-5, 1.0e-4,
+      1.0e-3, 0.0}));
+  CHECK(nearlyEqual(flute.fundamentalHz, 2.0 * clarinet.bore.fundamentalHz,
+                    0.0, 1e-12));
+  CHECK(flute.acousticImpedance == clarinet.bore.acousticImpedance);
+  CHECK(clarinetCylinderMode(clarinet, 2).error() == QuantityError::DomainError);
+  const auto atFundamental =
+      unwrap(fluteBoreImpedance(flute, flute.fundamentalHz));
+  CHECK(atFundamental.real() == 0.0);
+  CHECK(nearlyEqual(atFundamental.imag(), 0.0, 1e-6, 0.0));
+  const auto atOctave = unwrap(fluteBoreImpedance(flute, octave));
+  CHECK(atOctave.real() == 0.0);
+  CHECK(nearlyEqual(atOctave.imag(), 0.0, 1e-6, 0.0));
+  CHECK(fluteBoreImpedance(flute, clarinet.bore.fundamentalHz).error() ==
+        QuantityError::RangeError);
+  CHECK(fluteBoreImpedance(flute, 3.0 * clarinet.bore.fundamentalHz).error() ==
+        QuantityError::RangeError);
+  const auto rest = unwrap(fluteBoreImpedance(flute, 0.0));
+  CHECK(rest.real() == 0.0);
+  CHECK(rest.imag() == 0.0);
+  CHECK(fluteBoreImpedance(flute, -1.0).error() ==
+        QuantityError::InvalidArgument);
+
+  const double overpressure = 400.0;
+  const double jetSpeed = std::sqrt(2.0 * overpressure / density);
+  CHECK(nearlyEqual(unwrap(fluteJetSpeed(flute, overpressure)), jetSpeed, 0.0,
+                    1e-12));
+  CHECK(unwrap(fluteJetSpeed(flute, 0.0)) == 0.0);
+  CHECK(unwrap(fluteJetFlow(flute, 0.0)) == 0.0);
+  CHECK(nearlyEqual(unwrap(fluteJetFlow(flute, overpressure)),
+                    jetArea * jetSpeed, 0.0, 1e-12));
+  const double travel = span / (sigma * jetSpeed);
+  CHECK(nearlyEqual(unwrap(fluteConvectionTime(flute, overpressure)), travel,
+                    0.0, 1e-12));
+  const double regime = sigma * jetSpeed / (2.0 * span);
+  CHECK(nearlyEqual(unwrap(fluteJetRegimeFrequency(flute, overpressure, 1)),
+                    regime, 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(fluteJetRegimeFrequency(flute, overpressure, 2)),
+                    3.0 * regime, 0.0, 1e-12));
+  CHECK(regime != flute.fundamentalHz);
+  CHECK(fluteJetRegimeFrequency(flute, overpressure, 0).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(fluteConvectionTime(flute, 0.0).error() == QuantityError::DomainError);
+  CHECK(fluteJetSpeed(flute, -overpressure).error() ==
+        QuantityError::DomainError);
+
+  CHECK(unwrap(fluteJetFraction(flute, 0.0)) == 0.5);
+  CHECK(unwrap(fluteJetFraction(flute, 0.5 * thickness)) == 1.0);
+  CHECK(unwrap(fluteJetFraction(flute, -0.5 * thickness)) == 0.0);
+  CHECK(unwrap(fluteJetFraction(flute, thickness)) == 1.0);
+  CHECK(unwrap(fluteJetFraction(flute, -thickness)) == 0.0);
+  CHECK(nearlyEqual(unwrap(fluteJetFraction(flute, 0.25 * thickness)), 0.75,
+                    0.0, 1e-12));
+
+  const double outgoing = 120.0;
+  const double delayed = 40.0;
+  const auto split = unwrap(fluteWaveSplit(flute, outgoing, delayed));
+  CHECK(split.incomingPressurePa == -delayed);
+  CHECK(split.mouthPressurePa == outgoing - delayed);
+  CHECK(nearlyEqual(split.volumeFlowM3PerS,
+                    (outgoing + delayed) / flute.acousticImpedance, 0.0,
+                    1e-12));
+  const auto sample = unwrap(
+      fluteEmbouchure(flute, overpressure, outgoing, delayed, 0.0));
+  CHECK(nearlyEqual(sample.jetSpeedMetersPerSecond, jetSpeed, 0.0, 1e-12));
+  CHECK(nearlyEqual(sample.jetFlowM3PerS, jetArea * jetSpeed, 0.0, 1e-12));
+  CHECK(sample.jetFraction == 0.5);
+  CHECK(nearlyEqual(sample.jetIntoBoreM3PerS, 0.5 * jetArea * jetSpeed, 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(sample.boreFlowM3PerS, split.volumeFlowM3PerS, 0.0,
+                    1e-12));
+  CHECK(sample.jetIntoBoreM3PerS != sample.boreFlowM3PerS);
+  CHECK(nearlyEqual(sample.convectionSeconds, travel, 0.0, 1e-12));
+  CHECK(nearlyEqual(sample.firstRegimeHz, regime, 0.0, 1e-12));
+  CHECK(sample.pipeFundamentalHz == flute.fundamentalHz);
+  CHECK(sample.firstRegimeHz != sample.pipeFundamentalHz);
+  CHECK(fluteEmbouchure(flute, -overpressure, outgoing, delayed, 0.0).error() ==
+        QuantityError::DomainError);
+  CHECK(fluteEmbouchure(flute, 0.0, outgoing, delayed, 0.0).error() ==
+        QuantityError::DomainError);
+  CHECK(fluteEmbouchure(flute, overpressure, outgoing, delayed,
+                        std::numeric_limits<double>::quiet_NaN())
+            .error() == QuantityError::InvalidArgument);
+
+  FluteSpec warm = spec;
+  warm.temperatureKelvin = temperature + 20.0;
+  const auto warmer = unwrap(makeFlute(warm));
+  CHECK(warmer.fundamentalHz > flute.fundamentalHz);
+  CHECK(unwrap(fluteJetSpeed(warmer, overpressure)) >
+        unwrap(fluteJetSpeed(flute, overpressure)));
+  FluteSpec denser = spec;
+  denser.airPressurePa = 2.0 * airPressure;
+  const auto higherPressure = unwrap(makeFlute(denser));
+  CHECK(higherPressure.fundamentalHz == flute.fundamentalHz);
+  CHECK(higherPressure.airDensityKgPerM3 > flute.airDensityKgPerM3);
+  CHECK(unwrap(fluteJetSpeed(higherPressure, overpressure)) <
+        unwrap(fluteJetSpeed(flute, overpressure)));
+
+  FluteSpec longer = spec;
+  longer.boreLengthMeters = 2.0 * length;
+  const auto doubledLength = unwrap(makeFlute(longer));
+  CHECK(nearlyEqual(doubledLength.fundamentalHz, 0.5 * flute.fundamentalHz,
+                    0.0, 1e-12));
+  CHECK(unwrap(fluteJetSpeed(doubledLength, overpressure)) ==
+        unwrap(fluteJetSpeed(flute, overpressure)));
+  FluteSpec wider = spec;
+  wider.boreCrossSectionM2 = 2.0 * area;
+  const auto doubledBore = unwrap(makeFlute(wider));
+  CHECK(nearlyEqual(doubledBore.acousticImpedance,
+                    0.5 * flute.acousticImpedance, 0.0, 1e-12));
+  CHECK(doubledBore.fundamentalHz == flute.fundamentalHz);
+  CHECK(unwrap(fluteJetFlow(doubledBore, overpressure)) ==
+        unwrap(fluteJetFlow(flute, overpressure)));
+  FluteSpec widerJet = spec;
+  widerJet.jetAreaM2 = 2.0 * jetArea;
+  const auto doubledJet = unwrap(makeFlute(widerJet));
+  CHECK(nearlyEqual(unwrap(fluteJetFlow(doubledJet, overpressure)),
+                    2.0 * unwrap(fluteJetFlow(flute, overpressure)), 0.0,
+                    1e-12));
+  CHECK(unwrap(fluteJetSpeed(doubledJet, overpressure)) ==
+        unwrap(fluteJetSpeed(flute, overpressure)));
+  FluteSpec longerSpan = spec;
+  longerSpan.flueToEdgeMeters = 2.0 * span;
+  const auto doubledSpan = unwrap(makeFlute(longerSpan));
+  CHECK(nearlyEqual(unwrap(fluteConvectionTime(doubledSpan, overpressure)),
+                    2.0 * travel, 0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(fluteJetRegimeFrequency(doubledSpan, overpressure, 1)),
+                    0.5 * regime, 0.0, 1e-12));
+  CHECK(doubledSpan.fundamentalHz == flute.fundamentalHz);
+  FluteSpec fasterWave = spec;
+  fasterWave.convectionRatio = 1.0;
+  const auto fullSpeed = unwrap(makeFlute(fasterWave));
+  CHECK(nearlyEqual(unwrap(fluteJetRegimeFrequency(fullSpeed, overpressure, 1)),
+                    2.0 * regime, 0.0, 1e-12));
+  CHECK(fullSpeed.fundamentalHz == flute.fundamentalHz);
+
+  FluteSpec zeroLength = spec;
+  zeroLength.boreLengthMeters = 0.0;
+  CHECK(makeFlute(zeroLength).error() == QuantityError::InvalidArgument);
+  FluteSpec negativeArea = spec;
+  negativeArea.boreCrossSectionM2 = -area;
+  CHECK(makeFlute(negativeArea).error() == QuantityError::InvalidArgument);
+  FluteSpec zeroJet = spec;
+  zeroJet.jetAreaM2 = 0.0;
+  CHECK(makeFlute(zeroJet).error() == QuantityError::InvalidArgument);
+  FluteSpec zeroThickness = spec;
+  zeroThickness.jetThicknessMeters = 0.0;
+  CHECK(makeFlute(zeroThickness).error() == QuantityError::InvalidArgument);
+  FluteSpec stalled = spec;
+  stalled.convectionRatio = 0.0;
+  CHECK(makeFlute(stalled).error() == QuantityError::InvalidArgument);
+  FluteSpec ahead = spec;
+  ahead.convectionRatio = 1.5;
+  CHECK(makeFlute(ahead).error() == QuantityError::InvalidArgument);
+  FluteSpec cold = spec;
+  cold.temperatureKelvin = 0.0;
+  CHECK(makeFlute(cold).error() == QuantityError::DomainError);
 }
 
 TEST_CASE("felt compliance and the first hammer images keep the hard cutoff",

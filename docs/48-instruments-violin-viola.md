@@ -1,25 +1,27 @@
-# Instruments — bowed strings, harp, harpsichord, guitars, piano, drums, cymbals, clarinet
+# Instruments — bowed strings, harp, harpsichord, guitars, piano, drums, cymbals, clarinet, flute
 
 Status: assembly layer for four bowed strings, a concert pedal harp, a
 French double harpsichord, a six-string classical guitar, a six-string
 electric guitar, a five-string concert-grand bank, a steady Helmholtz bow on one ideal string,
 a sum of driving-point body modes driven by that bow's bridge force, a cavity Helmholtz frequency from caller area, volume, and neck, a hard narrow hammer,
 the first fixed-end images of that hammer, a felt contact law, a
-quasi-static single reed, a cylindrical bore, reed inertia, and a clarinet
-cylinder on that open bore. A
+quasi-static single reed, a cylindrical bore, reed inertia, a clarinet
+cylinder on that open bore, and an open-open flute driven by an embouchure
+jet. A
 fingered stop shortens one open course. A Yamaha Tour Custom kit and a
 SABIAN XSR cymbal set add fixed circular membranes and free circular
 plates. Verified against the ideal-string
 law, Guettler's tables, the harp, harpsichord, classical-guitar,
 electric-guitar, and Table III piano measurements named below, the Helmholtz/Schelleng identities, the rigid-end stick-slip step, the wound-string inharmonicity, the driving-point modal sum, the cavity Helmholtz frequency, the mutual-stiffness split, the compact-monopole pressure,
 the hard-hammer contact law, the first-image sum, the felt power law, the
-reed flow law, the open-cylinder clarinet, the circular-membrane Bessel frequencies, and the free-plate
+reed flow law, the open-cylinder clarinet, the open-pipe flute and its embouchure jet, the circular-membrane Bessel frequencies, and the free-plate
 frequency law. Unvalidated as radiated sound: the body-mode sum is
 open-loop, and there is no measured bridge admittance and no far-field
 pressure. The bore is an ideal cylinder with the caller's length and
 cross-section. The clarinet is that cylinder open at the bell, with the
 reed and its inertia; tone holes, a bell, and a register key are absent.
-The harp and the harpsichord are
+The flute is an open-open pipe, fundamental \(c/(2L)\), driven by a
+Bernoulli jet. It is not that clarinet. The harp and the harpsichord are
 not sounded through a soundboard model. The classical guitar is six
 ideal strings on the published scale; it has no soundboard either. The
 electric guitar is the 25.5 in chart scale, not that classical body.
@@ -46,6 +48,7 @@ interval.
 | `instruments/hammer.h` | Hard narrow hammer until the first reflection; first-image sum until the second image; felt law \(F=K\xi^{p}\). Mass, speed, strike, \(K\), and \(p\) are arguments |
 | `instruments/reed.h` | Quasi-static single reed; cylindrical bore; reed inertia. Area, closure, air state, bore length and cross-section, mass, tip area, closing displacement, and damping are arguments |
 | `instruments/clarinet.h` | Open-cylinder clarinet: the characteristic, the bore, and reed inertia on one air state. Length, area, and the reed parameters are arguments |
+| `instruments/flute.h` | Open-open flute and an embouchure jet. Length, bore area, jet area, thickness, flue-to-edge distance, and the convection ratio are arguments |
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
 | `instruments/harpsichord.h` | Goermans/Taskin 1764/1783–4 French double: 2×8′ + 4′, compass F1–F6 |
 | `instruments/guitar.h` | Classical guitar E2 A2 D3 G3 B3 E4, scale 650 mm, body 490 mm. Density and tension are arguments |
@@ -459,6 +462,17 @@ not a violin with the labels rewritten.
   \((p^+-p^-)/Z_c\). A negative difference is refused. Zero length, a
   negative area, and a negative damping are refused. The only length
   stored is the caller's.
+- A flute of the same length and air speaks an octave above that
+  clarinet cylinder. Its modes are \(nc/(2L)\), including the octave.
+  The bore impedance \(j Z_c\tan(kL)\) is zero on those modes and a pole
+  on the quarter-waves. Jet speed is \(\sqrt{2\Delta P/\rho}\). Regime
+  \(m\) is the odd half-period travel time \((2m-1)\sigma U/(2W)\), and
+  it is not the pipe fundamental. Doubling the length halves the pipe
+  frequency and leaves the jet speed unchanged. Doubling the blowing
+  pressure leaves the pipe frequency unchanged and slows the jet.
+  Doubling the bore area halves \(Z_c\). The jet flow into the bore and
+  the bore's own flow are reported separately. A negative overpressure,
+  a convection ratio outside \((0,1]\), and a zero length are refused.
 
 ## Bow
 
@@ -721,6 +735,55 @@ Not in this model: tone holes, a bell correction, a register key, and a
 viscous channel. The viscous channel still needs a viscosity and a
 channel width separate from \(S_0\).
 
+## Flute
+
+`flute.h` is an open-open cylinder and an embouchure jet. It does not
+include `clarinet.h`. A clarinet of length \(L\) speaks at \(c/(4L)\) and
+rejects the octave. A flute of the same length speaks at
+
+\[
+f_n=\frac{nc}{2L}
+\]
+
+for every positive integer \(n\), and the fundamental period equals the
+round trip \(2L/c\). The far-end reflection is \(-1\). The bore
+impedance at the embouchure is \(j Z_c\tan(kL)\), the same formula as an
+open far end, but the flute uses its zeros. The odd quarter-waves, where
+that impedance poles, are `RangeError` and are not flute modes. No end
+correction is added.
+
+The jet is not a reed. Centerline speed and volume flow are
+
+\[
+U=\sqrt{\frac{2\Delta P}{\rho}},\qquad Q=S_j U,
+\]
+
+with \(\rho=p/(RT)\). \(S_j\) is not the bore area. \(\Delta P<0\) is
+`DomainError`. \(\Delta P=0\) is a jet at rest: speed and flow are zero,
+and the travel time is `DomainError`.
+
+A disturbance convects at \(u=\sigma U\) across the flue-to-edge distance
+\(W\). Regime \(m\ge 1\) is an odd number of half periods,
+
+\[
+f_m=\frac{(2m-1)\sigma U}{2W}.
+\]
+
+\(\sigma\in(0,1]\) is an argument. Published convection ratios are not
+one constant, so none is stored. These regime frequencies are not the
+pipe modes. `fluteEmbouchure` reports the jet flow, the fraction of that
+jet on the bore side of the edge, and the bore flow \((p^+-p^-)/Z_c\)
+from the caller's outgoing pressures. The two flows are not solved into
+one note. No time step is stored.
+
+The jet is a top-hat of thickness \(h\). The bore fraction is the
+overlap of \([y-h/2,\, y+h/2]\) with the bore side of the edge: one half
+at \(y=0\), all of the jet for \(y\ge h/2\), and none for \(y\le -h/2\).
+\(h\) is not derived from \(S_j\).
+
+Not in this model: tone holes, an end correction, embouchure-hole
+radiation, a viscous wall layer, and the spatial growth of the jet.
+
 ## Hammer
 
 `hammer.h` is the hard narrow hammer of Smith, *Physical Audio Signal
@@ -869,7 +932,9 @@ diameters and are not read. No instrument stores a core.
 
 Images after the first from each hammer end are not in this layer. A
 viscous reed channel, clarinet tone holes, a bell correction, and a
-register key are not in this layer. The stick-slip capture still uses
+register key are not in this layer. A flute end correction, tone holes,
+embouchure-hole radiation, and the spatial growth of the jet are not in
+this layer. The stick-slip capture still uses
 rigid ends. Snare wires, shell air, a bass-drum port, and a hi-hat clutch
 gap are not in the drum kit. A double-slip wolf cycle is not stepped. A
 classical-guitar soundboard and a fret table are not in this layer. An
