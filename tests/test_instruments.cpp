@@ -13,7 +13,9 @@
 // the infinite-string contact law until the first reflection returns. A
 // reed is the quasi-static Bernoulli slit. A fingered stop shortens the
 // vibrating length at the open course's tension. A cylindrical bore and
-// reed inertia take length, area, mass, and damping as arguments. The
+// reed inertia take length, area, mass, and damping as arguments. A
+// clarinet wires that characteristic, an open bore, and the inertia on
+// one air state; length and the reed numbers stay arguments. The
 // hard hammer stays refused at the first reflection; the first-image sum
 // continues until the second image, and felt compliance is K ξ^p.
 
@@ -39,6 +41,7 @@
 #include <mmathen/instruments/hammer.h>
 #include <mmathen/instruments/harp.h>
 #include <mmathen/instruments/harpsichord.h>
+#include <mmathen/instruments/clarinet.h>
 #include <mmathen/instruments/reed.h>
 #include <mmathen/instruments/wound.h>
 #include <mmathen/physics/materials.h>
@@ -1367,6 +1370,143 @@ TEST_CASE("a reed bore is an ideal cylinder and inertia follows the static line"
   CHECK(unwrap(reedAreaAtDisplacement(reed, undamped, 2.0 * closing)) == 0.0);
   CHECK(nearlyEqual(unwrap(reedAreaAtDisplacement(reed, undamped, -closing)),
                     2.0 * jet, 0.0, 1e-12));
+}
+
+TEST_CASE("a clarinet is an open cylinder on the reed characteristic",
+          "[instruments]") {
+  // Length, area, and the reed numbers are arguments. They are not a
+  // measured clarinet and not a midpoint of Dalmont's embouchure ranges.
+  const double length = 0.5;
+  const double area = 2.0e-4;
+  const double airPressure = 101325.0;
+  const double temperature = 293.15;
+  const double jet = 1.5e-5;
+  const double closure = 6.0e3;
+  const double mass = 2.0e-5;
+  const double tip = 1.0e-4;
+  const double closing = 1.0e-3;
+  const ClarinetSpec spec{length, area,   airPressure, temperature, jet,
+                          closure, mass,   tip,         closing,     0.0};
+  const auto clarinet = unwrap(makeClarinet(spec));
+  const double density =
+      unwrap(airDensity(PressurePascals{airPressure},
+                        TemperatureKelvin{temperature}))
+          .value();
+  const double speed =
+      unwrap(speedOfSound(Air{TemperatureKelvin{temperature}})).value();
+  CHECK(clarinet.bore.lengthMeters == length);
+  CHECK(clarinet.bore.crossSectionM2 == area);
+  CHECK(clarinet.bore.farEnd == BoreFarEnd::Open);
+  CHECK(clarinet.bore.pressureReflection == -1.0);
+  CHECK(clarinet.reed.airDensityKgPerM3 == density);
+  CHECK(clarinet.bore.airDensityKgPerM3 == clarinet.reed.airDensityKgPerM3);
+  CHECK(clarinet.inertia.closurePressurePa == clarinet.reed.closurePressurePa);
+  CHECK(clarinet.source == kClarinetSource);
+  CHECK(nearlyEqual(clarinet.bore.fundamentalHz, speed / (4.0 * length), 0.0,
+                    1e-12));
+  CHECK(clarinet.bore.fundamentalHz != speed / (2.0 * length));
+  CHECK(unwrap(clarinetCylinderMode(clarinet, 1)).value() ==
+        clarinet.bore.fundamentalHz);
+  const double twelfth = unwrap(clarinetCylinderMode(clarinet, 3)).value();
+  CHECK(nearlyEqual(twelfth, 3.0 * speed / (4.0 * length), 0.0, 1e-12));
+  CHECK(nearlyEqual(twelfth, 3.0 * clarinet.bore.fundamentalHz, 0.0, 1e-12));
+  CHECK(clarinetCylinderMode(clarinet, 2).error() == QuantityError::DomainError);
+  CHECK(clarinetCylinderMode(clarinet, 0).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(boreInputImpedance(clarinet.bore, clarinet.bore.fundamentalHz).error() ==
+        QuantityError::RangeError);
+  CHECK(boreInputImpedance(clarinet.bore, twelfth).error() ==
+        QuantityError::RangeError);
+  const auto second =
+      unwrap(boreInputImpedance(clarinet.bore, 2.0 * clarinet.bore.fundamentalHz));
+  CHECK(second.real() == 0.0);
+  CHECK(nearlyEqual(second.imag(), 0.0, 1e-6, 0.0));
+
+  const double stiffness = closure * tip / closing;
+  CHECK(nearlyEqual(clarinet.inertia.stiffnessNewtonsPerMeter, stiffness, 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(clarinet.inertia.resonanceHz,
+                    std::sqrt(stiffness / mass) / constants::twoPi, 0.0,
+                    1e-12));
+  const double half =
+      unwrap(reedEquilibriumDisplacement(clarinet.inertia, closure / 2.0));
+  CHECK(nearlyEqual(half, closing / 2.0, 0.0, 1e-12));
+  CHECK(nearlyEqual(
+      unwrap(reedTipAcceleration(clarinet.inertia, half, 0.0, closure / 2.0)),
+      0.0, 0.0, 1e-6));
+
+  const double outgoing = 120.0;
+  const double delayed = 40.0;
+  const auto split = unwrap(boreWaveSplit(clarinet.bore, outgoing, delayed));
+  const double mouthPressure = split.mouthPressurePa + closure / 3.0;
+  const auto sample = unwrap(clarinetMouth(clarinet, mouthPressure, outgoing,
+                                           delayed, 0.0, 0.0));
+  CHECK(nearlyEqual(sample.pressureDifferencePa, closure / 3.0, 0.0, 1e-12));
+  CHECK(nearlyEqual(sample.reedFlowM3PerS, clarinet.reed.maximumFlowM3PerS, 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(sample.boreFlowM3PerS, split.volumeFlowM3PerS, 0.0, 1e-12));
+  CHECK(nearlyEqual(sample.boreFlowM3PerS,
+                    (outgoing - split.incomingPressurePa) /
+                        clarinet.bore.acousticImpedance,
+                    0.0, 1e-12));
+  CHECK(nearlyEqual(sample.equilibriumDisplacementMeters, closing / 3.0, 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(sample.tipAccelerationMetersPerSecondSquared,
+                    tip * (closure / 3.0) / mass, 0.0, 1e-9));
+  const auto held = unwrap(clarinetMouth(
+      clarinet, mouthPressure, outgoing, delayed, closing / 3.0, 0.0));
+  // Cancellation at P_M/3 leaves a few ulps of the 0.2 N pressure force.
+  CHECK(nearlyEqual(held.tipAccelerationMetersPerSecondSquared, 0.0, 1e-9,
+                    0.0));
+  const auto overshot = unwrap(clarinetMouth(
+      clarinet, mouthPressure, outgoing, delayed, 2.0 * closing, 0.0));
+  CHECK(nearlyEqual(overshot.tipAccelerationMetersPerSecondSquared,
+                    (tip * (closure / 3.0) - stiffness * 2.0 * closing) / mass,
+                    0.0, 1e-9));
+  CHECK(clarinetMouth(clarinet, split.mouthPressurePa - 1.0, outgoing, delayed,
+                      0.0, 0.0)
+            .error() == QuantityError::DomainError);
+  CHECK(clarinetMouth(clarinet, split.mouthPressurePa + closure + 1.0, outgoing,
+                      delayed, 0.0, 0.0)
+            .error() == QuantityError::DomainError);
+
+  ClarinetSpec warm = spec;
+  warm.temperatureKelvin = temperature + 20.0;
+  const auto warmer = unwrap(makeClarinet(warm));
+  CHECK(warmer.reed.airDensityKgPerM3 == warmer.bore.airDensityKgPerM3);
+  CHECK(warmer.reed.airDensityKgPerM3 < clarinet.reed.airDensityKgPerM3);
+  CHECK(warmer.bore.fundamentalHz > clarinet.bore.fundamentalHz);
+  CHECK(warmer.reed.maximumFlowM3PerS > clarinet.reed.maximumFlowM3PerS);
+
+  ClarinetSpec longer = spec;
+  longer.boreLengthMeters = 2.0 * length;
+  const auto doubledLength = unwrap(makeClarinet(longer));
+  CHECK(nearlyEqual(doubledLength.bore.fundamentalHz,
+                    0.5 * clarinet.bore.fundamentalHz, 0.0, 1e-12));
+  ClarinetSpec wider = spec;
+  wider.boreCrossSectionM2 = 2.0 * area;
+  const auto doubledArea = unwrap(makeClarinet(wider));
+  CHECK(nearlyEqual(doubledArea.bore.acousticImpedance,
+                    0.5 * clarinet.bore.acousticImpedance, 0.0, 1e-12));
+  CHECK(nearlyEqual(doubledArea.bore.fundamentalHz, clarinet.bore.fundamentalHz,
+                    0.0, 1e-12));
+
+  ClarinetSpec damped = spec;
+  damped.dampingNewtonSecondsPerMeter = 0.02;
+  CHECK(unwrap(makeClarinet(damped)).inertia.dampingNewtonSecondsPerMeter ==
+        0.02);
+  ClarinetSpec zeroLength = spec;
+  zeroLength.boreLengthMeters = 0.0;
+  CHECK(makeClarinet(zeroLength).error() == QuantityError::InvalidArgument);
+  ClarinetSpec negativeArea = spec;
+  negativeArea.boreCrossSectionM2 = -area;
+  CHECK(makeClarinet(negativeArea).error() == QuantityError::InvalidArgument);
+  ClarinetSpec negativeDamping = spec;
+  negativeDamping.dampingNewtonSecondsPerMeter = -0.01;
+  CHECK(makeClarinet(negativeDamping).error() == QuantityError::InvalidArgument);
+  ClarinetSpec cold = spec;
+  cold.temperatureKelvin = 0.0;
+  CHECK(makeClarinet(cold).error() == QuantityError::DomainError);
 }
 
 TEST_CASE("felt compliance and the first hammer images keep the hard cutoff",

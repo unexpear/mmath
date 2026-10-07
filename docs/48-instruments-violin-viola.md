@@ -1,22 +1,25 @@
-# Instruments — bowed strings, harp, harpsichord, guitars, piano, drums, cymbals
+# Instruments — bowed strings, harp, harpsichord, guitars, piano, drums, cymbals, clarinet
 
 Status: assembly layer for four bowed strings, a concert pedal harp, a
 French double harpsichord, a six-string classical guitar, a six-string
 electric guitar, a five-string concert-grand bank, a steady Helmholtz bow on one ideal string,
 a sum of driving-point body modes driven by that bow's bridge force, a cavity Helmholtz frequency from caller area, volume, and neck, a hard narrow hammer,
 the first fixed-end images of that hammer, a felt contact law, a
-quasi-static single reed, a cylindrical bore, and reed inertia. A
+quasi-static single reed, a cylindrical bore, reed inertia, and a clarinet
+cylinder on that open bore. A
 fingered stop shortens one open course. A Yamaha Tour Custom kit and a
 SABIAN XSR cymbal set add fixed circular membranes and free circular
 plates. Verified against the ideal-string
 law, Guettler's tables, the harp, harpsichord, classical-guitar,
 electric-guitar, and Table III piano measurements named below, the Helmholtz/Schelleng identities, the rigid-end stick-slip step, the wound-string inharmonicity, the driving-point modal sum, the cavity Helmholtz frequency, the mutual-stiffness split, the compact-monopole pressure,
 the hard-hammer contact law, the first-image sum, the felt power law, the
-reed flow law, the circular-membrane Bessel frequencies, and the free-plate
+reed flow law, the open-cylinder clarinet, the circular-membrane Bessel frequencies, and the free-plate
 frequency law. Unvalidated as radiated sound: the body-mode sum is
 open-loop, and there is no measured bridge admittance and no far-field
 pressure. The bore is an ideal cylinder with the caller's length and
-cross-section; there is no clarinet. The harp and the harpsichord are
+cross-section. The clarinet is that cylinder open at the bell, with the
+reed and its inertia; tone holes, a bell, and a register key are absent.
+The harp and the harpsichord are
 not sounded through a soundboard model. The classical guitar is six
 ideal strings on the published scale; it has no soundboard either. The
 electric guitar is the 25.5 in chart scale, not that classical body.
@@ -42,6 +45,7 @@ interval.
 | `instruments/body.h` | Sum of driving-point body modes, a cavity Helmholtz frequency, a mutual stiffness between two modes, a compact-monopole far field, and a string re-solved on a moving bridge. Resonances, Q, masses, f-hole area, volume, neck, mutual stiffness, radiating area or volume velocity, distance, and bridge resistance are arguments. No stored admittance, f-hole, A0/B1, or radiating-area table |
 | `instruments/hammer.h` | Hard narrow hammer until the first reflection; first-image sum until the second image; felt law \(F=K\xi^{p}\). Mass, speed, strike, \(K\), and \(p\) are arguments |
 | `instruments/reed.h` | Quasi-static single reed; cylindrical bore; reed inertia. Area, closure, air state, bore length and cross-section, mass, tip area, closing displacement, and damping are arguments |
+| `instruments/clarinet.h` | Open-cylinder clarinet: the characteristic, the bore, and reed inertia on one air state. Length, area, and the reed parameters are arguments |
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
 | `instruments/harpsichord.h` | Goermans/Taskin 1764/1783–4 French double: 2×8′ + 4′, compass F1–F6 |
 | `instruments/guitar.h` | Classical guitar E2 A2 D3 G3 B3 E4, scale 650 mm, body 490 mm. Density and tension are arguments |
@@ -146,7 +150,7 @@ rewritten, and the body length is not used as \(L\).
 The Helmholtz bow is unchanged and can be applied to a bass course the
 same way as to a violin, viola, or cello course. The body-mode sum and the
 hard hammer are the same functions for any of the four courses. The reed
-does not take a course. None of the factories stores a resonance, a
+does not take a course. None of these four factories stores a resonance, a
 hammer mass, a strike speed, or a reed.
 
 ## Concert pedal harp
@@ -444,6 +448,17 @@ not a violin with the labels rewritten.
   is largest at \(\Delta P=P_M/3\). A negative pressure difference is
   refused. A warmer air state at the same slit has a lower density and a
   different peak flow.
+- A clarinet is that characteristic on an open cylinder. The reflection is
+  \(-1\) and the fundamental is \(c/(4L)\). The input impedance is a pole
+  at that fundamental and at three times it, and it is finite at twice it.
+  The reed density equals the bore density. A warmer temperature raises
+  the fundamental and the peak flow. Doubling the length halves the
+  fundamental. Doubling the area halves \(Z_c\). Stiffness is
+  \(P_M A_{\mathrm{tip}}/y_{\mathrm{close}}\). At \(\Delta P=P_M/3\) the
+  reed flow is the characteristic maximum and the bore flow is
+  \((p^+-p^-)/Z_c\). A negative difference is refused. Zero length, a
+  negative area, and a negative damping are refused. The only length
+  stored is the caller's.
 
 ## Bow
 
@@ -641,8 +656,9 @@ outgoing pressure from one round trip earlier. \(p^-=R\,p^+_{\text{delayed}}\),
 \(p=p^++p^-\), and the volume flow into the bore is \((p^+-p^-)/Z_c\).
 There is no stored time step. The mouth-to-bore \(\Delta P\) that enters
 the reed characteristic is the caller's mouth pressure minus this mouth
-pressure. No clarinet is constructed, and no bore length is stored on
-the bowed-string, harp, or harpsichord factories.
+pressure. `clarinet.h` wires an open bore to this characteristic. This
+header stores no bore length, and none is stored on the bowed-string,
+harp, or harpsichord factories.
 
 ### Reed inertia
 
@@ -662,7 +678,48 @@ equilibrium. The acceleration \((A\Delta P-ky-rv)/m\) stays the linear
 spring past the lay; there is no contact solver. Opening against
 displacement is the same straight line, zero on and beyond the lay, and
 larger than \(S_0\) if the reed is pulled back through \(y=0\). No
-reed-mass number is stored on a factory.
+reed-mass number is stored on a bowed-string factory.
+
+## Clarinet
+
+`clarinet.h` wires the quasi-static characteristic, an open cylinder, and
+reed inertia. A clarinet bore is open at the bell, so the far end is
+fixed to `BoreFarEnd::Open`: reflection \(-1\), fundamental \(c/(4L)\),
+input impedance \(j Z_c\tan(kL)\). A closed far end is not offered. The
+next resonance of this cylinder is
+
+\[
+f_3=\frac{3c}{4L},
+\]
+
+an impedance pole. Even multiples of the fundamental are finite. That
+twelfth is the cylinder's next pole. It is not a register key.
+`clarinetCylinderMode` is `stoppedPipeMode` on the built length and sound
+speed, so an even index is `DomainError`.
+
+Length, cross-section, \(S_0\), \(P_M\), reed mass, tip area, closing
+displacement, and damping are arguments. Damping may be zero. Dalmont,
+Gilbert, and Ollivier, Table 1, summarise embouchure ranges (rest
+opening, beating pressure, surfacic stiffness, jet width, maximum flow).
+That table does not print a bore length or one effective jet area, so no
+midpoint of it is stored, and the ranges are not acceptance windows.
+
+The characteristic, the bore, and the inertia share one static pressure
+and temperature. The reed density therefore equals the bore density.
+`clarinetMouth` is one sample. The caller supplies mouth pressure, the
+outgoing bore pressure, the outgoing pressure from one round trip
+earlier, and the reed displacement and velocity. \(\Delta P\) is mouth
+pressure minus the bore mouth pressure. Reed flow is the Bernoulli jet,
+bore flow is \((p^+-p^-)/Z_c\), equilibrium displacement is the static
+line, and tip acceleration is the linear spring. The two flows are
+reported and are not solved into one note. No time step is stored.
+\(\Delta P<0\) and \(\Delta P>P_M\) are `DomainError` because the
+equilibrium is only the lay interval. A displacement past the lay is
+still the linear spring while \(\Delta P\) is on the characteristic.
+
+Not in this model: tone holes, a bell correction, a register key, and a
+viscous channel. The viscous channel still needs a viscosity and a
+channel width separate from \(S_0\).
 
 ## Hammer
 
@@ -810,8 +867,9 @@ diameters and are not read. No instrument stores a core.
 
 ## Still planned
 
-Images after the first from each hammer end, a viscous reed channel, and a
-sounding clarinet are not in this layer. The stick-slip capture still uses
+Images after the first from each hammer end are not in this layer. A
+viscous reed channel, clarinet tone holes, a bell correction, and a
+register key are not in this layer. The stick-slip capture still uses
 rigid ends. Snare wires, shell air, a bass-drum port, and a hi-hat clutch
 gap are not in the drum kit. A double-slip wolf cycle is not stepped. A
 classical-guitar soundboard and a fret table are not in this layer. An

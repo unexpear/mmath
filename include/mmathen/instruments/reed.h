@@ -33,7 +33,8 @@
 // input impedance −j Zc cot(kL)). Zc = ρc/S. c is speedOfSound and ρ is
 // airDensity. Poles of those impedances are RangeError. The caller
 // supplies the outgoing pressure and the outgoing pressure from one
-// round trip earlier; there is no stored time step and no clarinet.
+// round trip earlier; there is no stored time step. clarinet.h wires an
+// open bore to this characteristic. This header stores no length.
 //
 // Reed inertia is also separate. Mass, tip area, closing displacement,
 // and damping are arguments. Damping may be zero; it has no hidden
@@ -49,8 +50,9 @@
 // Still not evaluated: a viscous channel (a Reynolds-number cutoff needs
 // a viscosity and the channel width separately from S0), and any ratio
 // at which the quasi-static assumption fails. Dalmont does not give that
-// ratio, so none is invented. The bowed-string factories do not carry a
-// reed, a bore, or a reed mass.
+// ratio, so none is invented. Tone holes, a bell, and a register key are
+// not in this header. The bowed-string factories do not carry a reed, a
+// bore, or a reed mass.
 //
 // VERIFIED against eqs. (1) and (5) and against the maximum at P_M/3.
 // UNVALIDATED against a measured mouthpiece.
