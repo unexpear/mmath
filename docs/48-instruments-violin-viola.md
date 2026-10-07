@@ -1,22 +1,23 @@
-# Instruments — bowed strings, harp, harpsichord, drums, cymbals
+# Instruments — bowed strings, harp, harpsichord, guitar, drums, cymbals
 
 Status: assembly layer for four bowed strings, a concert pedal harp, a
-French double harpsichord, a steady Helmholtz bow on one ideal string,
+French double harpsichord, a six-string classical guitar, a steady Helmholtz bow on one ideal string,
 a sum of driving-point body modes driven by that bow's bridge force, a cavity Helmholtz frequency from caller area, volume, and neck, a hard narrow hammer,
 the first fixed-end images of that hammer, a felt contact law, a
 quasi-static single reed, a cylindrical bore, and reed inertia. A
 fingered stop shortens one open course. A Yamaha Tour Custom kit and a
 SABIAN XSR cymbal set add fixed circular membranes and free circular
 plates. Verified against the ideal-string
-law, Guettler's tables, the harp and harpsichord measurements named
-below, the Helmholtz/Schelleng identities, the rigid-end stick-slip step, the wound-string inharmonicity, the driving-point modal sum, the cavity Helmholtz frequency, the mutual-stiffness split, the compact-monopole pressure,
+law, Guettler's tables, the harp, harpsichord, and classical-guitar
+measurements named below, the Helmholtz/Schelleng identities, the rigid-end stick-slip step, the wound-string inharmonicity, the driving-point modal sum, the cavity Helmholtz frequency, the mutual-stiffness split, the compact-monopole pressure,
 the hard-hammer contact law, the first-image sum, the felt power law, the
 reed flow law, the circular-membrane Bessel frequencies, and the free-plate
 frequency law. Unvalidated as radiated sound: the body-mode sum is
 open-loop, and there is no measured bridge admittance and no far-field
 pressure. The bore is an ideal cylinder with the caller's length and
 cross-section; there is no clarinet. The harp and the harpsichord are
-not sounded through a soundboard model.
+not sounded through a soundboard model. The classical guitar is six
+ideal strings on the published scale; it has no soundboard either.
 
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
@@ -40,6 +41,7 @@ interval.
 | `instruments/reed.h` | Quasi-static single reed; cylindrical bore; reed inertia. Area, closure, air state, bore length and cross-section, mass, tip area, closing displacement, and damping are arguments |
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
 | `instruments/harpsichord.h` | Goermans/Taskin 1764/1783–4 French double: 2×8′ + 4′, compass F1–F6 |
+| `instruments/guitar.h` | Classical guitar E2 A2 D3 G3 B3 E4, scale 650 mm, body 490 mm. Density and tension are arguments |
 | `instruments/drum.h` | Yamaha Tour Custom shells: bass, two rack toms, floor tom, two snares. Head tension and areal density are arguments |
 | `instruments/cymbal.h` | SABIAN XSR5006B: splash, hi-hat pair, two crashes, china, ride. Thickness and alloy constants are arguments |
 | `instruments/wound.h` | Bending stiffness of a wound string. Core diameter, Young's modulus, and core density are arguments |
@@ -55,8 +57,9 @@ hard narrow hammer until the first reflection returns. A reed is not
 either; `makeReedCharacteristic` is the quasi-static slit.
 `realizeExcitation` still returns `DomainError` for a bow, a hammer, and
 a reed, because that function only builds an initial displacement. The
-harp is finger-plucked and the harpsichord is plucked by a jack. Neither
-factory stores a bow, a hammer, or a reed. Peau de buffle is a jack
+harp is finger-plucked and the harpsichord is plucked by a jack. The
+classical guitar is finger-plucked on the same ideal string. None of
+those factories stores a bow, a hammer, or a reed. Peau de buffle is a jack
 register on the lower 8', not a fourth choir and not a hammer.
 
 ## Sources
@@ -224,6 +227,34 @@ A440 and is not stored. The same density on the long 8' C3 and the 4'
 C3 produces two tensions, because the speaking lengths differ; a
 tension interval that holds one refuses the other.
 
+## Classical guitar
+
+Six open strings, low to high E2 A2 D3 G3 B3 E4. The vibrating length
+is 650 mm. Savarez's standard-prime block prints 65 cm for those note
+names (positions 6 to 1). Yamaha's C40II prints the same scale length.
+The body length on that Yamaha row is 490 mm and is stored separately.
+Total length 995 mm, nut width 52 mm, and string spacing 11.8 mm are
+not the scale and are not stored. The neck makes the scale longer than
+the body; the body is not substituted for \(L\).
+
+The Savarez block prints 82.4, 110, 146.79, 196, 246.88, and 329.6 Hz.
+The E2 and E4 figures, printed to a tenth, agree with the A440 adapter.
+146.79 and 246.88 do not agree with D3 and B3 within one printed
+hundredth, so they are kept on the row and are not written onto the
+course. `tuneClassicalGuitarString` tunes the pitch label.
+`frequencyPrinted` is false. The block does not print a diameter or a
+tension: it says the technology depends on the Savarez set. Yamaha
+names the strings only as Medium. Density and tension ranges are
+arguments. A tension that fits \(T=\mu(2 L_{\mathrm{body}} f)^2\) is
+refused, because the course length is the scale. D'Addario's classical
+tension chart is computed at 25.5 in and is not applied here.
+
+The open strings ascend by fourths except G3–B3, which is a major
+third. That is the 12-TET spelling, not a fret spacing. No fret table
+is stored. `fingerStop` shortens one course and keeps its tension.
+A pluck is `ExcitationKind::Pluck` on that course. There is no
+soundboard. This is not the desktop chord recognizer.
+
 ## What the same pitch does on the longer instrument
 
 G3, D4, and A4 exist on both. The adapter frequency matches. The viola's
@@ -258,6 +289,12 @@ not a violin with the labels rewritten.
   the long 8'. No short-8' length is stored. The same density on the
   two C3 speaking lengths yields two tensions, and the interval that
   holds the 4' refuses the 8'.
+- The classical guitar's scale is 650 mm and its body is 490 mm. Open
+  strings are E2 A2 D3 G3 B3 E4, with a major third from G3 to B3 and
+  fourths otherwise. Savarez's 146.79 Hz and 246.88 Hz stay off the
+  course. A caller density tunes the scale; the tension of that density
+  on the 490 mm body is refused. A pluck's modal sum stays within the
+  truncation bound, and a fingered stop keeps the open tension.
 - Helmholtz stick and slip velocities, their durations, the bridge-force
   slope and flyback, and a zero-mean bow displacement match the identities
   above. A normal force above Schelleng's maximum is refused. The cello's
@@ -721,4 +758,5 @@ diameters and are not read. No instrument stores a core.
 Images after the first from each hammer end, a viscous reed channel, and a
 sounding clarinet are not in this layer. The stick-slip capture still uses
 rigid ends. Snare wires, shell air, a bass-drum port, and a hi-hat clutch
-gap are not in the drum kit. A double-slip wolf cycle is not stepped.
+gap are not in the drum kit. A double-slip wolf cycle is not stepped. A
+classical-guitar soundboard and a fret table are not in this layer.

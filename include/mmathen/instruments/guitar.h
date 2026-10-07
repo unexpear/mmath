@@ -1,0 +1,211 @@
+#pragma once
+
+// Classical guitar — six ideal strings, standard E2 A2 D3 G3 B3 E4
+// (docs/48).
+//
+// This is not the desktop chord recognizer. A course is an ideal string:
+// a vibrating length, a caller-supplied linear density, and the tension
+// that tunes the pitch-adapter frequency. A pluck is ExcitationKind::Pluck.
+// A fingered stop is fingerStop. No fret table is stored.
+//
+// Vibrating length is 650 mm. Savarez's standard-prime block prints
+// 65 cm for notes E A D G B E (positions 6 to 1). Yamaha's C40II prints
+// the same scale length on the row whose body length is 490 mm. The body
+// is not the scale. Total length 995 mm, nut width 52 mm, and string
+// spacing 11.8 mm are not stored.
+//
+// The Savarez block prints 82.4, 110, 146.79, 196, 246.88, and 329.6 Hz.
+// 146.79 and 246.88 are not the A440 adapter's D3 and B3 within one
+// printed hundredth, so tuneClassicalGuitarString does not store any of
+// those hertz on the course. The block says the technology depends on
+// the Savarez set and prints no diameter and no tension. Yamaha names
+// the strings only as Medium. Density and tension ranges are arguments.
+// D'Addario's classical tension chart is computed at 25.5 in and is not
+// applied to this 650 mm scale.
+
+#include <array>
+#include <cstddef>
+#include <cstring>
+#include <string>
+
+#include "instrument.h"
+
+namespace mmathen {
+
+inline constexpr std::size_t kClassicalGuitarStrings = 6;
+inline constexpr double kClassicalGuitarBodyLengthMm = 490.0;
+inline constexpr double kClassicalGuitarScaleLengthMm = 650.0;
+
+// One row of Savarez's standard-prime block, stored low to high.
+// position is Savarez's string number (6 is the low E). printedFrequencyHz
+// is the figure in that block. printedHertzUnit is one place of that
+// printing. The course frequency is the pitch adapter, not this figure.
+struct ClassicalGuitarString {
+  const char* position;
+  const char* label;
+  double printedFrequencyHz;
+  double printedHertzUnit;
+};
+
+struct ClassicalGuitar {
+  const char* name;
+  BodyGeometry body;
+  DistanceMeters vibratingLength;
+  const char* vibratingLengthSource;
+  std::array<ClassicalGuitarString, kClassicalGuitarStrings> strings;
+  PlayingCompass compass;
+  const char* stringSource;
+};
+
+inline constexpr const char* kClassicalGuitarStringSource =
+    "Savarez, Ensemble classical guitar strings, standard prime guitar, "
+    "vibrating length 65 cm, notes E A D G B E at positions 6 to 1. "
+    "http://www.savarez.com/sites/default/files/public/produit/plaquette/"
+    "doc_guitar_densemble_eng.pdf . The block prints 82.4, 110, 146.79, "
+    "196, 246.88, and 329.6 Hz. 146.79 and 246.88 are not the A440 "
+    "adapter within one printed hundredth, so a tuned course does not "
+    "store those hertz. Technology depends on the Savarez set; the block "
+    "prints no diameter and no tension. tuneClassicalGuitarString takes "
+    "both ranges as arguments.";
+
+inline constexpr const char* kClassicalGuitarBodySource =
+    "Yamaha C40II, C Series specifications, body length 490 mm. "
+    "https://usa.yamaha.com/products/musical_instruments/guitars_basses/"
+    "cl_guitars/c_cx/specs.html . Scale length on the same row is 650 mm "
+    "and is not this body length. Total length 995 mm, nut width 52 mm, "
+    "and string spacing 11.8 mm are not stored. The row names the strings "
+    "only as Medium and does not print linear density or tension.";
+
+inline constexpr const char* kClassicalGuitarScaleSource =
+    "Savarez standard prime guitar, vibrating length 65 cm, and the "
+    "Yamaha C40II scale length, 650 mm. Both are the open-string length. "
+    "Neither is the 490 mm body. D'Addario classical tensions are stated "
+    "at 25.5 in and are not used at this length.";
+
+namespace guitar_detail {
+
+[[nodiscard]] inline const std::array<ClassicalGuitarString,
+                                      kClassicalGuitarStrings>&
+table() {
+  static const std::array<ClassicalGuitarString, kClassicalGuitarStrings>
+      rows{{
+          ClassicalGuitarString{"6", "E2", 82.4, 0.1},
+          ClassicalGuitarString{"5", "A2", 110.0, 1.0},
+          ClassicalGuitarString{"4", "D3", 146.79, 0.01},
+          ClassicalGuitarString{"3", "G3", 196.0, 1.0},
+          ClassicalGuitarString{"2", "B3", 246.88, 0.01},
+          ClassicalGuitarString{"1", "E4", 329.6, 0.1},
+      }};
+  return rows;
+}
+
+}  // namespace guitar_detail
+
+[[nodiscard]] inline const ClassicalGuitarString* findClassicalGuitarString(
+    const ClassicalGuitar& guitar, const char* label) {
+  if (!detail::text(label)) return nullptr;
+  for (const ClassicalGuitarString& string : guitar.strings)
+    if (string.label != nullptr && std::strcmp(string.label, label) == 0)
+      return &string;
+  return nullptr;
+}
+
+[[nodiscard]] inline const ClassicalGuitarString*
+findClassicalGuitarStringByPosition(const ClassicalGuitar& guitar,
+                                    const char* position) {
+  if (!detail::text(position)) return nullptr;
+  for (const ClassicalGuitarString& string : guitar.strings)
+    if (string.position != nullptr &&
+        std::strcmp(string.position, position) == 0)
+      return &string;
+  return nullptr;
+}
+
+// Ideal-string course for one open string. The length is the guitar's
+// scale, not the body. Density and tension ranges are arguments.
+// The course label is the row's pitch. frequencyPrinted is false.
+// RangeError if T = mu (2 L f)^2 leaves the tension interval.
+[[nodiscard]] inline Result<StringCourse, QuantityError>
+tuneClassicalGuitarString(const ClassicalGuitar& guitar,
+                          const ClassicalGuitarString& string,
+                          double densityMinGPerM, double densityMaxGPerM,
+                          double tensionMinN, double tensionMaxN) {
+  using R = Result<StringCourse, QuantityError>;
+  if (!detail::text(string.label) || !detail::text(string.position))
+    return R::failure(QuantityError::InvalidArgument);
+  if (!detail::positiveFinite(guitar.vibratingLength.value()))
+    return R::failure(QuantityError::InvalidArgument);
+  if (!(guitar.vibratingLength.value() != guitar.body.length.value()))
+    return R::failure(QuantityError::RangeError);
+  return makeStringCourseAtPitch(guitar.vibratingLength, string.label,
+                                 densityMinGPerM, densityMaxGPerM,
+                                 tensionMinN, tensionMaxN,
+                                 kClassicalGuitarStringSource);
+}
+
+[[nodiscard]] inline Result<ClassicalGuitar, QuantityError> classicalGuitar() {
+  using R = Result<ClassicalGuitar, QuantityError>;
+  const auto& rows = guitar_detail::table();
+  const double scale = kClassicalGuitarScaleLengthMm * 1.0e-3;
+  const double body = kClassicalGuitarBodyLengthMm * 1.0e-3;
+  if (!detail::positiveFinite(scale) || !detail::positiveFinite(body) ||
+      !(scale != body))
+    return R::failure(QuantityError::RangeError);
+  // Open-string steps, low to high: three fourths, a major third, a fourth.
+  // 12-TET semitones. Not a fret spacing.
+  constexpr int kSteps[kClassicalGuitarStrings - 1] = {5, 5, 5, 4, 5};
+  for (std::size_t i = 0; i < rows.size(); ++i) {
+    const ClassicalGuitarString& string = rows[i];
+    if (!detail::text(string.label) || !detail::text(string.position))
+      return R::failure(QuantityError::InvalidArgument);
+    if (!(string.printedHertzUnit > 0.0) ||
+        !std::isfinite(string.printedFrequencyHz) ||
+        !(string.printedFrequencyHz > 0.0))
+      return R::failure(QuantityError::InvalidArgument);
+    auto pitch = makePitch(string.label);
+    if (!pitch.ok()) return R::failure(pitch.error());
+    if (i > 0) {
+      auto previous = makePitch(rows[i - 1].label);
+      if (!previous.ok()) return R::failure(previous.error());
+      if (!pitch.value().midi.has_value() || !previous.value().midi.has_value())
+        return R::failure(QuantityError::InvalidArgument);
+      if (*pitch.value().midi - *previous.value().midi != kSteps[i - 1])
+        return R::failure(QuantityError::RangeError);
+    }
+  }
+  auto low = makePitch(rows.front().label);
+  auto high = makePitch(rows.back().label);
+  if (!low.ok() || !high.ok()) return R::failure(QuantityError::InvalidArgument);
+  // Only the printed endpoints fall inside one printed unit of the adapter.
+  // D3 and B3 do not, and those figures are not rewritten to make them.
+  if (!tabulatedHertzAgrees(low.value().frequency.value(),
+                            rows.front().printedFrequencyHz,
+                            rows.front().printedHertzUnit) ||
+      !tabulatedHertzAgrees(high.value().frequency.value(),
+                            rows.back().printedFrequencyHz,
+                            rows.back().printedHertzUnit))
+    return R::failure(QuantityError::RangeError);
+  return R::success(ClassicalGuitar{
+      "classical guitar",
+      BodyGeometry{DistanceMeters{body}, kClassicalGuitarBodySource},
+      DistanceMeters{scale},
+      kClassicalGuitarScaleSource,
+      rows,
+      PlayingCompass{rows.front().label, rows.back().label,
+                     low.value().frequency, high.value().frequency,
+                     rows.front().printedFrequencyHz,
+                     rows.back().printedFrequencyHz, kClassicalGuitarStringSource},
+      kClassicalGuitarStringSource});
+}
+
+[[nodiscard]] inline std::string formula(const ClassicalGuitar& guitar) {
+  std::string text = guitar.name == nullptr ? std::string{}
+                                            : std::string{guitar.name};
+  for (const ClassicalGuitarString& string : guitar.strings) {
+    text.push_back(' ');
+    if (string.label != nullptr) text += string.label;
+  }
+  return text;
+}
+
+}  // namespace mmathen
