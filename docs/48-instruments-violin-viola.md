@@ -1,4 +1,4 @@
-# Instruments — bowed strings, harp, harpsichord, guitars, piano, drums, cymbals, clarinet, flute, trumpet, saxophone
+# Instruments — bowed strings, harp, harpsichord, guitars, piano, drums, cymbals, clarinet, flute, trumpet, trombone, saxophone
 
 Status: assembly layer for four bowed strings, a concert pedal harp, a
 French double harpsichord, a six-string classical guitar, a six-string
@@ -7,15 +7,15 @@ a sum of driving-point body modes driven by that bow's bridge force, a cavity He
 the first fixed-end images of that hammer, a felt contact law, a
 quasi-static single reed, a cylindrical bore, reed inertia, a clarinet
 cylinder on that open bore, an open-open flute driven by an embouchure
-jet, a lip-driven trumpet with a mouthpiece cup, and a single-reed
-truncated cone. A
+jet, a lip-driven trumpet with a mouthpiece cup, that lip and cup on a
+U-slide, and a single-reed truncated cone. A
 fingered stop shortens one open course. A Yamaha Tour Custom kit and a
 SABIAN XSR cymbal set add fixed circular membranes and free circular
 plates. Verified against the ideal-string
 law, Guettler's tables, the harp, harpsichord, classical-guitar,
 electric-guitar, and Table III piano measurements named below, the Helmholtz/Schelleng identities, the rigid-end stick-slip step, the wound-string inharmonicity, the driving-point modal sum, the cavity Helmholtz frequency, the mutual-stiffness split, the compact-monopole pressure,
 the hard-hammer contact law, the first-image sum, the felt power law, the
-reed flow law, the open-cylinder clarinet, the open-pipe flute and its embouchure jet, the lip-driven trumpet, the truncated-cone saxophone, the circular-membrane Bessel frequencies, and the free-plate
+reed flow law, the open-cylinder clarinet, the open-pipe flute and its embouchure jet, the lip-driven trumpet, the trombone U-slide, the truncated-cone saxophone, the circular-membrane Bessel frequencies, and the free-plate
 frequency law. Unvalidated as radiated sound: the body-mode sum is
 open-loop, and there is no measured bridge admittance and no far-field
 pressure. The bore is an ideal cylinder with the caller's length and
@@ -24,7 +24,8 @@ reed and its inertia; tone holes, a bell, and a register key are absent.
 The flute is an open-open pipe, fundamental \(c/(2L)\), driven by a
 Bernoulli jet. It is not that clarinet. The trumpet is the quarter-wave
 cylinder with a mouthpiece cup in parallel and an outward-striking lip.
-The saxophone uses the clarinet's inward reed on a truncated cone, so
+The trombone is that lip and cup. Its air column is the closed length
+plus twice the handslide travel. The saxophone uses the clarinet's inward reed on a truncated cone, so
 its impedance poles are neither the quarter-wave series nor \(nc/(2L)\)
 except in those limits of the apex distance. The harp and the harpsichord are
 not sounded through a soundboard model. The classical guitar is six
@@ -55,6 +56,7 @@ interval.
 | `instruments/clarinet.h` | Open-cylinder clarinet: the characteristic, the bore, and reed inertia on one air state. Length, area, and the reed parameters are arguments |
 | `instruments/flute.h` | Open-open flute and an embouchure jet. Length, bore area, jet area, thickness, flue-to-edge distance, and the convection ratio are arguments |
 | `instruments/trumpet.h` | Lip-driven cylinder and a mouthpiece cup. Length, bore area, cup volume, and the lip parameters are arguments |
+| `instruments/trombone.h` | That lip and cup on a U-slide. Closed length and handslide travel are arguments. The air column is \(L_0+2x\) |
 | `instruments/saxophone.h` | Inward reed on a truncated cone. Length, apex distance, throat area, and the reed parameters are arguments |
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
 | `instruments/harpsichord.h` | Goermans/Taskin 1764/1783–4 French double: 2×8′ + 4′, compass F1–F6 |
@@ -491,6 +493,14 @@ not a violin with the labels rewritten.
   is the caller's embouchure stiffness. The lip flow and the bore flow
   are reported separately. A negative overpressure, a maximum opening
   below the rest opening, and a zero length are refused.
+- A trombone with the slide closed matches that trumpet at the closed
+  length. Extending the handslide by \(x\) makes the air column
+  \(L_0+2x\), and the fundamental, the round trip, and the bore
+  reactance match a trumpet of that longer cylinder. Doubling \(x\) does
+  not halve the fundamental when \(L_0\) is still there. \(Z_c\), the
+  cup compliance, and the lip flow do not change with \(x\). An even
+  index is still refused. A negative travel and a zero closed length
+  are refused.
 - A saxophone of the same length and air keeps that inward reed and
   replaces the cylinder with a truncated cone. The throat impedance is
   \(j Z_c (k x_0 \sin(kL))/(\sin(kL)+k x_0 \cos(kL))\). Its poles solve
@@ -867,6 +877,39 @@ flow, and the equilibrium. The acceleration stays the linear spring past
 Not in this model: a bell flare, valves, a crook, and a stored
 mouthpiece or sounding length.
 
+## Trombone
+
+`trombone.h` is the trumpet lip and cupped cylinder on a handslide. It
+includes `trumpet.h`. The lip, the cup compliance
+\(C_a=V/(\rho c^2)\), and the open-cylinder impedance
+\(j Z_c\tan(kL)\) are that header's. The length is not a valve
+combination.
+
+A handslide is two legs joined by a bow. Travel \(x\) of the outer
+slide lengthens each leg by \(x\), so the air column is
+
+\[
+L=L_0+2x.
+\]
+
+\(L_0\) is the caller's length with the slide closed, including whatever
+closed path was measured. \(x=0\) is that closed slide and is legal.
+\(x<0\) is `InvalidArgument`. The two is the pair of legs. It is not an
+end correction and not a semitone spacing. No seven-position chart is
+stored, and no tenor or bass length is stored.
+
+At fixed \(x\) the modes are the odd quarter-waves \((2n-1)c/(4L)\). An
+even index is `DomainError`. Moving the slide leaves \(Z_c\), \(C_a\),
+and the lip unchanged, and it changes \(L\), the round trip \(2L/c\),
+and the frequencies. Doubling \(x\) halves the fundamental only in the
+limit \(L_0=0\), which this slide refuses. The lip flow at a given
+\(\Delta P\) is the trumpet's outward-striking jet. The caller passes
+the outgoing pressure and the outgoing pressure from one current round
+trip earlier. Those flows are not solved into a note.
+
+Not in this model: a bell flare, an F attachment, a stored position
+chart, and a crook.
+
 ## Saxophone
 
 `saxophone.h` is Dalmont's inward reed on a truncated cone. It includes
@@ -1065,6 +1108,8 @@ viscous reed channel, clarinet tone holes, a bell correction, and a
 register key are not in this layer. A flute end correction, tone holes,
 embouchure-hole radiation, and the spatial growth of the jet are not in
 this layer. A trumpet bell flare and valves are not in this layer. A
+trombone bell flare, an F attachment, and a stored slide-position chart
+are not in this layer. A
 saxophone tone-hole lattice, a separate mouthpiece volume, a radiation
 load, and an end correction are not in this layer. The
 stick-slip capture still uses rigid ends. Snare wires, shell air, a bass-drum port, and a hi-hat clutch

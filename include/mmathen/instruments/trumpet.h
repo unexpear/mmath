@@ -28,6 +28,8 @@
 // lip mass, stiffness, pressure area, and damping are arguments. No
 // trumpet length, valve, or mouthpiece catalog is stored. The lip flow
 // and the bore flow are reported and are not solved into a note.
+// trombone.h uses this lip and this cupped cylinder. Its length is a
+// closed air column plus twice the handslide travel.
 
 #include <algorithm>
 #include <cmath>

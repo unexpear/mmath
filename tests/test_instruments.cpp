@@ -20,7 +20,9 @@
 // jet numbers stay arguments. A trumpet is a lip-driven cylinder with a
 // mouthpiece cup; length and the lip and cup numbers stay arguments. A
 // saxophone is that reed on a truncated cone; length, apex distance, and
-// throat area stay arguments. The hard hammer stays refused at the first
+// throat area stay arguments. A trombone is that trumpet lip and cupped
+// cylinder on a U-slide; closed length and handslide travel stay
+// arguments. The hard hammer stays refused at the first
 // reflection; the first-image sum
 // continues until the second image, and felt compliance is K ξ^p.
 
@@ -50,6 +52,7 @@
 #include <mmathen/instruments/flute.h>
 #include <mmathen/instruments/trumpet.h>
 #include <mmathen/instruments/saxophone.h>
+#include <mmathen/instruments/trombone.h>
 #include <mmathen/instruments/reed.h>
 #include <mmathen/instruments/wound.h>
 #include <mmathen/physics/materials.h>
@@ -2159,6 +2162,126 @@ TEST_CASE("a saxophone is an inward reed on a truncated cone",
         QuantityError::InvalidArgument);
   CHECK(saxophoneConeImpedance(saxophone, -1.0).error() ==
         QuantityError::InvalidArgument);
+}
+
+TEST_CASE("a trombone is the trumpet lip on a U-slide", "[instruments]") {
+  // Closed length and handslide travel are arguments. They are not a
+  // tenor chart and not seven positions.
+  const double closed = 1.2;
+  const double extension = 0.15;
+  const double area = 1.2e-4;
+  const double airPressure = 101325.0;
+  const double temperature = 293.15;
+  const double cup = 2.0e-6;
+  const double rest = 1.0e-5;
+  const double maximum = 1.5e-5;
+  const double width = 1.0e-2;
+  const double mass = 2.0e-5;
+  const double stiffness = 500.0;
+  const double lipArea = 1.0e-4;
+  const double overpressure = 2.0e3;
+  const TromboneSpec spec{closed,  extension, area,   airPressure, temperature,
+                          cup,     rest,      maximum, width,       mass,
+                          stiffness, lipArea, 0.0};
+  const auto trombone = unwrap(makeTrombone(spec));
+  const double airColumn = closed + 2.0 * extension;
+  const double speed =
+      unwrap(speedOfSound(Air{TemperatureKelvin{temperature}})).value();
+  CHECK(trombone.closedLengthMeters == closed);
+  CHECK(trombone.slideExtensionMeters == extension);
+  CHECK(trombone.bore.lengthMeters == airColumn);
+  CHECK(trombone.source == kTromboneSource);
+  CHECK(trombone.bore.pressureReflection == -1.0);
+  CHECK(nearlyEqual(trombone.bore.roundTripSeconds, 2.0 * airColumn / speed,
+                    0.0, 1e-12));
+  CHECK(unwrap(tromboneAirColumnMeters(closed, extension)) == airColumn);
+
+  const TrumpetSpec same{airColumn, area,      airPressure, temperature,
+                         cup,       rest,      maximum,     width,
+                         mass,      stiffness, lipArea,     0.0};
+  const auto trumpet = unwrap(makeTrumpet(same));
+  CHECK(trombone.bore.fundamentalHz == trumpet.fundamentalHz);
+  CHECK(trombone.bore.acousticImpedance == trumpet.acousticImpedance);
+  CHECK(trombone.bore.acousticCompliance == trumpet.acousticCompliance);
+  CHECK(trombone.bore.lipResonanceHz == trumpet.lipResonanceHz);
+  CHECK(unwrap(tromboneCylinderMode(trombone, 1)).value() ==
+        unwrap(trumpetCylinderMode(trumpet, 1)).value());
+  CHECK(nearlyEqual(unwrap(tromboneCylinderMode(trombone, 3)).value(),
+                    3.0 * trombone.bore.fundamentalHz, 0.0, 1e-12));
+  CHECK(tromboneCylinderMode(trombone, 2).error() ==
+        QuantityError::DomainError);
+  const double probe = 80.0;
+  const auto boreZ = unwrap(tromboneBoreImpedance(trombone, probe));
+  const auto trumpetBore = unwrap(trumpetBoreImpedance(trumpet, probe));
+  CHECK(boreZ.real() == trumpetBore.real());
+  CHECK(boreZ.imag() == trumpetBore.imag());
+  const auto cupZ = unwrap(tromboneMouthpieceImpedance(
+      trombone, trombone.bore.fundamentalHz));
+  const auto trumpetCup = unwrap(trumpetMouthpieceImpedance(
+      trumpet, trumpet.fundamentalHz));
+  CHECK(nearlyEqual(cupZ.imag(), trumpetCup.imag(), 0.0, 1e-12));
+  CHECK(cupZ.real() == 0.0);
+  const auto mouth = unwrap(
+      tromboneEmbouchure(trombone, overpressure, 1.0, 0.25, 0.0, 0.0));
+  const auto trumpetMouth =
+      unwrap(trumpetEmbouchure(trumpet, overpressure, 1.0, 0.25, 0.0, 0.0));
+  CHECK(mouth.lipFlowM3PerS == trumpetMouth.lipFlowM3PerS);
+  CHECK(mouth.boreFlowM3PerS == trumpetMouth.boreFlowM3PerS);
+  CHECK(mouth.lipFlowM3PerS > 0.0);
+
+  const auto extended = unwrap(tromboneAtSlide(trombone, 2.0 * extension));
+  const double extendedColumn = closed + 4.0 * extension;
+  CHECK(extended.bore.lengthMeters == extendedColumn);
+  CHECK(extended.slideExtensionMeters == 2.0 * extension);
+  CHECK(extended.closedLengthMeters == closed);
+  CHECK(nearlyEqual(extended.bore.fundamentalHz,
+                    trombone.bore.fundamentalHz * airColumn / extendedColumn,
+                    0.0, 1e-12));
+  CHECK(std::abs(extended.bore.fundamentalHz -
+                 0.5 * trombone.bore.fundamentalHz) /
+            trombone.bore.fundamentalHz >
+        0.01);
+  CHECK(extended.bore.acousticImpedance == trombone.bore.acousticImpedance);
+  CHECK(extended.bore.acousticCompliance == trombone.bore.acousticCompliance);
+  CHECK(extended.bore.lipResonanceHz == trombone.bore.lipResonanceHz);
+  CHECK(unwrap(tromboneLipFlow(extended, overpressure)) ==
+        unwrap(tromboneLipFlow(trombone, overpressure)));
+  CHECK(unwrap(tromboneBoreImpedance(extended, probe)).imag() !=
+        unwrap(tromboneBoreImpedance(trombone, probe)).imag());
+  const TrumpetSpec longer{extendedColumn, area,      airPressure, temperature,
+                           cup,            rest,      maximum,     width,
+                           mass,           stiffness, lipArea,     0.0};
+  const auto longerTrumpet = unwrap(makeTrumpet(longer));
+  CHECK(extended.bore.fundamentalHz == longerTrumpet.fundamentalHz);
+  CHECK(unwrap(tromboneMouthpieceImpedance(extended, probe)).imag() ==
+        unwrap(trumpetMouthpieceImpedance(longerTrumpet, probe)).imag());
+
+  const auto shut = unwrap(tromboneAtSlide(trombone, 0.0));
+  CHECK(shut.bore.lengthMeters == closed);
+  CHECK(shut.slideExtensionMeters == 0.0);
+  const TrumpetSpec closedSpec{closed, area,      airPressure, temperature,
+                               cup,    rest,      maximum,     width,
+                               mass,   stiffness, lipArea,     0.0};
+  CHECK(shut.bore.fundamentalHz ==
+        unwrap(makeTrumpet(closedSpec)).fundamentalHz);
+  CHECK(shut.bore.fundamentalHz > trombone.bore.fundamentalHz);
+
+  TromboneSpec zeroClosed = spec;
+  zeroClosed.closedLengthMeters = 0.0;
+  CHECK(makeTrombone(zeroClosed).error() == QuantityError::InvalidArgument);
+  TromboneSpec negativeSlide = spec;
+  negativeSlide.slideExtensionMeters = -extension;
+  CHECK(makeTrombone(negativeSlide).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(tromboneAtSlide(trombone, -extension).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(tromboneAirColumnMeters(closed, -extension).error() ==
+        QuantityError::InvalidArgument);
+  TromboneSpec cold = spec;
+  cold.temperatureKelvin = 0.0;
+  CHECK(makeTrombone(cold).error() == QuantityError::DomainError);
+  CHECK(tromboneLipFlow(trombone, -overpressure).error() ==
+        QuantityError::DomainError);
 }
 
 TEST_CASE("felt compliance and the first hammer images keep the hard cutoff",
