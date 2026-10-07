@@ -33,7 +33,9 @@
 #include <mmathen/instruments/bow.h>
 #include <mmathen/instruments/cymbal.h>
 #include <mmathen/instruments/drum.h>
+#include <mmathen/instruments/electric_guitar.h>
 #include <mmathen/instruments/guitar.h>
+#include <mmathen/instruments/piano.h>
 #include <mmathen/instruments/hammer.h>
 #include <mmathen/instruments/harp.h>
 #include <mmathen/instruments/harpsichord.h>
@@ -1898,6 +1900,186 @@ TEST_CASE("classical guitar courses take density and tension as arguments",
             .error() == QuantityError::DomainError);
   CHECK(realizeExcitation(openG, Excitation{ExcitationKind::Reed, 0.25, 1.0e-4})
             .error() == QuantityError::DomainError);
+}
+
+TEST_CASE("electric guitar uses the 25.5 in chart scale, not the classical body",
+          "[instruments]") {
+  const ElectricGuitar guitar = unwrap(electricGuitar());
+  const ClassicalGuitar classical = unwrap(classicalGuitar());
+  CHECK(formula(guitar) == "electric guitar E2 A2 D3 G3 B3 E4");
+  CHECK(guitar.strings.size() == kElectricGuitarStrings);
+  CHECK(guitar.vibratingLength.value() ==
+        kElectricGuitarScaleInches * kElectricGuitarInchMeters);
+  CHECK(guitar.vibratingLength.value() != classical.vibratingLength.value());
+  CHECK(guitar.vibratingLength.value() != classical.body.length.value());
+  CHECK(guitar.vibratingLength.value() != 0.648);
+  CHECK(guitar.compass.low == unwrap(makePitch("E2")).frequency);
+  CHECK(guitar.compass.high == unwrap(makePitch("E4")).frequency);
+  CHECK(guitar.compass.publishedLowHz == 0.0);
+  CHECK(guitar.compass.publishedHighHz == 0.0);
+
+  const char* items[kElectricGuitarStrings] = {"NW046", "NW036", "NW026",
+                                               "PL017", "PL013", "PL010"};
+  const char* labels[kElectricGuitarStrings] = {"E2", "A2", "D3",
+                                                "G3", "B3", "E4"};
+  const double pounds[kElectricGuitarStrings] = {16.900, 19.000, 18.400,
+                                                 16.600, 15.400, 16.200};
+  const int steps[kElectricGuitarStrings - 1] = {5, 5, 5, 4, 5};
+  for (std::size_t i = 0; i < guitar.strings.size(); ++i) {
+    CHECK(std::strcmp(guitar.strings[i].item, items[i]) == 0);
+    CHECK(std::strcmp(guitar.strings[i].label, labels[i]) == 0);
+    CHECK(guitar.strings[i].tensionPounds == pounds[i]);
+    if (i > 0) {
+      const auto spelled = unwrap(makePitch(guitar.strings[i].label));
+      const auto previous = unwrap(makePitch(guitar.strings[i - 1].label));
+      REQUIRE(spelled.midi.has_value());
+      REQUIRE(previous.midi.has_value());
+      CHECK(*spelled.midi - *previous.midi == steps[i - 1]);
+    }
+  }
+  // The printed pounds are not a smooth function of pitch.
+  CHECK(guitar.strings[1].tensionPounds > guitar.strings[0].tensionPounds);
+  CHECK(guitar.strings[1].tensionPounds > guitar.strings[2].tensionPounds);
+  CHECK(findElectricGuitarString(guitar, "E5") == nullptr);
+  CHECK(findElectricGuitarStringByItem(guitar, "PL009") == nullptr);
+}
+
+TEST_CASE("electric guitar density is an argument checked against EXL110",
+          "[instruments]") {
+  const ElectricGuitar guitar = unwrap(electricGuitar());
+  const ElectricGuitarString* low = findElectricGuitarStringByItem(guitar, "NW046");
+  const ElectricGuitarString* high = findElectricGuitarString(guitar, "E4");
+  REQUIRE(low != nullptr);
+  REQUIRE(high != nullptr);
+  const double length = guitar.vibratingLength.value();
+  const double lowHz = unwrap(makePitch(low->label)).frequency.value();
+  const double highHz = unwrap(makePitch(high->label)).frequency.value();
+  const double lowNewtons = low->tensionPounds * kPoundForceNewtons;
+  const double highNewtons = high->tensionPounds * kPoundForceNewtons;
+  const double lowGrams =
+      lowNewtons / ((2.0 * length * lowHz) * (2.0 * length * lowHz)) * 1.0e3;
+  const double highGrams =
+      highNewtons / ((2.0 * length * highHz) * (2.0 * length * highHz)) * 1.0e3;
+  CHECK(lowGrams != highGrams);
+  const StringCourse bass =
+      unwrap(tuneElectricGuitarString(guitar, *low, lowGrams));
+  const StringCourse treble =
+      unwrap(tuneElectricGuitarString(guitar, *high, highGrams));
+  CHECK(bass.frequencyPrinted == false);
+  CHECK(bass.publishedFrequencyHz == 0.0);
+  CHECK(std::strcmp(bass.tuning.label, "E2") == 0);
+  CHECK(bass.geometry.vibratingLength.value() == length);
+  CHECK(bass.geometry.vibratingLength.value() != 0.650);
+  CHECK(nearlyEqual(unwrap(openStringFrequency(bass)), bass.tuning.frequency,
+                    FrequencyHz{0.0}, 1e-12));
+  CHECK(bass.tuning.frequency == unwrap(makePitch("E2")).frequency);
+  CHECK(std::fabs(bass.tension.value() - lowNewtons) <=
+        kElectricGuitarTensionUnitPounds * kPoundForceNewtons);
+  CHECK(bass.tension.value() != treble.tension.value());
+  const double atClassicalLength =
+      (lowGrams * 1.0e-3) * (2.0 * 0.650 * lowHz) * (2.0 * 0.650 * lowHz);
+  CHECK(std::fabs(atClassicalLength - lowNewtons) >
+        kElectricGuitarTensionUnitPounds * kPoundForceNewtons);
+  CHECK(tuneElectricGuitarString(guitar, *low, lowGrams * 1.01).error() ==
+        QuantityError::RangeError);
+  CHECK(tuneElectricGuitarString(guitar, *low, 0.0).error() ==
+        QuantityError::InvalidArgument);
+
+  const double alpha = 0.25;
+  const StringCourse stopped = unwrap(fingerStop(bass, alpha));
+  CHECK(stopped.geometry.vibratingLength.value() == (1.0 - alpha) * length);
+  CHECK(stopped.tension.value() == bass.tension.value());
+  CHECK(nearlyEqual(stopped.tuning.frequency.value(), lowHz / (1.0 - alpha),
+                    0.0, 1e-12));
+  CHECK(fingerStop(bass, 0.0).error() == QuantityError::InvalidArgument);
+
+  const Excitation pluck{ExcitationKind::Pluck, 0.3, 1.0e-4};
+  const auto shape = unwrap(realizeExcitation(treble, pluck));
+  const auto modal = unwrap(ModalSolution::create(shape, 64));
+  const double x = 0.3 * treble.geometry.vibratingLength.value();
+  const TimePointSeconds time{8.0e-4};
+  const double summed = unwrap(modal.at(DistanceMeters{x}, time));
+  const double exact = unwrap(analyticField(shape, DistanceMeters{x}, time));
+  CHECK(std::fabs(summed - exact) <= modal.truncationBound() + 1e-9);
+  CHECK(unwrap(modalPluckResponse(treble, pluck, 0.3, time, 64)) == summed);
+  CHECK(realizeExcitation(treble, Excitation{ExcitationKind::Bow, 0.3, 1.0e-4})
+            .error() == QuantityError::DomainError);
+  CHECK(realizeExcitation(stopped, pluck).ok());
+}
+
+TEST_CASE("the piano string bank is Chabassier's five strings", "[instruments]") {
+  const PianoStringBank bank = unwrap(concertGrandStringBank());
+  CHECK(formula(bank) == "concert grand D#1 C2 F3 C#5 G6");
+  const auto specs = chabassier2013Strings();
+  REQUIRE(bank.strings.size() == specs.size());
+  CHECK(bank.strings.size() == 5);
+  const double lengths[5] = {1.945, 1.600, 0.961, 0.326, 0.124};
+  const double tensions[5] = {1781.0, 865.0, 774.0, 684.0, 587.0};
+  const char* notes[5] = {"D#1", "C2", "F3", "C#5", "G6"};
+  for (std::size_t i = 0; i < bank.strings.size(); ++i) {
+    CHECK(std::strcmp(bank.strings[i].note, notes[i]) == 0);
+    CHECK(bank.strings[i].length.value() == lengths[i]);
+    CHECK(bank.strings[i].length.value() == specs[i].length.value());
+    CHECK(bank.strings[i].tension.value() == tensions[i]);
+    CHECK(bank.strings[i].tension.value() == specs[i].tension.value());
+    if (i > 0) {
+      CHECK(bank.strings[i].length.value() < bank.strings[i - 1].length.value());
+      CHECK(bank.strings[i].semitonesFromC4 > bank.strings[i - 1].semitonesFromC4);
+    }
+    const StringCourse course = unwrap(tunePianoString(bank.strings[i]));
+    CHECK(course.frequencyPrinted);
+    CHECK(course.publishedFrequencyHz == specs[i].publishedF0.value());
+    CHECK(course.geometry.vibratingLength.value() == lengths[i]);
+    CHECK(course.tension.value() == tensions[i]);
+    CHECK(nearlyEqual(unwrap(openStringFrequency(course)).value(),
+                      course.tuning.frequency.value(), 0.0, 1e-12));
+    CHECK(std::fabs(course.tuning.frequency.value() - specs[i].publishedF0.value()) <=
+          kChabassierFundamentalTolerance * specs[i].publishedF0.value());
+    const auto stiff = unwrap(tunedPianoString(bank.strings[i]));
+    CHECK(unwrap(modeFrequency(stiff, 1)).value() >
+          course.tuning.frequency.value());
+  }
+  const PianoStringSpec* csharp = findPianoString(bank, "C#5");
+  REQUIRE(csharp != nullptr);
+  CHECK(csharp->publishedF0.value() == 555.6);
+  CHECK(std::fabs(unwrap(makePitch("C#5")).frequency.value() - 555.6) > 0.1);
+  const StringCourse csharpCourse = unwrap(tunePianoString(*csharp));
+  CHECK(std::fabs(csharpCourse.tuning.frequency.value() -
+                  unwrap(makePitch("C#5")).frequency.value()) > 0.1);
+  CHECK(findPianoString(bank, "A0") == nullptr);
+  CHECK(findPianoString(bank, "C4") == nullptr);
+  CHECK(findPianoString(bank, "C8") == nullptr);
+  CHECK(bank.compass.publishedLowHz == 38.9);
+  CHECK(bank.compass.publishedHighHz == 1571.4);
+  CHECK(bank.compass.low == unwrap(tunePianoString(bank.strings.front())).tuning.frequency);
+  CHECK(bank.strings.front().length.value() != bank.strings.back().length.value());
+
+  const StringCourse lowCourse = unwrap(tunePianoString(bank.strings.front()));
+  const StringCourse highCourse = unwrap(tunePianoString(bank.strings.back()));
+  const double alpha = 0.2;
+  const StringCourse stopped = unwrap(fingerStop(lowCourse, alpha));
+  CHECK(stopped.tension.value() == lowCourse.tension.value());
+  CHECK(stopped.geometry.vibratingLength.value() ==
+        (1.0 - alpha) * lowCourse.geometry.vibratingLength.value());
+  CHECK(stopped.geometry.vibratingLength.value() != highCourse.geometry.vibratingLength.value());
+
+  const HammerStrike strike{0.15, 0.012, 1.5};
+  const auto lowBlow = unwrap(makeHardHammerBlow(lowCourse, strike));
+  const auto highBlow = unwrap(makeHardHammerBlow(highCourse, strike));
+  CHECK(lowBlow.initialForce == 2.0 * lowBlow.impedance * strike.speedMetersPerSecond);
+  CHECK(lowBlow.firstReflectionTime > 0.0);
+  CHECK(lowBlow.lengthMeters != highBlow.lengthMeters);
+  CHECK(lowBlow.impedance != highBlow.impedance);
+  const double compression = 1.0e-4;
+  const double stiffness = 1.0e10;
+  const double exponent = 2.5;
+  CHECK(nearlyEqual(unwrap(feltHammerForce(compression, stiffness, exponent)),
+                    stiffness * std::pow(compression, exponent), 0.0, 1e-12));
+  CHECK(unwrap(feltHammerForce(0.0, stiffness, exponent)) == 0.0);
+  CHECK(realizeExcitation(lowCourse, Excitation{ExcitationKind::Hammer, 0.15, 1.0e-4})
+            .error() == QuantityError::DomainError);
+  const Excitation pluck{ExcitationKind::Pluck, 0.15, 1.0e-4};
+  CHECK(realizeExcitation(lowCourse, pluck).ok());
 }
 
 TEST_CASE("a drum kit head is a circular membrane with caller tension",

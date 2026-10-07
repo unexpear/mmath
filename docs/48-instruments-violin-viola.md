@@ -1,15 +1,16 @@
-# Instruments — bowed strings, harp, harpsichord, guitar, drums, cymbals
+# Instruments — bowed strings, harp, harpsichord, guitars, piano, drums, cymbals
 
 Status: assembly layer for four bowed strings, a concert pedal harp, a
-French double harpsichord, a six-string classical guitar, a steady Helmholtz bow on one ideal string,
+French double harpsichord, a six-string classical guitar, a six-string
+electric guitar, a five-string concert-grand bank, a steady Helmholtz bow on one ideal string,
 a sum of driving-point body modes driven by that bow's bridge force, a cavity Helmholtz frequency from caller area, volume, and neck, a hard narrow hammer,
 the first fixed-end images of that hammer, a felt contact law, a
 quasi-static single reed, a cylindrical bore, and reed inertia. A
 fingered stop shortens one open course. A Yamaha Tour Custom kit and a
 SABIAN XSR cymbal set add fixed circular membranes and free circular
 plates. Verified against the ideal-string
-law, Guettler's tables, the harp, harpsichord, and classical-guitar
-measurements named below, the Helmholtz/Schelleng identities, the rigid-end stick-slip step, the wound-string inharmonicity, the driving-point modal sum, the cavity Helmholtz frequency, the mutual-stiffness split, the compact-monopole pressure,
+law, Guettler's tables, the harp, harpsichord, classical-guitar,
+electric-guitar, and Table III piano measurements named below, the Helmholtz/Schelleng identities, the rigid-end stick-slip step, the wound-string inharmonicity, the driving-point modal sum, the cavity Helmholtz frequency, the mutual-stiffness split, the compact-monopole pressure,
 the hard-hammer contact law, the first-image sum, the felt power law, the
 reed flow law, the circular-membrane Bessel frequencies, and the free-plate
 frequency law. Unvalidated as radiated sound: the body-mode sum is
@@ -17,7 +18,9 @@ open-loop, and there is no measured bridge admittance and no far-field
 pressure. The bore is an ideal cylinder with the caller's length and
 cross-section; there is no clarinet. The harp and the harpsichord are
 not sounded through a soundboard model. The classical guitar is six
-ideal strings on the published scale; it has no soundboard either.
+ideal strings on the published scale; it has no soundboard either. The
+electric guitar is the 25.5 in chart scale, not that classical body.
+The piano bank is five Table III strings and has no soundboard either.
 
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
@@ -42,6 +45,8 @@ interval.
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
 | `instruments/harpsichord.h` | Goermans/Taskin 1764/1783–4 French double: 2×8′ + 4′, compass F1–F6 |
 | `instruments/guitar.h` | Classical guitar E2 A2 D3 G3 B3 E4, scale 650 mm, body 490 mm. Density and tension are arguments |
+| `instruments/electric_guitar.h` | Electric guitar E2 A2 D3 G3 B3 E4, scale 25.5 in. EXL110 tensions are printed; linear density is an argument |
+| `instruments/piano.h` | Chabassier Table III concert-grand bank: D#1, C2, F3, C#5, G6. Stiff string, hammer, and felt reuse the existing models |
 | `instruments/drum.h` | Yamaha Tour Custom shells: bass, two rack toms, floor tom, two snares. Head tension and areal density are arguments |
 | `instruments/cymbal.h` | SABIAN XSR5006B: splash, hi-hat pair, two crashes, china, ride. Thickness and alloy constants are arguments |
 | `instruments/wound.h` | Bending stiffness of a wound string. Core diameter, Young's modulus, and core density are arguments |
@@ -255,6 +260,46 @@ is stored. `fingerStop` shortens one course and keeps its tension.
 A pluck is `ExcitationKind::Pluck` on that course. There is no
 soundboard. This is not the desktop chord recognizer.
 
+## Electric guitar
+
+Six open strings, low to high E2 A2 D3 G3 B3 E4, on a different scale
+from the classical guitar. The vibrating length is 25.5 in, the scale
+D'Addario's tension charts use for guitar. Fender prints the same
+25.5 in and a parenthetical 648 mm. That millimetre is a rounding.
+\(L\) is \(25.5\times 0.0254\,\mathrm{m}\). No body length is printed
+with the scale, so none is stored. The 650 mm classical scale and the
+490 mm classical body are not this length.
+
+The courses are D'Addario EXL110, 10-46 regular light. The product
+chart prints, low to high, NW046 16.900 lb, NW036 19.000 lb, NW026
+18.400 lb, PL017 16.600 lb, PL013 15.400 lb, and PL010 16.200 lb. The
+pounds are not monotonic in pitch. The page does not print unit
+weight, so `tuneElectricGuitarString` takes linear density and keeps
+the course only when \(T=\mu(2Lf)^2\) agrees with the printed pounds
+within 0.001 lb. The pound-force is \(0.45359237\times 9.80665\,\mathrm{N}\),
+not the catalog's rounded factor 4.45. The chart does not print hertz,
+so `frequencyPrinted` is false. Fender's .009–.042 gauge is a different
+set and is not used. No pickup constant is printed, and no pickup
+model is stored. A pluck is `ExcitationKind::Pluck`. `fingerStop`
+keeps the open tension. The same density at 650 mm misses the EXL110
+window.
+
+## Piano string bank
+
+`concertGrandStringBank` is Chabassier, Chaigne, and Joly 2013, Table
+III, through `chabassier2013Strings()`. Five strings: D#1, C2, F3,
+C#5, G6. Speaking lengths 1.945 m, 1.600 m, 0.961 m, 0.326 m, and
+0.124 m are that table and are not one shared length. Tension is the
+printed \(T_0\). Linear density is \(\rho F \pi d^2/4\) with the
+Table III steel. The ideal fundamental stays within 0.5% of the
+printed \(f_0\), the same check as the D16 annex. C#5's printed
+555.6 Hz is not the A440 adapter, and the course is not rewritten to
+the adapter. `tunedPianoString` is `pianoString` on that row, so the
+first stiff partial sits above the flexible fundamental. A strike is
+`makeHardHammerBlow`. Felt is \(F=K\xi^p\) with \(K\) and \(p\) as
+arguments. No hammer mass is stored. The other piano keys are not in
+the table and are not invented. This is not the desktop piano panel.
+
 ## What the same pitch does on the longer instrument
 
 G3, D4, and A4 exist on both. The adapter frequency matches. The viola's
@@ -295,6 +340,16 @@ not a violin with the labels rewritten.
   course. A caller density tunes the scale; the tension of that density
   on the 490 mm body is refused. A pluck's modal sum stays within the
   truncation bound, and a fingered stop keeps the open tension.
+- The electric guitar's scale is 25.5 in, not 648 mm and not 650 mm.
+  EXL110's printed pounds are kept only when the caller's linear density
+  produces that tension within 0.001 lb. The same density at 650 mm
+  misses the window. A pluck stays within the truncation bound, and a
+  fingered stop keeps the tension.
+- The piano bank is D#1, C2, F3, C#5, and G6, with the Table III
+  lengths and tensions. Each ideal fundamental is within 0.5% of the
+  printed \(f_0\). C#5 is not retuned to the A440 adapter. The stiff
+  partial sits above the flexible fundamental. A hard hammer and a felt
+  force use the existing laws, and A0, C4, and C8 are absent.
 - Helmholtz stick and slip velocities, their durations, the bridge-force
   slope and flyback, and a zero-mean bow displacement match the identities
   above. A normal force above Schelleng's maximum is refused. The cello's
@@ -759,4 +814,5 @@ Images after the first from each hammer end, a viscous reed channel, and a
 sounding clarinet are not in this layer. The stick-slip capture still uses
 rigid ends. Snare wires, shell air, a bass-drum port, and a hi-hat clutch
 gap are not in the drum kit. A double-slip wolf cycle is not stepped. A
-classical-guitar soundboard and a fret table are not in this layer.
+classical-guitar soundboard and a fret table are not in this layer. An
+electric-guitar pickup and the other 83 piano keys are not in this layer.

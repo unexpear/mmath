@@ -229,6 +229,8 @@ if(BUILD_TESTING)
     tests/headers/th_instruments_hammer.cpp
     tests/headers/th_instruments_reed.cpp
     tests/headers/th_instruments_guitar.cpp
+    tests/headers/th_instruments_electric_guitar.cpp
+    tests/headers/th_instruments_piano.cpp
     tests/headers/th_instruments_harp.cpp
     tests/headers/th_instruments_harpsichord.cpp
     tests/headers/th_instruments_drum.cpp

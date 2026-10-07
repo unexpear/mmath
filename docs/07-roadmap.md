@@ -14,7 +14,7 @@ Status: planning · Nothing below may shape Phase 0–2 APIs
 4. **Objects → instruments:** String/Bar/Plate/Membrane/Tube/Cavity/Reed/Hammer/Bow;
    geometry ≠ material; coupling `H(f)` chains; excitation position → modal weights.
    Landed: `instruments/` with violin, viola, cello, and double bass ideal strings, a
-   concert pedal harp, a French double harpsichord, a six-string classical guitar, a
+   concert pedal harp, a French double harpsichord, a six-string classical guitar, a six-string electric guitar, a five-string Chabassier piano bank, a
    pluck, a bridge hook, a steady Helmholtz bow, a sum of open-loop driving-point body modes, a cavity Helmholtz frequency, a mutual body-mode stiffness, a compact-monopole far field, Schelleng's minimum bow force from a caller bridge resistance, a time-stepped stick-slip capture on rigid ends, wound-string bending stiffness from a caller core, a string re-solved on a caller bridge mobility or resistance, a
    hard narrow hammer, the hammer's first reflected images and felt compliance,
    a quasi-static single reed, a cylindrical bore, reed inertia, a fingered
