@@ -17,9 +17,9 @@ Status: planning · Nothing below may shape Phase 0–2 APIs
    concert pedal harp, a French double harpsichord, a six-string classical guitar, a six-string electric guitar, a five-string Chabassier piano bank, a
    pluck, a bridge hook, a steady Helmholtz bow, a sum of open-loop driving-point body modes, a cavity Helmholtz frequency, a mutual body-mode stiffness, a compact-monopole far field, Schelleng's minimum bow force from a caller bridge resistance, a time-stepped stick-slip capture on rigid ends, wound-string bending stiffness from a caller core, a string re-solved on a caller bridge mobility or resistance, a
    hard narrow hammer, the hammer's first reflected images and felt compliance,
-   a quasi-static single reed, a cylindrical bore, reed inertia, a clarinet cylinder on that open bore, an open-open flute with an embouchure jet, a fingered
+   a quasi-static single reed, a cylindrical bore, reed inertia, a clarinet cylinder on that open bore, an open-open flute with an embouchure jet, a lip-driven trumpet with a mouthpiece cup, a fingered
    stop, a Yamaha Tour Custom drum kit (circular membranes), and a SABIAN XSR
-   cymbal set (free plates) (`docs/48-instruments-violin-viola.md`). Clarinet tone holes, a bell correction, and a register key, a flute end correction and tone holes, a stored
+   cymbal set (free plates) (`docs/48-instruments-violin-viola.md`). Clarinet tone holes, a bell correction, and a register key, a flute end correction and tone holes, a trumpet bell flare and valves, a stored
    hammer or reed table, measured bridge admittance, and radiated pressure are
    not built. This slice does not change Phase 0–2 APIs.
 5. **Spatial + hearing:** `t=d/c`, Doppler from first principles, reverb/HRTF;

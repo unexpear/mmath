@@ -230,6 +230,7 @@ if(BUILD_TESTING)
     tests/headers/th_instruments_reed.cpp
     tests/headers/th_instruments_clarinet.cpp
     tests/headers/th_instruments_flute.cpp
+    tests/headers/th_instruments_trumpet.cpp
     tests/headers/th_instruments_guitar.cpp
     tests/headers/th_instruments_electric_guitar.cpp
     tests/headers/th_instruments_piano.cpp

@@ -17,7 +17,8 @@
 // clarinet wires that characteristic, an open bore, and the inertia on
 // one air state; length and the reed numbers stay arguments. A flute is
 // an open-open pipe and an embouchure jet; length, bore area, and the
-// jet numbers stay arguments. The
+// jet numbers stay arguments. A trumpet is a lip-driven cylinder with a
+// mouthpiece cup; length and the lip and cup numbers stay arguments. The
 // hard hammer stays refused at the first reflection; the first-image sum
 // continues until the second image, and felt compliance is K ξ^p.
 
@@ -45,6 +46,7 @@
 #include <mmathen/instruments/harpsichord.h>
 #include <mmathen/instruments/clarinet.h>
 #include <mmathen/instruments/flute.h>
+#include <mmathen/instruments/trumpet.h>
 #include <mmathen/instruments/reed.h>
 #include <mmathen/instruments/wound.h>
 #include <mmathen/physics/materials.h>
@@ -1713,6 +1715,230 @@ TEST_CASE("a flute is an open pipe driven by an embouchure jet",
   FluteSpec cold = spec;
   cold.temperatureKelvin = 0.0;
   CHECK(makeFlute(cold).error() == QuantityError::DomainError);
+}
+
+TEST_CASE("a trumpet is an outward lip on a cupped quarter-wave bore",
+          "[instruments]") {
+  // Length, cup volume, and the lip numbers are arguments. They are not
+  // a measured trumpet, a valve chart, or a mouthpiece catalog.
+  const double length = 0.7;
+  const double area = 1.2e-4;
+  const double airPressure = 101325.0;
+  const double temperature = 293.15;
+  const double cup = 2.0e-6;
+  const double rest = 1.0e-5;
+  const double maximum = 1.5e-5;
+  const double width = 1.0e-2;
+  const double mass = 2.0e-5;
+  const double stiffness = 500.0;
+  const double lipArea = 1.0e-4;
+  const TrumpetSpec spec{length,  area,      airPressure, temperature,
+                         cup,     rest,      maximum,     width,
+                         mass,    stiffness, lipArea,     0.0};
+  const auto trumpet = unwrap(makeTrumpet(spec));
+  const double density =
+      unwrap(airDensity(PressurePascals{airPressure},
+                        TemperatureKelvin{temperature}))
+          .value();
+  const double speed =
+      unwrap(speedOfSound(Air{TemperatureKelvin{temperature}})).value();
+  CHECK(trumpet.lengthMeters == length);
+  CHECK(trumpet.crossSectionM2 == area);
+  CHECK(trumpet.cupVolumeM3 == cup);
+  CHECK(trumpet.pressureReflection == -1.0);
+  CHECK(trumpet.source == kTrumpetSource);
+  CHECK(trumpet.airDensityKgPerM3 == density);
+  CHECK(nearlyEqual(trumpet.fundamentalHz, speed / (4.0 * length), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(trumpet.fundamentalHz * trumpet.roundTripSeconds, 0.5, 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(trumpet.acousticImpedance, density * speed / area, 0.0,
+                    1e-12));
+  const double compliance = cup / (density * speed * speed);
+  CHECK(nearlyEqual(trumpet.acousticCompliance, compliance, 0.0, 1e-12));
+  CHECK(nearlyEqual(trumpet.acousticCompliance,
+                    cup / (acoustic_constants::dryAirGamma * airPressure), 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(trumpet.lipResonanceHz,
+                    std::sqrt(stiffness / mass) / constants::twoPi, 0.0,
+                    1e-12));
+  CHECK(unwrap(trumpetCylinderMode(trumpet, 1)).value() ==
+        trumpet.fundamentalHz);
+  CHECK(trumpetCylinderMode(trumpet, 2).error() == QuantityError::DomainError);
+  const double third = unwrap(trumpetCylinderMode(trumpet, 3)).value();
+  CHECK(nearlyEqual(third, 3.0 * trumpet.fundamentalHz, 0.0, 1e-12));
+
+  // Same length and air: the bare cylinder matches the clarinet and sits
+  // an octave under the flute. The cup keeps the lip impedance finite
+  // where that cylinder poles.
+  const auto clarinet = unwrap(makeClarinet(ClarinetSpec{
+      length, area, airPressure, temperature, rest, 6.0e3, mass, lipArea,
+      1.0e-3, 0.0}));
+  const auto flute = unwrap(makeFlute(FluteSpec{
+      length, area, airPressure, temperature, 4.0e-6, 1.0e-3, 8.0e-3, 0.5}));
+  CHECK(trumpet.fundamentalHz == clarinet.bore.fundamentalHz);
+  CHECK(nearlyEqual(flute.fundamentalHz, 2.0 * trumpet.fundamentalHz, 0.0,
+                    1e-12));
+  CHECK(flutePipeMode(flute, 2).ok());
+  CHECK(trumpetBoreImpedance(trumpet, trumpet.fundamentalHz).error() ==
+        QuantityError::RangeError);
+  CHECK(boreInputImpedance(clarinet.bore, clarinet.bore.fundamentalHz).error() ==
+        QuantityError::RangeError);
+  const double omega = constants::twoPi * trumpet.fundamentalHz;
+  const auto atPole =
+      unwrap(trumpetMouthpieceImpedance(trumpet, trumpet.fundamentalHz));
+  CHECK(atPole.real() == 0.0);
+  CHECK(nearlyEqual(atPole.imag(), -1.0 / (omega * compliance), 0.0, 1e-9));
+  const auto atThird = unwrap(trumpetMouthpieceImpedance(trumpet, third));
+  CHECK(nearlyEqual(atThird.imag(),
+                    -1.0 / (constants::twoPi * third * compliance), 0.0,
+                    1e-9));
+
+  TrumpetSpec noCup = spec;
+  noCup.cupVolumeM3 = 0.0;
+  const auto bare = unwrap(makeTrumpet(noCup));
+  CHECK(bare.acousticCompliance == 0.0);
+  CHECK(trumpetMouthpieceImpedance(bare, bare.fundamentalHz).error() ==
+        QuantityError::RangeError);
+  const double half = 0.5 * trumpet.fundamentalHz;
+  const auto boreHalf = unwrap(trumpetBoreImpedance(trumpet, half));
+  const auto cupHalf = unwrap(trumpetMouthpieceImpedance(trumpet, half));
+  CHECK(boreHalf.real() == 0.0);
+  CHECK(cupHalf.real() == 0.0);
+  CHECK(cupHalf.imag() != boreHalf.imag());
+  const auto atRest = unwrap(trumpetMouthpieceImpedance(trumpet, 0.0));
+  CHECK(atRest.real() == 0.0);
+  CHECK(atRest.imag() == 0.0);
+
+  TrumpetSpec largerCup = spec;
+  largerCup.cupVolumeM3 = 2.0 * cup;
+  const auto doubledCup = unwrap(makeTrumpet(largerCup));
+  CHECK(nearlyEqual(doubledCup.acousticCompliance, 2.0 * compliance, 0.0,
+                    1e-12));
+  const auto doubledPole = unwrap(
+      trumpetMouthpieceImpedance(doubledCup, doubledCup.fundamentalHz));
+  CHECK(nearlyEqual(doubledPole.imag(), 0.5 * atPole.imag(), 0.0, 1e-9));
+  CHECK(doubledCup.fundamentalHz == trumpet.fundamentalHz);
+
+  const double overpressure = 1000.0;
+  const double displacement = lipArea * overpressure / stiffness;
+  CHECK(nearlyEqual(unwrap(trumpetLipEquilibrium(trumpet, overpressure)),
+                    displacement, 0.0, 1e-12));
+  const double grown = rest + width * displacement;
+  CHECK(grown < maximum);
+  CHECK(nearlyEqual(unwrap(trumpetLipOpening(trumpet, overpressure)), grown,
+                    0.0, 1e-12));
+  CHECK(unwrap(trumpetLipOpening(trumpet, 0.0)) == rest);
+  CHECK(unwrap(trumpetLipFlow(trumpet, 0.0)) == 0.0);
+  const double jet = std::sqrt(2.0 * overpressure / density);
+  CHECK(nearlyEqual(unwrap(trumpetLipFlow(trumpet, overpressure)), grown * jet,
+                    0.0, 1e-12));
+  CHECK(unwrap(trumpetLipFlow(trumpet, 2.0 * overpressure)) >
+        unwrap(trumpetLipFlow(trumpet, overpressure)));
+  const double saturated = 5000.0;
+  CHECK(unwrap(trumpetLipOpening(trumpet, saturated)) == maximum);
+  CHECK(nearlyEqual(unwrap(trumpetLipFlow(trumpet, saturated)),
+                    maximum * std::sqrt(2.0 * saturated / density), 0.0,
+                    1e-12));
+  CHECK(unwrap(trumpetLipFlow(trumpet, saturated)) >
+        unwrap(trumpetLipFlow(trumpet, 0.5 * saturated)));
+  // A clarinet lay is shut at its closure pressure. The lip is not.
+  CHECK(unwrap(reedVolumeFlow(clarinet.reed, clarinet.reed.closurePressurePa)) ==
+        0.0);
+  CHECK(unwrap(trumpetLipFlow(trumpet, saturated)) > 0.0);
+  CHECK(trumpetLipOpening(trumpet, -overpressure).error() ==
+        QuantityError::DomainError);
+  CHECK(nearlyEqual(unwrap(trumpetLipAcceleration(trumpet, displacement, 0.0,
+                                                  overpressure)),
+                    0.0, 1e-9, 0.0));
+  const double past = unwrap(trumpetLipAcceleration(
+      trumpet, 10.0 * displacement, 0.0, overpressure));
+  CHECK(nearlyEqual(past,
+                    (lipArea * overpressure - stiffness * 10.0 * displacement) /
+                        mass,
+                    0.0, 1e-9));
+
+  const double outgoing = 80.0;
+  const double delayed = 30.0;
+  const auto split = unwrap(trumpetWaveSplit(trumpet, outgoing, delayed));
+  CHECK(split.incomingPressurePa == -delayed);
+  CHECK(nearlyEqual(split.volumeFlowM3PerS,
+                    (outgoing + delayed) / trumpet.acousticImpedance, 0.0,
+                    1e-12));
+  const auto sample = unwrap(trumpetEmbouchure(
+      trumpet, overpressure, outgoing, delayed, displacement, 0.0));
+  CHECK(nearlyEqual(sample.lipOpeningAreaM2, grown, 0.0, 1e-12));
+  CHECK(nearlyEqual(sample.lipFlowM3PerS, grown * jet, 0.0, 1e-12));
+  CHECK(nearlyEqual(sample.boreFlowM3PerS, split.volumeFlowM3PerS, 0.0,
+                    1e-12));
+  CHECK(sample.lipFlowM3PerS != sample.boreFlowM3PerS);
+  CHECK(nearlyEqual(sample.equilibriumDisplacementMeters, displacement, 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(sample.lipAccelerationMetersPerSecondSquared, 0.0, 1e-9,
+                    0.0));
+  const auto resting = unwrap(
+      trumpetEmbouchure(trumpet, 0.0, outgoing, delayed, 0.0, 0.0));
+  CHECK(resting.lipOpeningAreaM2 == rest);
+  CHECK(resting.lipFlowM3PerS == 0.0);
+  CHECK(trumpetEmbouchure(trumpet, -overpressure, outgoing, delayed, 0.0, 0.0)
+            .error() == QuantityError::DomainError);
+
+  TrumpetSpec warm = spec;
+  warm.temperatureKelvin = temperature + 20.0;
+  const auto warmer = unwrap(makeTrumpet(warm));
+  CHECK(warmer.fundamentalHz > trumpet.fundamentalHz);
+  CHECK(nearlyEqual(warmer.acousticCompliance, trumpet.acousticCompliance, 0.0,
+                    1e-12));
+  TrumpetSpec denser = spec;
+  denser.airPressurePa = 2.0 * airPressure;
+  const auto higherPressure = unwrap(makeTrumpet(denser));
+  CHECK(higherPressure.fundamentalHz == trumpet.fundamentalHz);
+  CHECK(nearlyEqual(higherPressure.acousticCompliance, 0.5 * compliance, 0.0,
+                    1e-12));
+  const auto pressurePole = unwrap(trumpetMouthpieceImpedance(
+      higherPressure, higherPressure.fundamentalHz));
+  CHECK(nearlyEqual(pressurePole.imag(), 2.0 * atPole.imag(), 0.0, 1e-9));
+  CHECK(unwrap(trumpetLipFlow(higherPressure, overpressure)) <
+        unwrap(trumpetLipFlow(trumpet, overpressure)));
+
+  TrumpetSpec longer = spec;
+  longer.boreLengthMeters = 2.0 * length;
+  const auto doubledLength = unwrap(makeTrumpet(longer));
+  CHECK(nearlyEqual(doubledLength.fundamentalHz, 0.5 * trumpet.fundamentalHz,
+                    0.0, 1e-12));
+  CHECK(unwrap(trumpetLipFlow(doubledLength, overpressure)) ==
+        unwrap(trumpetLipFlow(trumpet, overpressure)));
+  TrumpetSpec wider = spec;
+  wider.boreCrossSectionM2 = 2.0 * area;
+  const auto doubledBore = unwrap(makeTrumpet(wider));
+  CHECK(nearlyEqual(doubledBore.acousticImpedance,
+                    0.5 * trumpet.acousticImpedance, 0.0, 1e-12));
+  CHECK(doubledBore.fundamentalHz == trumpet.fundamentalHz);
+
+  TrumpetSpec stiff = spec;
+  stiff.lipStiffnessNewtonsPerMeter = 2.0 * stiffness;
+  const auto stiffer = unwrap(makeTrumpet(stiff));
+  CHECK(nearlyEqual(stiffer.lipResonanceHz, std::sqrt(2.0) * trumpet.lipResonanceHz,
+                    0.0, 1e-12));
+  CHECK(nearlyEqual(unwrap(trumpetLipEquilibrium(stiffer, overpressure)),
+                    0.5 * displacement, 0.0, 1e-12));
+
+  TrumpetSpec zeroLength = spec;
+  zeroLength.boreLengthMeters = 0.0;
+  CHECK(makeTrumpet(zeroLength).error() == QuantityError::InvalidArgument);
+  TrumpetSpec negativeCup = spec;
+  negativeCup.cupVolumeM3 = -cup;
+  CHECK(makeTrumpet(negativeCup).error() == QuantityError::InvalidArgument);
+  TrumpetSpec capped = spec;
+  capped.maximumOpeningAreaM2 = 0.5 * rest;
+  CHECK(makeTrumpet(capped).error() == QuantityError::InvalidArgument);
+  TrumpetSpec negativeDamping = spec;
+  negativeDamping.lipDampingNewtonSecondsPerMeter = -0.01;
+  CHECK(makeTrumpet(negativeDamping).error() ==
+        QuantityError::InvalidArgument);
+  TrumpetSpec cold = spec;
+  cold.temperatureKelvin = 0.0;
+  CHECK(makeTrumpet(cold).error() == QuantityError::DomainError);
 }
 
 TEST_CASE("felt compliance and the first hammer images keep the hard cutoff",
