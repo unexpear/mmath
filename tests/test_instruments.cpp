@@ -18,8 +18,10 @@
 // one air state; length and the reed numbers stay arguments. A flute is
 // an open-open pipe and an embouchure jet; length, bore area, and the
 // jet numbers stay arguments. A trumpet is a lip-driven cylinder with a
-// mouthpiece cup; length and the lip and cup numbers stay arguments. The
-// hard hammer stays refused at the first reflection; the first-image sum
+// mouthpiece cup; length and the lip and cup numbers stay arguments. A
+// saxophone is that reed on a truncated cone; length, apex distance, and
+// throat area stay arguments. The hard hammer stays refused at the first
+// reflection; the first-image sum
 // continues until the second image, and felt compliance is K ξ^p.
 
 #include <catch2/catch_test_macros.hpp>
@@ -47,6 +49,7 @@
 #include <mmathen/instruments/clarinet.h>
 #include <mmathen/instruments/flute.h>
 #include <mmathen/instruments/trumpet.h>
+#include <mmathen/instruments/saxophone.h>
 #include <mmathen/instruments/reed.h>
 #include <mmathen/instruments/wound.h>
 #include <mmathen/physics/materials.h>
@@ -1939,6 +1942,223 @@ TEST_CASE("a trumpet is an outward lip on a cupped quarter-wave bore",
   TrumpetSpec cold = spec;
   cold.temperatureKelvin = 0.0;
   CHECK(makeTrumpet(cold).error() == QuantityError::DomainError);
+}
+
+TEST_CASE("a saxophone is an inward reed on a truncated cone",
+          "[instruments]") {
+  // Length, apex distance, throat area, and the reed numbers are
+  // arguments. They are not an alto, a tenor, or a mouthpiece catalog.
+  const double length = 0.6;
+  const double apex = 0.6;
+  const double area = 2.0e-4;
+  const double airPressure = 101325.0;
+  const double temperature = 293.15;
+  const double jet = 1.5e-5;
+  const double closure = 6.0e3;
+  const double mass = 2.0e-5;
+  const double tip = 1.0e-4;
+  const double closing = 1.0e-3;
+  const SaxophoneSpec spec{length, apex,  area, airPressure, temperature,
+                           jet,    closure, mass, tip,       closing,
+                           0.0};
+  const auto saxophone = unwrap(makeSaxophone(spec));
+  const double density =
+      unwrap(airDensity(PressurePascals{airPressure},
+                        TemperatureKelvin{temperature}))
+          .value();
+  const double speed =
+      unwrap(speedOfSound(Air{TemperatureKelvin{temperature}})).value();
+  CHECK(saxophone.lengthMeters == length);
+  CHECK(saxophone.apexDistanceMeters == apex);
+  CHECK(saxophone.throatAreaM2 == area);
+  CHECK(saxophone.bellAreaM2 == 4.0 * area);
+  CHECK(saxophone.airDensityKgPerM3 == density);
+  CHECK(saxophone.reed.airDensityKgPerM3 == density);
+  CHECK(saxophone.soundSpeedMetersPerSecond == speed);
+  CHECK(nearlyEqual(saxophone.propagationSeconds, length / speed, 0.0,
+                    1e-12));
+  CHECK(saxophone.source == kSaxophoneSource);
+  CHECK(saxophone.inertia.stiffnessNewtonsPerMeter ==
+        closure * tip / closing);
+
+  const double quarter = speed / (4.0 * length);
+  const double half = speed / (2.0 * length);
+  CHECK(saxophone.fundamentalHz > quarter);
+  CHECK(saxophone.fundamentalHz < half);
+  CHECK(nearlyEqual(
+      unwrap(saxophoneConeMode(saxophone, 1)).value(),
+      saxophone.fundamentalHz, 0.0, 1e-12));
+  const double second = unwrap(saxophoneConeMode(saxophone, 2)).value();
+  const double ratio = second / saxophone.fundamentalHz;
+  CHECK(ratio > 2.2);
+  CHECK(ratio < 2.8);
+  const double theta = constants::twoPi * saxophone.fundamentalHz * length /
+                       speed;
+  const double alpha = apex / length;
+  const double residual =
+      std::sin(theta) + alpha * theta * std::cos(theta);
+  CHECK(std::abs(residual) <= 1e-8 * (1.0 + alpha * theta));
+
+  const ClarinetSpec cylinder{length, area,   airPressure, temperature, jet,
+                              closure, mass,   tip,         closing,     0.0};
+  const auto clarinet = unwrap(makeClarinet(cylinder));
+  CHECK(clarinetCylinderMode(clarinet, 2).error() ==
+        QuantityError::DomainError);
+  CHECK(saxophone.fundamentalHz > clarinet.bore.fundamentalHz);
+  const FluteSpec pipe{length, area, airPressure, temperature,
+                       jet,    1.0e-3, 1.0e-2,    0.5};
+  const auto flute = unwrap(makeFlute(pipe));
+  CHECK(flutePipeMode(flute, 2).ok());
+  CHECK(saxophone.fundamentalHz < flute.fundamentalHz);
+
+  CHECK(saxophoneConeImpedance(saxophone, saxophone.fundamentalHz).error() ==
+        QuantityError::RangeError);
+  CHECK(saxophoneConeImpedance(saxophone, second).error() ==
+        QuantityError::RangeError);
+  const auto atRest = unwrap(saxophoneConeImpedance(saxophone, 0.0));
+  CHECK(atRest.real() == 0.0);
+  CHECK(atRest.imag() == 0.0);
+  const auto below =
+      unwrap(saxophoneConeImpedance(saxophone, 0.5 * saxophone.fundamentalHz));
+  CHECK(below.real() == 0.0);
+  CHECK(below.imag() > 0.0);
+  const auto atHalf = unwrap(saxophoneConeImpedance(saxophone, half));
+  CHECK(atHalf.real() == 0.0);
+  CHECK(nearlyEqual(atHalf.imag(), 0.0, 1e-8 * saxophone.acousticImpedance,
+                    0.0));
+  const double waveNumber = constants::pi / (2.0 * length);
+  const auto atQuarter = unwrap(saxophoneConeImpedance(saxophone, quarter));
+  CHECK(nearlyEqual(atQuarter.imag(),
+                    saxophone.acousticImpedance * waveNumber * apex, 0.0,
+                    1e-12));
+
+  const double third = closure / 3.0;
+  CHECK(nearlyEqual(unwrap(reedVolumeFlow(saxophone.reed, third)),
+                    saxophone.reed.maximumFlowM3PerS, 0.0, 1e-12));
+  CHECK(unwrap(reedVolumeFlow(saxophone.reed, closure)) == 0.0);
+  CHECK(unwrap(reedVolumeFlow(saxophone.reed, 2.0 * closure)) == 0.0);
+  const auto playing =
+      unwrap(saxophoneEmbouchure(saxophone, third, closing / 3.0, 0.0));
+  CHECK(nearlyEqual(playing.reedFlowM3PerS, saxophone.reed.maximumFlowM3PerS,
+                    0.0, 1e-12));
+  CHECK(nearlyEqual(playing.equilibriumDisplacementMeters, closing / 3.0,
+                    0.0, 1e-12));
+  CHECK(nearlyEqual(playing.tipAccelerationMetersPerSecondSquared, 0.0, 1e-9,
+                    0.0));
+  CHECK(saxophoneEmbouchure(saxophone, -1.0, 0.0, 0.0).error() ==
+        QuantityError::DomainError);
+  const TrumpetSpec lip{length, area,      airPressure, temperature,
+                        2.0e-6, 1.0e-5,    1.5e-5,      1.0e-2,
+                        mass,   500.0,     tip,         0.0};
+  const auto trumpet = unwrap(makeTrumpet(lip));
+  CHECK(unwrap(trumpetLipFlow(trumpet, closure)) > 0.0);
+
+  SaxophoneSpec nearComplete = spec;
+  nearComplete.apexDistanceMeters = 0.01 * length;
+  const auto nearOpen = unwrap(makeSaxophone(nearComplete));
+  CHECK(nearlyEqual(nearOpen.fundamentalHz,
+                    speed / (2.0 * (length + nearComplete.apexDistanceMeters)),
+                    0.0, 1e-4));
+  const double nearRatio =
+      unwrap(saxophoneConeMode(nearOpen, 2)).value() / nearOpen.fundamentalHz;
+  CHECK(nearlyEqual(nearRatio, 2.0, 0.0, 1e-3));
+
+  SaxophoneSpec nearCylinder = spec;
+  nearCylinder.apexDistanceMeters = 1000.0 * length;
+  const auto nearClosed = unwrap(makeSaxophone(nearCylinder));
+  CHECK(nearClosed.fundamentalHz > quarter);
+  CHECK(nearlyEqual(nearClosed.fundamentalHz, quarter, 0.0, 1e-3));
+  const double closedRatio = unwrap(saxophoneConeMode(nearClosed, 2)).value() /
+                             nearClosed.fundamentalHz;
+  CHECK(closedRatio < 3.0);
+  CHECK(nearlyEqual(closedRatio, 3.0, 0.0, 2e-3));
+  const double probe = speed / (12.0 * length);
+  const auto coneReactance =
+      unwrap(saxophoneConeImpedance(nearClosed, probe));
+  CHECK(nearlyEqual(coneReactance.imag(),
+                    nearClosed.acousticImpedance * std::tan(constants::pi / 6.0),
+                    0.0, 2e-3));
+  const double flare =
+      nearClosed.bellAreaM2 / nearClosed.throatAreaM2 - 1.0;
+  CHECK(flare > 0.0);
+  CHECK(nearlyEqual(flare,
+                    2.0 * length / nearCylinder.apexDistanceMeters, 0.0,
+                    1e-3));
+
+  SaxophoneSpec longer = spec;
+  longer.boreLengthMeters = 2.0 * length;
+  const auto doubledLength = unwrap(makeSaxophone(longer));
+  CHECK(std::abs(doubledLength.fundamentalHz - 0.5 * saxophone.fundamentalHz) /
+            saxophone.fundamentalHz >
+        0.01);
+  SaxophoneSpec similar = spec;
+  similar.boreLengthMeters = 2.0 * length;
+  similar.apexDistanceMeters = 2.0 * apex;
+  const auto scaled = unwrap(makeSaxophone(similar));
+  CHECK(nearlyEqual(scaled.fundamentalHz, 0.5 * saxophone.fundamentalHz, 0.0,
+                    1e-12));
+  CHECK(unwrap(reedVolumeFlow(scaled.reed, third)) ==
+        unwrap(reedVolumeFlow(saxophone.reed, third)));
+
+  SaxophoneSpec wider = spec;
+  wider.throatAreaM2 = 2.0 * area;
+  const auto doubledThroat = unwrap(makeSaxophone(wider));
+  CHECK(nearlyEqual(doubledThroat.acousticImpedance,
+                    0.5 * saxophone.acousticImpedance, 0.0, 1e-12));
+  CHECK(doubledThroat.fundamentalHz == saxophone.fundamentalHz);
+  CHECK(doubledThroat.bellAreaM2 == 2.0 * saxophone.bellAreaM2);
+
+  SaxophoneSpec denser = spec;
+  denser.airPressurePa = 2.0 * airPressure;
+  const auto doubledPressure = unwrap(makeSaxophone(denser));
+  CHECK(doubledPressure.fundamentalHz == saxophone.fundamentalHz);
+  CHECK(nearlyEqual(doubledPressure.airDensityKgPerM3,
+                    2.0 * saxophone.airDensityKgPerM3, 0.0, 1e-12));
+  CHECK(nearlyEqual(doubledPressure.acousticImpedance,
+                    2.0 * saxophone.acousticImpedance, 0.0, 1e-12));
+  CHECK(nearlyEqual(doubledPressure.reed.maximumFlowM3PerS,
+                    saxophone.reed.maximumFlowM3PerS / std::sqrt(2.0), 0.0,
+                    1e-12));
+
+  SaxophoneSpec warmer = spec;
+  warmer.temperatureKelvin = 313.15;
+  const auto warmerAir = unwrap(makeSaxophone(warmer));
+  CHECK(warmerAir.fundamentalHz > saxophone.fundamentalHz);
+  CHECK(warmerAir.reed.maximumFlowM3PerS > saxophone.reed.maximumFlowM3PerS);
+  CHECK(warmerAir.reed.airDensityKgPerM3 == warmerAir.airDensityKgPerM3);
+  CHECK(warmerAir.airDensityKgPerM3 < saxophone.airDensityKgPerM3);
+
+  SaxophoneSpec widerReed = spec;
+  widerReed.tipAreaM2 = 2.0 * tip;
+  const auto widerTip = unwrap(makeSaxophone(widerReed));
+  CHECK(nearlyEqual(widerTip.inertia.stiffnessNewtonsPerMeter,
+                    2.0 * saxophone.inertia.stiffnessNewtonsPerMeter, 0.0,
+                    1e-12));
+  CHECK(nearlyEqual(widerTip.inertia.resonanceHz,
+                    std::sqrt(2.0) * saxophone.inertia.resonanceHz, 0.0,
+                    1e-12));
+  CHECK(widerTip.fundamentalHz == saxophone.fundamentalHz);
+
+  SaxophoneSpec zeroLength = spec;
+  zeroLength.boreLengthMeters = 0.0;
+  CHECK(makeSaxophone(zeroLength).error() == QuantityError::InvalidArgument);
+  SaxophoneSpec zeroApex = spec;
+  zeroApex.apexDistanceMeters = 0.0;
+  CHECK(makeSaxophone(zeroApex).error() == QuantityError::InvalidArgument);
+  SaxophoneSpec negativeArea = spec;
+  negativeArea.throatAreaM2 = -area;
+  CHECK(makeSaxophone(negativeArea).error() == QuantityError::InvalidArgument);
+  SaxophoneSpec negativeDamping = spec;
+  negativeDamping.dampingNewtonSecondsPerMeter = -0.01;
+  CHECK(makeSaxophone(negativeDamping).error() ==
+        QuantityError::InvalidArgument);
+  SaxophoneSpec cold = spec;
+  cold.temperatureKelvin = 0.0;
+  CHECK(makeSaxophone(cold).error() == QuantityError::DomainError);
+  CHECK(saxophoneConeMode(saxophone, 0).error() ==
+        QuantityError::InvalidArgument);
+  CHECK(saxophoneConeImpedance(saxophone, -1.0).error() ==
+        QuantityError::InvalidArgument);
 }
 
 TEST_CASE("felt compliance and the first hammer images keep the hard cutoff",

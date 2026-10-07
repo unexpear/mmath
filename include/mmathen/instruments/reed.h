@@ -34,7 +34,9 @@
 // airDensity. Poles of those impedances are RangeError. The caller
 // supplies the outgoing pressure and the outgoing pressure from one
 // round trip earlier; there is no stored time step. clarinet.h wires an
-// open bore to this characteristic. This header stores no length.
+// open bore to this characteristic. saxophone.h uses the same
+// characteristic on a truncated cone and does not use this cylinder.
+// This header stores no length.
 //
 // Reed inertia is also separate. Mass, tip area, closing displacement,
 // and damping are arguments. Damping may be zero; it has no hidden

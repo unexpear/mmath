@@ -1,4 +1,4 @@
-# Instruments — bowed strings, harp, harpsichord, guitars, piano, drums, cymbals, clarinet, flute, trumpet
+# Instruments — bowed strings, harp, harpsichord, guitars, piano, drums, cymbals, clarinet, flute, trumpet, saxophone
 
 Status: assembly layer for four bowed strings, a concert pedal harp, a
 French double harpsichord, a six-string classical guitar, a six-string
@@ -7,14 +7,15 @@ a sum of driving-point body modes driven by that bow's bridge force, a cavity He
 the first fixed-end images of that hammer, a felt contact law, a
 quasi-static single reed, a cylindrical bore, reed inertia, a clarinet
 cylinder on that open bore, an open-open flute driven by an embouchure
-jet, and a lip-driven trumpet with a mouthpiece cup. A
+jet, a lip-driven trumpet with a mouthpiece cup, and a single-reed
+truncated cone. A
 fingered stop shortens one open course. A Yamaha Tour Custom kit and a
 SABIAN XSR cymbal set add fixed circular membranes and free circular
 plates. Verified against the ideal-string
 law, Guettler's tables, the harp, harpsichord, classical-guitar,
 electric-guitar, and Table III piano measurements named below, the Helmholtz/Schelleng identities, the rigid-end stick-slip step, the wound-string inharmonicity, the driving-point modal sum, the cavity Helmholtz frequency, the mutual-stiffness split, the compact-monopole pressure,
 the hard-hammer contact law, the first-image sum, the felt power law, the
-reed flow law, the open-cylinder clarinet, the open-pipe flute and its embouchure jet, the lip-driven trumpet, the circular-membrane Bessel frequencies, and the free-plate
+reed flow law, the open-cylinder clarinet, the open-pipe flute and its embouchure jet, the lip-driven trumpet, the truncated-cone saxophone, the circular-membrane Bessel frequencies, and the free-plate
 frequency law. Unvalidated as radiated sound: the body-mode sum is
 open-loop, and there is no measured bridge admittance and no far-field
 pressure. The bore is an ideal cylinder with the caller's length and
@@ -23,7 +24,9 @@ reed and its inertia; tone holes, a bell, and a register key are absent.
 The flute is an open-open pipe, fundamental \(c/(2L)\), driven by a
 Bernoulli jet. It is not that clarinet. The trumpet is the quarter-wave
 cylinder with a mouthpiece cup in parallel and an outward-striking lip.
-The harp and the harpsichord are
+The saxophone uses the clarinet's inward reed on a truncated cone, so
+its impedance poles are neither the quarter-wave series nor \(nc/(2L)\)
+except in those limits of the apex distance. The harp and the harpsichord are
 not sounded through a soundboard model. The classical guitar is six
 ideal strings on the published scale; it has no soundboard either. The
 electric guitar is the 25.5 in chart scale, not that classical body.
@@ -52,6 +55,7 @@ interval.
 | `instruments/clarinet.h` | Open-cylinder clarinet: the characteristic, the bore, and reed inertia on one air state. Length, area, and the reed parameters are arguments |
 | `instruments/flute.h` | Open-open flute and an embouchure jet. Length, bore area, jet area, thickness, flue-to-edge distance, and the convection ratio are arguments |
 | `instruments/trumpet.h` | Lip-driven cylinder and a mouthpiece cup. Length, bore area, cup volume, and the lip parameters are arguments |
+| `instruments/saxophone.h` | Inward reed on a truncated cone. Length, apex distance, throat area, and the reed parameters are arguments |
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
 | `instruments/harpsichord.h` | Goermans/Taskin 1764/1783–4 French double: 2×8′ + 4′, compass F1–F6 |
 | `instruments/guitar.h` | Classical guitar E2 A2 D3 G3 B3 E4, scale 650 mm, body 490 mm. Density and tension are arguments |
@@ -487,6 +491,20 @@ not a violin with the labels rewritten.
   is the caller's embouchure stiffness. The lip flow and the bore flow
   are reported separately. A negative overpressure, a maximum opening
   below the rest opening, and a zero length are refused.
+- A saxophone of the same length and air keeps that inward reed and
+  replaces the cylinder with a truncated cone. The throat impedance is
+  \(j Z_c (k x_0 \sin(kL))/(\sin(kL)+k x_0 \cos(kL))\). Its poles solve
+  \(\tan(kL)=-k x_0\), so the fundamental lies strictly between
+  \(c/(4L)\) and \(c/(2L)\). With the apex equal to the length the
+  second partial is neither twice nor three times the first. A small
+  apex approaches \(c/(2(L+x_0))\) and a harmonic ratio of 2. A large
+  apex approaches the clarinet quarter-waves and a ratio of 3, and the
+  reactance approaches \(j Z_c\tan(kL)\). The bell area is
+  \(S((x_0+L)/x_0)^2\). At \(c/(4L)\) the cone impedance is finite.
+  Doubling the length without the apex does not halve the fundamental;
+  doubling both does. The reed flow peaks at \(P_M/3\) and is zero at
+  closure, where an outward lip of the same air is still open. A zero
+  apex, a zero length, and a negative pressure difference are refused.
 
 ## Bow
 
@@ -849,6 +867,53 @@ flow, and the equilibrium. The acceleration stays the linear spring past
 Not in this model: a bell flare, valves, a crook, and a stored
 mouthpiece or sounding length.
 
+## Saxophone
+
+`saxophone.h` is Dalmont's inward reed on a truncated cone. It includes
+`reed.h` and does not include `clarinet.h`. The characteristic and the
+inertia are the clarinet's: area \(S_0(1-\Delta P/P_M)\), flow
+\(S\sqrt{2\Delta P/\rho}\), peak at \(P_M/3\), and stiffness
+\(P_M A_{\mathrm{tip}}/y_{\mathrm{close}}\). The bore is not that
+cylinder.
+
+The throat is a distance \(x_0\) from the virtual apex and the open end
+is a length \(L\) further on. A spherical standing wave that vanishes at
+the open end has throat impedance
+
+\[
+Z=j Z_c\frac{k x_0\sin(kL)}{\sin(kL)+k x_0\cos(kL)},
+\]
+
+with \(Z_c=\rho c/S_{\mathrm{throat}}\). Poles are the positive roots of
+\(\tan(kL)=-k x_0\), one in each interval \(((n-1/2)\pi,\, n\pi)\). An
+even index is a resonance. A clarinet of the same length refuses it.
+As \(x_0/L\) grows, those roots approach the odd quarter-waves
+\((2n-1)c/(4L)\) and \(Z\) approaches \(j Z_c\tan(kL)\). As \(x_0/L\)
+shrinks, they approach \(nc/(2L)\), the complete-cone series, which has
+the same pitches as an open pipe of length \(L\). A moderate truncation
+is inharmonic. The first root sits strictly between \(c/(4L)\) and
+\(c/(2L)\). At \(c/(2L)\) this impedance is zero for any \(x_0>0\). At
+\(c/(4L)\) it is finite, \(j Z_c k x_0\), where the clarinet bore is a
+pole.
+
+The bell area of the straight cone is
+\(S_{\mathrm{throat}}((x_0+L)/x_0)^2\). It is fixed by \(L\) and \(x_0\).
+The open end is an ideal pressure release. No radiation impedance and
+no end correction are added. \(L/c\) is the travel time of the spherical
+wave along the physical cone. It is not stored as a resonance period,
+because a truncated cone is not a constant-delay cylinder. The caller
+passes \(\Delta P\) into the reed. The reed flow and the cone impedance
+are reported separately and are not solved into a note.
+
+Length, apex distance, throat area, and the reed parameters are
+arguments. No alto or tenor length is stored. A mouthpiece cavity that
+has already been absorbed into an effective apex distance is that
+argument; this layer does not add a second volume. \(x_0=0\) is the
+apex, where the throat area would be zero, and it is `InvalidArgument`.
+
+Not in this model: a tone-hole lattice, a separate mouthpiece volume, a
+radiation load, and an end correction.
+
 ## Hammer
 
 `hammer.h` is the hard narrow hammer of Smith, *Physical Audio Signal
@@ -999,7 +1064,9 @@ Images after the first from each hammer end are not in this layer. A
 viscous reed channel, clarinet tone holes, a bell correction, and a
 register key are not in this layer. A flute end correction, tone holes,
 embouchure-hole radiation, and the spatial growth of the jet are not in
-this layer. A trumpet bell flare and valves are not in this layer. The
+this layer. A trumpet bell flare and valves are not in this layer. A
+saxophone tone-hole lattice, a separate mouthpiece volume, a radiation
+load, and an end correction are not in this layer. The
 stick-slip capture still uses rigid ends. Snare wires, shell air, a bass-drum port, and a hi-hat clutch
 gap are not in the drum kit. A double-slip wolf cycle is not stepped. A
 classical-guitar soundboard and a fret table are not in this layer. An
