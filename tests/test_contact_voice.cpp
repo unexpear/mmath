@@ -186,7 +186,7 @@ TEST_CASE("a constant-force oscillator steps its own decay", "[contact]") {
 
 TEST_CASE("bow, hammer, and mallet still leave the audible bar unmet", "[contact]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 9);
+  CHECK(instrumentsThatRenderAudio() == 11);
   CHECK(std::strstr(statusNamed("violin")->resonator, "waveguide") != nullptr);
   CHECK(std::strstr(statusNamed("violin")->excitation, "bow") != nullptr);
   CHECK_FALSE(statusNamed("piano")->rendersAudio);
@@ -195,7 +195,9 @@ TEST_CASE("bow, hammer, and mallet still leave the audible bar unmet", "[contact
   CHECK(statusNamed("clarinet")->rendersAudio);
   CHECK(statusNamed("flute")->rendersAudio);
   CHECK(statusNamed("saxophone")->rendersAudio);
-  CHECK_FALSE(statusNamed("trumpet")->rendersAudio);
+  CHECK(statusNamed("trumpet")->rendersAudio);
+  CHECK(std::strstr(statusNamed("trumpet")->gap, "flare") != nullptr);
+  CHECK(statusNamed("trombone")->rendersAudio);
   CHECK(std::strstr(statusNamed("saxophone")->resonator, "cone") != nullptr);
   CHECK(std::strstr(statusNamed("bass drum")->gap, "port") != nullptr);
   CHECK_FALSE(statusNamed("splash")->rendersAudio);
@@ -619,4 +621,59 @@ TEST_CASE("a reed on a truncated cone is not a cylinder", "[contact]") {
   const double slideHeard = pitchNear(slideSamples, 20000, 80.0, 260.0);
   CHECK(slideHeard < lipHeard);
   writeListening(slideSamples, "/opt/cursor/artifacts/mmath-trombone-cone.wav");
+}
+
+TEST_CASE("a positive cup compliance lowers the brass ring", "[contact]") {
+  const double lipMass = 2.0e-5;
+  const double speed =
+      unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  const double lipOmega = 2.0 * constants::pi * (speed / (4.0 * 0.45));
+  auto brass = [&](double cupVolume) {
+    TrumpetSpec spec{0.45, 1.2e-4, kAir, kTemp, cupVolume, 8.0e-6, 4.0e-5, 8.0e-3,
+                     lipMass, lipOmega * lipOmega * lipMass, 1.5e-5, 0.002};
+    return unwrap(makeTrumpet(spec));
+  };
+  const ValveBlow lipBlow{2500.0, 16000, 1.0, 0.0, 0.03, 0.01};
+  auto bare = unwrap(ConeValveVoice::fromTrumpet(brass(0.0), 0.2, lipBlow, kRate));
+  auto small = unwrap(ConeValveVoice::fromTrumpet(brass(2.0e-6), 0.2, lipBlow, kRate));
+  auto large = unwrap(ConeValveVoice::fromTrumpet(brass(8.0e-6), 0.2, lipBlow, kRate));
+  const auto bareSamples = renderOf(bare, 48000);
+  const auto smallSamples = renderOf(small, 48000);
+  const auto largeSamples = renderOf(large, 48000);
+  const double barePitch = pitchNear(bareSamples, 20000, 200.0, 340.0);
+  const double smallPitch = pitchNear(smallSamples, 20000, 200.0, 340.0);
+  const double largePitch = pitchNear(largeSamples, 20000, 180.0, 340.0);
+  CHECK(smallPitch < barePitch - 2.0);
+  CHECK(largePitch < smallPitch - 5.0);
+  CHECK(std::fabs(smallPitch - pitchNear(smallSamples, 28000, 200.0, 340.0)) < 1.0);
+  CHECK(peakOf(smallSamples, 18000, 28000) > 50.0);
+  const double early = amplitudeNear(smallSamples, 20000, 200.0, 340.0);
+  const double middle = amplitudeNear(smallSamples, 28000, 200.0, 340.0);
+  const double late = amplitudeNear(smallSamples, 36000, 200.0, 340.0);
+  const double ratio1 = middle / early;
+  const double ratio2 = late / middle;
+  CHECK(ratio1 < 0.9);
+  CHECK(std::fabs(ratio1 - ratio2) / ratio1 < 0.08);
+  writeListening(smallSamples, "/opt/cursor/artifacts/mmath-trumpet-cup.wav");
+
+  Trumpet negative = brass(0.0);
+  negative.acousticCompliance = -1.0e-12;
+  CHECK(ConeValveVoice::fromTrumpet(negative, 0.2, lipBlow, kRate).error() ==
+        QuantityError::InvalidArgument);
+
+  auto slide = [&](double cupVolume) {
+    TromboneSpec spec{0.45, 0.15, 1.2e-4, kAir, kTemp, cupVolume, 8.0e-6, 4.0e-5,
+                      8.0e-3, lipMass, lipOmega * lipOmega * lipMass, 1.5e-5, 0.002};
+    return unwrap(ConeValveVoice::fromTrombone(unwrap(makeTrombone(spec)), 0.2, lipBlow,
+                                              kRate));
+  };
+  auto slideBare = slide(0.0);
+  auto slideCup = slide(8.0e-6);
+  const auto slideBareSamples = renderOf(slideBare, 48000);
+  const auto slideCupSamples = renderOf(slideCup, 48000);
+  const double slideBarePitch = pitchNear(slideBareSamples, 20000, 80.0, 260.0);
+  const double slideCupPitch = pitchNear(slideCupSamples, 20000, 80.0, 260.0);
+  CHECK(slideCupPitch < slideBarePitch - 2.0);
+  CHECK(peakOf(slideCupSamples, 18000, 28000) > 20.0);
+  writeListening(slideCupSamples, "/opt/cursor/artifacts/mmath-trombone-cup.wav");
 }

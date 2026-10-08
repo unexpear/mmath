@@ -195,7 +195,7 @@ StringCourse electricCourse() {
 
 TEST_CASE("three plucked soundboards meet the audible bar", "[pluck]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 9);
+  CHECK(instrumentsThatRenderAudio() == 11);
   const char* rigidBridge[] = {"violin", "viola", "cello", "double bass",
                                "electric guitar"};
   for (const char* name : rigidBridge) {

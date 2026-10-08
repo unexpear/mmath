@@ -8,12 +8,14 @@
 // rendersAudio is that bar. render/voice.h pulls any IVoice into a
 // WavSink. Plucked courses, a bowed course, a felt hammer, a mallet,
 // and a bore valve each step. Clarinet, flute, and saxophone step
-// excitation, bore, and bell radiation in one voice. Harp,
-// harpsichord, and classical guitar step a pluck, a lossy waveguide,
-// a yielding modal soundboard, and a compact monopole in one voice.
-// The three toms step a mallet, both heads, a closed cavity, and a
-// monopole. The bow, the felt hammer, the brass cup, the bass-drum
-// port, and snare wires stay outside, so those rows stay false.
+// excitation, bore, and bell radiation in one voice. Trumpet and
+// trombone step the lip, the cup compliance, the cone, and the open
+// end in one voice. Harp, harpsichord, and classical guitar step a
+// pluck, a lossy waveguide, a yielding modal soundboard, and a
+// compact monopole in one voice. The three toms step a mallet, both
+// heads, a closed cavity, and a monopole. The bow, the felt hammer,
+// the bass-drum port, and snare wires stay outside, so those rows
+// stay false.
 //
 // The strings are the status, not stored physical constants.
 
@@ -91,14 +93,14 @@ inline constexpr InstrumentRenderStatus kInstrumentRenderStatus[] = {
      "open-open cylindrical delay", "none",
      "Levine-Schwinger open end at the far end; the embouchure stays an ideal release",
      true, "Tone holes are outside this bore."},
-    {"trumpet", "outward lip steps a cone",
-     "truncated cone of the trumpet length; the cup is not stepped", "none",
-     "Levine-Schwinger open end on the cone", false,
-     "The lip, cone, and open end step. The cup is absent."},
-    {"trombone", "outward lip steps the slide length on a cone",
-     "truncated cone at L = L0 + 2x; the cup is not stepped", "none",
-     "Levine-Schwinger open end on the cone", false,
-     "The lip, slide cone, and open end step. The cup is absent."},
+    {"trumpet", "outward lip steps a cone with the cup",
+     "truncated cone; cup compliance C dp/dt = U_lip - U_bore", "none",
+     "Levine-Schwinger open end on the cone", true,
+     "Valves and a non-conical bell flare are outside this cone."},
+    {"trombone", "outward lip steps the slide length on a cone with the cup",
+     "truncated cone at L = L0 + 2x; cup compliance is stepped", "none",
+     "Levine-Schwinger open end on the cone", true,
+     "An F attachment and a non-conical flare are outside this slide."},
     {"saxophone", "inward reed steps the spherical-wave cone",
      "truncated-cone delay; the cylinder is not this stepper",
      "none", "Levine-Schwinger open end; bell radius is an argument", true,

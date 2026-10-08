@@ -76,12 +76,16 @@ that cone. `SoundboardVoice` closes one plucked course on a bank of
 body modes: the bridge force \(Z(v_+-v_-)\) drives each mode, the
 bridge velocity is their sum, and that displacement replaces the rigid
 reflection. The sample is the compact monopole
-\(\rho A a(t-r/c)/(4\pi r)\). Clarinet, flute, saxophone, harp,
-harpsichord, and classical guitar render audio. `CavityDrumVoice`
+\(\rho A a(t-r/c)/(4\pi r)\). Clarinet, flute, saxophone, trumpet,
+trombone, harp, harpsichord, and classical guitar render audio.
+`ConeValveVoice` steps a positive cup compliance in parallel with the
+throat, \(C\,dp/dt = U_{\mathrm{lip}}-U_{\mathrm{bore}}\), with
+\(C=V/(\rho c^{2})\) from the trumpet. A zero cup leaves that junction
+unchanged. `CavityDrumVoice`
 diagonalizes the closed-shell compliance \(p=\rho c^{2}\Delta V/V\) on
 the membrane modes and radiates the batter's outward volume
 acceleration. The three toms render audio. The bow, the felt hammer,
-the brass cup, the bass-drum port, and snare wires are not in those
+the bass-drum port, and snare wires are not in those
 steppers.
 
 | Instrument | Excitation | Resonator | Body | Radiation | Renders audio | Remaining gap |
@@ -97,8 +101,8 @@ steppers.
 | Piano | Felt hammer steps a stiff string | Modal stiff string, loss and strike are arguments | No soundboard | None | no | The felt hammer steps a stiff string. Soundboard and radiation are absent |
 | Clarinet | Inward reed steps a bore delay | Cylindrical delay; an open end replaces the constant magnitude | None | Levine-Schwinger open end; radius and end correction are arguments | yes | Tone holes and a register key are outside this bore |
 | Flute | Jet steps an open embouchure | Open-open cylindrical delay | None | Levine-Schwinger open end at the far end; the embouchure stays an ideal release | yes | Tone holes are outside this bore |
-| Trumpet | Outward lip steps a cone | Truncated cone of the trumpet length; the cup is not stepped | None | Levine-Schwinger open end on the cone | no | The lip, cone, and open end step. The cup is absent |
-| Trombone | Outward lip steps the slide length on a cone | Truncated cone at L = L0 + 2x; the cup is not stepped | None | Levine-Schwinger open end on the cone | no | The lip, slide cone, and open end step. The cup is absent |
+| Trumpet | Outward lip steps a cone with the cup | Truncated cone; cup compliance \(C\,dp/dt = U_{\mathrm{lip}}-U_{\mathrm{bore}}\) | None | Levine-Schwinger open end on the cone | yes | Valves and a non-conical bell flare are outside this cone |
+| Trombone | Outward lip steps the slide length on a cone with the cup | Truncated cone at \(L = L_0 + 2x\); cup compliance is stepped | None | Levine-Schwinger open end on the cone | yes | An F attachment and a non-conical flare are outside this slide |
 | Saxophone | Inward reed steps the spherical-wave cone | Truncated-cone delay; the cylinder is not this stepper | None | Levine-Schwinger open end; bell radius is an argument | yes | Tone holes are outside this cone |
 | Bass drum | Felt mallet steps the batter head | Damped membrane modes; a port is not opened | Closed cavity, not a ported shell | Monopole of the batter volume acceleration | no | Two heads and a closed cavity radiate. The port is absent |
 | Rack tom 10 in | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | Head tension and Q are arguments. No port is in this shell |
@@ -141,7 +145,9 @@ way. The cavity-drum test writes
 `/opt/cursor/artifacts/mmath-rack-tom-12-cavity.wav`,
 `/opt/cursor/artifacts/mmath-floor-tom-cavity.wav`,
 `/opt/cursor/artifacts/mmath-snare-55-cavity.wav`, and
-`/opt/cursor/artifacts/mmath-snare-65-cavity.wav`.
+`/opt/cursor/artifacts/mmath-snare-65-cavity.wav`. The cup test writes
+`/opt/cursor/artifacts/mmath-trumpet-cup.wav` and
+`/opt/cursor/artifacts/mmath-trombone-cup.wav`.
 
 ## Defaults
 
@@ -171,11 +177,11 @@ interval.
 | `instruments/flute.h` | Open-open flute and an embouchure jet. Length, bore area, jet area, thickness, flue-to-edge distance, and the convection ratio are arguments |
 | `instruments/trumpet.h` | Lip-driven cylinder and a mouthpiece cup. Length, bore area, cup volume, and the lip parameters are arguments |
 | `instruments/trombone.h` | That lip and cup on a U-slide. Closed length and handslide travel are arguments. The air column is \(L_0+2x\) |
-| `instruments/render_status.h` | Per-instrument audible-physics bar. Clarinet, flute, saxophone, harp, harpsichord, classical guitar, and the three toms render audio; the other seventeen do not |
+| `instruments/render_status.h` | Per-instrument audible-physics bar. Clarinet, flute, saxophone, trumpet, trombone, harp, harpsichord, classical guitar, and the three toms render audio; the other fifteen do not |
 | `instruments/cavity_drum.h` | Mallet, one or two heads, closed-cavity compliance, and a monopole. Shell depth is the volume. A port and snare wires are not stored |
 | `instruments/soundboard_voice.h` | Plucked course on a yielding modal soundboard. Bridge force drives the modes; their velocity is the end displacement. The sample is \(\rho A a(t-r/c)/(4\pi r)\). Frequency, Q, mass, area, and distance are arguments |
 | `physics/radiation.h` | Unflanged open-end load \((1/4)(ka)^2+jk\Delta\) and its delay-plus-curvature stepper. Radius and end correction are arguments |
-| `instruments/cone_valve.h` | Reed or lip on the spherical-wave cone, optional open end. Apex, bell radius, and end correction are arguments. The cup is not stepped |
+| `instruments/cone_valve.h` | Reed or lip on the spherical-wave cone, optional open end, and a positive cup compliance on the lip. Apex, bell radius, end correction, and cup volume are arguments. A zero cup leaves the junction unchanged |
 | `instruments/plucked_string.h` | One course as a lossy tuned-waveguide voice, or the same pluck on `Fdtd1D`. Listen fraction and `CoilVelocity` are arguments. No stored T60, stiffness, or pickup location |
 | `instruments/bowed_string.h` | Stick-slip junction on the tuned loop. The bow-down duration is an argument. After the lift the ring is `loopPole`. No soundboard |
 | `instruments/struck_string.h` | Felt hammer against hinged stiff-string modes. Hunt–Crossley \(F=K\xi^{p}(1+\lambda\xi')\). \(K\), \(p\), \(\lambda\), and the mode count are arguments |
@@ -1237,7 +1243,8 @@ write samples. Clarinet, flute, and saxophone close excitation, bore,
 and bell radiation. Harp, harpsichord, and classical guitar close a
 pluck, a waveguide, a modal soundboard, and monopole radiation. The
 three toms close a mallet, both heads, a closed cavity, and monopole
-radiation. The bow, the felt hammer, the brass cup, the bass-drum
+radiation. Trumpet and trombone close the lip, the cup, the cone, and
+the open end. The bow, the felt hammer, the bass-drum
 port, and snare wires are still outside those steppers.
 Cymbal nonlinearity is not discretized: no cubic coefficient is stored.
 Images after the first from each hammer end are not in this layer. A

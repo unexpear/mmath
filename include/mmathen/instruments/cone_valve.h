@@ -18,7 +18,10 @@
 // with OpenEndReflection. The bell radius and the end correction are
 // arguments. The geometric bell area is not used as that radius. A
 // non-conical Bessel exponent is not discretized, and no bell curve
-// is stored. The mouthpiece cup is not in this junction.
+// is stored. A positive cup compliance on the lip path is the lumped
+// volume in parallel with the throat: C dp/dt = U_lip − U_bore, with
+// C = V/(ρ c²) taken from the trumpet. A zero cup leaves the junction
+// unchanged. Cup volume is an argument.
 
 #include <algorithm>
 #include <cmath>
@@ -51,7 +54,7 @@ class ConeValveVoice final : public IVoice {
 
   // The lip on a cone of the trumpet's length. Apex distance, bell
   // radius, and end correction are the blow's arguments: apex is not
-  // stored on the trumpet. The cup is not read.
+  // stored on the trumpet. A positive cup compliance is stepped.
   [[nodiscard]] static Result<ConeValveVoice, QuantityError> fromTrombone(
       const Trombone& trombone, double apexDistanceMeters, const ValveBlow& blow,
       SampleRateHz rate) {
@@ -108,7 +111,8 @@ class ConeValveVoice final : public IVoice {
         opening = area.value();
       }
       const double known = 2.0 * incoming - integrator_ - beta * previousPressure_;
-      auto solved = solvePressure(opening, mouth, known, beta);
+      auto solved = solvePressure(opening, mouth, known, beta, cupCoeff_,
+                                  cupPressure_);
       if (!solved.ok()) return R::failure(solved.error());
       const double pressure = solved.value();
       const double outgoing = pressure - incoming;
@@ -116,6 +120,7 @@ class ConeValveVoice final : public IVoice {
         return R::failure(QuantityError::RangeError);
       integrator_ += beta * (pressure + previousPressure_);
       previousPressure_ = pressure;
+      cupPressure_ = pressure;
       if (open) {
         const double delta = mouth - pressure;
         double acceleration = 0.0;
@@ -149,6 +154,7 @@ class ConeValveVoice final : public IVoice {
     openEnd_.reset();
     integrator_ = 0.0;
     previousPressure_ = 0.0;
+    cupPressure_ = 0.0;
     displacement_ = initialDisplacement_;
     velocity_ = 0.0;
     frame_ = 0;
@@ -258,6 +264,15 @@ class ConeValveVoice final : public IVoice {
       voice.maximumOpening_ = trumpet.maximumOpeningAreaM2;
       voice.slitWidth_ = trumpet.slitWidthMeters;
       if (!(voice.slitWidth_ > 0.0)) return R::failure(QuantityError::InvalidArgument);
+      if (!std::isfinite(trumpet.acousticCompliance) ||
+          trumpet.acousticCompliance < 0.0)
+        return R::failure(QuantityError::InvalidArgument);
+      if (trumpet.acousticCompliance > 0.0) {
+        const double coeff = impedance * trumpet.acousticCompliance * fs;
+        if (!std::isfinite(coeff) || !(coeff > 0.0))
+          return R::failure(QuantityError::RangeError);
+        voice.cupCoeff_ = coeff;
+      }
     }
     return R::success(std::move(voice));
   }
@@ -268,18 +283,20 @@ class ConeValveVoice final : public IVoice {
     return std::copysign(opening * speed, deltaP);
   }
 
-  [[nodiscard]] Result<double, QuantityError> solvePressure(double opening,
-                                                           double mouth,
-                                                           double known,
-                                                           double beta) const {
+  // cupCoeff is Z C / dt. Zero is the junction without a cup, and the
+  // residual then matches the sealed cone used before the cup existed.
+  [[nodiscard]] Result<double, QuantityError> solvePressure(
+      double opening, double mouth, double known, double beta, double cupCoeff,
+      double cupPrev) const {
     using R = Result<double, QuantityError>;
-    const double scale = 1.0 + beta;
-    if (!(opening > 0.0)) return R::success(known / scale);
+    const double scale = 1.0 + beta + cupCoeff;
+    const double held = known + cupCoeff * cupPrev;
+    if (!(opening > 0.0)) return R::success(held / scale);
     auto residual = [&](double pressure) {
       return scale * pressure - impedance_ * bernoulli(opening, mouth - pressure) -
-             known;
+             held;
     };
-    double lo = known / scale;
+    double lo = held / scale;
     double hi = lo;
     const double atLo = residual(lo);
     if (!std::isfinite(atLo)) return R::failure(QuantityError::RangeError);
@@ -326,6 +343,8 @@ class ConeValveVoice final : public IVoice {
   double density_ = 0.0;
   double integrator_ = 0.0;
   double previousPressure_ = 0.0;
+  double cupCoeff_ = 0.0;
+  double cupPressure_ = 0.0;
   double fundamentalHz_ = 0.0;
   double decay_ = 0.0;
   double closing_ = 0.0;
