@@ -93,7 +93,10 @@ enum class ValveLaw { InwardReed, OutwardLip, Jet };
 // that frame, then places it at initialDisplacementMeters. Zero leaves
 // the valve free from the first sample. Mouth pressure ramps on its own.
 // reedTurbulence is the fraction of the radiated pressure added as a
-// zero-mean disturbance after the valve loop, on a reed or a jet. A
+// zero-mean disturbance after the valve loop, on a reed or a jet. The
+// scale is the root-mean-square of that pressure over one round trip,
+// not the instantaneous sample: a product with the sample sits on the
+// harmonics and the bins between them stay at the converter floor. A
 // disturbance of the blowing pressure is cancelled by the pressure
 // search, so the bell stays a line spectrum, and on the shorter
 // saxophone tubes that same disturbance locks the second mode. A lip
@@ -110,6 +113,8 @@ enum class ValveLaw { InwardReed, OutwardLip, Jet };
 // written back into the delay. The one-sample Taylor step is not a
 // conservative scheme, and feeding it back grew a length-change
 // transient without bound and pulled the trumpet's limit cycle darker.
+// On these notes the advance is about two samples at the peaks, so the
+// bore does not shock; the clamp keeps that step inside one sample.
 // A flare accumulates less than a cylinder, and that paper does not
 // print a waveguide gain, so the fraction is an argument. Zero leaves
 // the linear cone. A reed or a jet ignores it.
@@ -202,6 +207,16 @@ namespace valve_detail {
 [[nodiscard]] inline double unitNoise(std::uint32_t& state) {
   state = state * 1664525u + 1013904223u;
   return (static_cast<double>(state & 0x00ffffffu) / 16777215.0) * 2.0 - 1.0;
+}
+
+// Breath smoothed one octave under the 0.4 fs Nyquist guard. A flat
+// draw to fs/2 puts a fifth of its power above that guard. The corner
+// is 0.2 fs, so the gain does not depend on a stored hertz value.
+[[nodiscard]] inline double breathSample(std::uint32_t& state, double& smoother) {
+  const double white = unitNoise(state);
+  const double gain = 1.0 - std::exp(-constants::twoPi * 0.2);
+  smoother += gain * (white - smoother);
+  return smoother;
 }
 
 // External spectrum of a beating saxophone reed, Benade and Lutgen,
@@ -496,15 +511,24 @@ class BoreValveVoice final : public IVoice {
       const double bellFlow = (incident - incoming) / impedance_;
       double radiated = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
                                                  radiationState_, radiationCorner_, dt);
-      // After the loop, so the limit cycle is unchanged, and after the
-      // radiator, so the smoother does not turn the disturbance back
-      // into a line spectrum. See ValveBlow::reedTurbulence.
+      // After the loop, so the limit cycle is unchanged. The fraction
+      // scales a slow envelope of the radiated pressure, one round trip,
+      // rather than the instantaneous sample. A product with that sample
+      // piles the disturbance onto the harmonics and leaves the bins
+      // between them at the converter floor. See ValveBlow::reedTurbulence.
       const bool open = frame_ < blowFrames_;
       const bool tongued = tongueFrames_ > 0 && frame_ < tongueFrames_;
       const double mouth = mouthNow();
       if (reedTurbulence_ > 0.0 && law_ != ValveLaw::OutwardLip && open && mouth > 0.0 &&
-          !(law_ == ValveLaw::InwardReed && tongued))
-        radiated += reedTurbulence_ * radiated * valve_detail::unitNoise(noise_);
+          !(law_ == ValveLaw::InwardReed && tongued)) {
+        const double trip =
+            line_.empty() ? 1.0 : static_cast<double>(line_.size());
+        const double leak = 1.0 - std::exp(-1.0 / trip);
+        breathEnv_ += leak * (radiated * radiated - breathEnv_);
+        if (breathEnv_ < 0.0) breathEnv_ = 0.0;
+        const double scale = std::sqrt(breathEnv_);
+        radiated += reedTurbulence_ * scale * valve_detail::breathSample(noise_, breathState_);
+      }
       out[i] = radiated;
       if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);
       ++frame_;
@@ -521,6 +545,8 @@ class BoreValveVoice final : public IVoice {
     wall_.reset();
     cutoff_.reset();
     noise_ = 1u;
+    breathEnv_ = 0.0;
+    breathState_ = 0.0;
     std::fill(jetDelay_.begin(), jetDelay_.end(), initialDisplacement_);
     jetPos_ = 0;
     displacement_ = initialDisplacement_;
@@ -1033,6 +1059,8 @@ class BoreValveVoice final : public IVoice {
   valve_detail::TripLoss wall_{};
   valve_detail::TripLoss cutoff_{};
   std::uint32_t noise_ = 1u;
+  double breathEnv_ = 0.0;
+  double breathState_ = 0.0;
   double bellFlow_ = 0.0;
   double radiationState_ = 0.0;
   double radiationCorner_ = 1.0;

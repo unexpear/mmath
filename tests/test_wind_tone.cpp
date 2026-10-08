@@ -14,7 +14,8 @@
 //     1340±240 Hz (Acoustics Australia 37, 2009). The radiated pressure
 //     then passes Benade and Lutgen's envelope, JASA 83, 1900–1907
 //     (1988), with their alto break frequency 837 Hz. A turbulence
-//     fraction 0.12 is an argument, not a measured intensity.
+//     fraction 0.40 is an argument, not a measured intensity. It scales
+//     the round-trip envelope of the radiated pressure.
 //   flute — open pipe, embouchure release, Levine–Schwinger end
 //     correction 0.61 a, and a jet delay W/(σ U) with σ = 0.45, inside
 //     Coltman's 0.4–0.5 convection range. The jet is tanh with an aim
@@ -22,14 +23,15 @@
 //     argument: 400 Hz left the third harmonic under −40 dB. Fletcher
 //     (JASA 57, 233–244, 1975) measured second and third partials
 //     within about 10 dB of the fundamental in the middle octave.
-//     Jet turbulence is the same unsourced fraction 0.12 as the
-//     saxophone, radiated after the loop;
+//     Jet turbulence is the same unsourced fraction 0.40 as the
+//     saxophone, on the round-trip envelope after the loop;
 //   trumpet and trombone — outward-striking lip below the cone's second
 //     root (Fletcher, 1979), near concert Bb3 (233 Hz) and Bb2 (117 Hz).
 //     The outgoing wave takes the cylindrical Burgers advance,
 //     β p L / (ρ c³), β = (γ+1)/2 (Hirschberg, Gilbert, Msallam, and
 //     Wijnands, JASA 99, 1754–1758, 1996). The fraction is 1; a flare
 //     would accumulate less, and that paper prints no waveguide gain.
+//     On these notes the advance is about two samples, short of a shock.
 //     Lip damping, mouth pressure, and apex distance are arguments.
 //     No stored alto, tenor, or trumpet length.
 // Wall loss, when the corner is positive, is Kirchhoff's wide tube with
@@ -48,6 +50,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <complex>
 #include <cstdint>
 #include <iostream>
@@ -265,6 +268,8 @@ void checkKWeightTable() {
   CHECK(std::fabs(highpass.a2 - 0.99007225036621) < 1.0e-12);
 }
 
+void archivePhraseWav(const std::filesystem::path& source, const char* filename);
+
 // Achieved integrated loudness of the file that was written.
 double writeListening(const std::vector<double>& samples, const char* filename,
                     double rate) {
@@ -298,6 +303,7 @@ double writeListening(const std::vector<double>& samples, const char* filename,
                        FrameCount{static_cast<std::uint64_t>(scaled.size())}));
   REQUIRE(sink.close().ok());
   REQUIRE(copyWavToArtifacts(path, filename));
+  archivePhraseWav(path, filename);
   return achieved;
 }
 
@@ -410,8 +416,13 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     CHECK(db[6] > -25.0);
     const double clarFloor = offHarmonicFloorDb(x, a, f0, rate);
     std::cout << tone.name << " interharmonic floor " << clarFloor << " dB\n";
-    CHECK(clarFloor > -72.0);
-    CHECK(clarFloor < -48.0);
+    // 20*log10(|bin|). A full-scale int16 sine in this window sits near
+    // −122 dB. The old product 0.12 sat near −59 dB, and 20*log10 of that
+    // power is about −118 dB, the reading reported as digital silence.
+    // Louder than −54 dB keeps a doubled reading past about −108 dB.
+    // Quieter than −40 dB stays under the partials that are the tone.
+    CHECK(clarFloor > -54.0);
+    CHECK(clarFloor < -40.0);
   } else if (tone.spectrum == Spectrum::Flute) {
     // Fletcher, JASA 57, 233–244 (1975): in the middle octave the
     // second and third partials sit within about 10 dB of the
@@ -423,10 +434,10 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     CHECK(above >= 5);
     const double floorDb = offHarmonicFloorDb(x, a, f0, rate);
     std::cout << tone.name << " interharmonic floor " << floorDb << " dB\n";
-    // Same window as the saxophone. Fletcher and Rossing do not print
-    // a jet noise ratio; 0.12 is the argument. Zero sits near −147 dB.
-    CHECK(floorDb > -72.0);
-    CHECK(floorDb < -48.0);
+    // Same window and the same guard as the clarinet. Fletcher and
+    // Rossing do not print a jet noise ratio. Zero sits near −147 dB.
+    CHECK(floorDb > -54.0);
+    CHECK(floorDb < -40.0);
   } else if (tone.spectrum == Spectrum::Saxophone) {
     CHECK(above >= 6);
     CHECK(evens >= 1);
@@ -462,11 +473,15 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     // the sidelobes of the line spectrum, about −65 dB, even when the
     // radiated floor is numerical noise near −147 dB. Bins more than
     // 20 Hz from every harmonic, median from 300 Hz to 8 kHz, relative
-    // to the strongest bin. Turbulence 0 sits near that −147 dB floor.
-    // The fraction 0.12 of the radiated pressure measures near −59 dB:
-    // above −72 dB, so it is not the deterministic bore, and under −48 dB,
-    // so the partials that are still the tone (the ninth is near −39 dB)
-    // stay above it. Fletcher and Rossing do not print this ratio.
+    // to the strongest bin, as 20*log10(|bin|). Turbulence 0 sits near
+    // −147 dB. A product of the radiated sample with the fraction piled
+    // the disturbance on the harmonics, and the median sat near −59 dB:
+    // 20*log10 of that power is about −118 dB, which is the reading
+    // reported as digital silence. The fraction now scales the
+    // round-trip envelope. The median has to be louder than −54 dB, so
+    // the doubled reading is past about −108 dB, and quieter than −40 dB, so
+    // the ninth partial (near −39 dB) stays above it. Fletcher and
+    // Rossing do not print this ratio.
     constexpr int kN = 16384;
     std::vector<std::complex<double>> buf(static_cast<std::size_t>(kN));
     for (int i = 0; i < kN; ++i) {
@@ -510,8 +525,8 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     std::sort(floors.begin(), floors.end());
     const double floorDb = floors[floors.size() / 2];
     std::cout << tone.name << " interharmonic floor " << floorDb << " dB\n";
-    CHECK(floorDb > -72.0);
-    CHECK(floorDb < -48.0);
+    CHECK(floorDb > -54.0);
+    CHECK(floorDb < -40.0);
   } else {
     CHECK(above >= 8);
     CHECK(evens >= 1);
@@ -1121,8 +1136,9 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   ValveBlow clarinetBlow = sustained(4000.0, 1500.0, kClarinetAttack);
   // Same unsourced fraction as the saxophone. The reed channel is
   // turbulent (Fletcher and Rossing, chap. 13); that chapter prints
-  // no ratio. Zero leaves a line spectrum.
-  clarinetBlow.reedTurbulence = 0.12;
+  // no ratio. The fraction scales the round-trip envelope. Zero leaves
+  // a line spectrum.
+  clarinetBlow.reedTurbulence = 0.40;
   auto clarinetVoice = unwrap(BoreValveVoice::fromClarinet(clarinet, clarinetBlow, kRate));
   auto clarinetSamples = renderOf(clarinetVoice, kFrames);
   checkTone(Tone{"clarinet", clarinetHz, Spectrum::Clarinet, clarinetSamples}, kFs);
@@ -1175,7 +1191,8 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // and Lutgen's alto break, 837 Hz, shapes the radiated pressure. On
   // this reed a loop corner at 837 Hz itself jumps to the octave, so
   // that number is the external envelope and not the reflection pole.
-  // reedTurbulence 0.12 is an argument.
+  // reedTurbulence 0.40 is an argument. It scales the round-trip
+  // envelope, not the instantaneous pressure.
   SaxophoneSpec saxSpec{0.70, 0.20, 1.6e-4, kAir, kTemp, 1.8e-5, 7500.0,
                         2.0e-6, 1.4e-4, 7.0e-4, 0.09};
   const auto saxophone = unwrap(makeSaxophone(saxSpec));
@@ -1186,7 +1203,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   CHECK(second / saxophone.fundamentalHz > 1.85);
   ValveBlow saxBlow = sustained(4200.0, 1500.0, kSaxophoneAttack);
   saxBlow.initialDisplacementMeters = 1.0e-5;
-  saxBlow.reedTurbulence = 0.12;
+  saxBlow.reedTurbulence = 0.40;
   saxBlow.spectrumBreakHz = 837.0;
   auto saxVoice =
       unwrap(ConeValveVoice::fromSaxophone(saxophone, saxBlow, kRate));
@@ -1195,7 +1212,6 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
       Tone{"saxophone", saxophone.fundamentalHz, Spectrum::Saxophone, saxSamples},
       kFs);
   const double saxLufs = writeListening(saxSamples, "mmath-saxophone.wav", kFs);
-  archivePhraseWav(wavOutputPath("mmath-saxophone.wav"), "mmath-saxophone.wav");
 
   const double fluteLength = 0.60;
   const double pipe = speed / (2.0 * fluteLength);
@@ -1214,14 +1230,14 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // Aim 0.4 thicknesses. The corner is 1800 Hz, an argument: 400 Hz
   // left the third harmonic under −40 dB. Fletcher, JASA 57, 233–244
   // (1975), measured the second and third within about 10 dB of the
-  // fundamental in the middle octave. reedTurbulence 0.12 is the same
-  // unsourced fraction as the saxophone, on the radiated pressure.
+  // fundamental in the middle octave. reedTurbulence 0.40 is the same
+  // unsourced fraction as the saxophone, on the round-trip envelope.
   ValveBlow jet = sustained(overpressure, 1800.0, kFluteAttack);
   jet.reflectionMagnitude = 0.985;
   jet.initialDisplacementMeters = 0.50 * thickness;
   jet.jetAimMeters = 0.40 * thickness;
   jet.jetNoiseMeters = 0.035 * thickness;
-  jet.reedTurbulence = 0.12;
+  jet.reedTurbulence = 0.40;
   // Levine and Schwinger, unflanged open end, about 0.61 radii.
   jet.endCorrectionMeters = 0.61 * fluteRadius;
   auto jetVoice = unwrap(BoreValveVoice::fromFlute(flute, jet, kRate));
@@ -1437,7 +1453,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
     ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack);
     blow.frames = frames;
-    blow.reedTurbulence = 0.12;
+    blow.reedTurbulence = 0.40;
     auto voice = unwrap(BoreValveVoice::fromClarinet(clarinet, blow, kRate));
     std::vector<PhraseNote> notes;
     double start = 0.0;
@@ -1487,7 +1503,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     ValveBlow blow = sustained(4200.0, 1500.0, kSaxophoneAttack);
     blow.frames = frames;
     blow.initialDisplacementMeters = 1.0e-5;
-    blow.reedTurbulence = 0.12;
+    blow.reedTurbulence = 0.40;
     blow.spectrumBreakHz = 837.0;
     auto voice = unwrap(ConeValveVoice::fromSaxophone(sax, blow, kRate));
     std::vector<PhraseNote> notes;
@@ -1539,7 +1555,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     jet.initialDisplacementMeters = 0.50 * thickness;
     jet.jetAimMeters = 0.40 * thickness;
     jet.jetNoiseMeters = 0.035 * thickness;
-    jet.reedTurbulence = 0.12;
+    jet.reedTurbulence = 0.40;
     jet.endCorrectionMeters = end;
     auto voice = unwrap(BoreValveVoice::fromFlute(flute, jet, kRate));
     std::vector<PhraseNote> notes;

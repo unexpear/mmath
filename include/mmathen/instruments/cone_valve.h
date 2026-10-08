@@ -202,12 +202,22 @@ class ConeValveVoice final : public IVoice {
       // was supplied. The monopole above is still the bell flow; this
       // transfer is the measured saxophone spectrum of a beating reed.
       if (break_.active()) radiated = break_.step(radiated);
-      // Fraction of the radiated pressure. Applied after the loop so the
-      // reed's limit cycle stays put, and after the envelope so the
-      // smoother does not filter it back to a line spectrum. See
-      // ValveBlow::reedTurbulence. A lip has no reed channel.
-      if (!lip_ && reedTurbulence_ > 0.0 && open && mouth > 0.0 && !tongued)
-        radiated += reedTurbulence_ * radiated * valve_detail::unitNoise(noise_);
+      // Fraction of the radiated pressure, added after the loop so the
+      // reed's limit cycle stays put. A product with the instantaneous
+      // pressure piles the disturbance on the harmonics. The reed
+      // channel is a turbulent source of its own (Fletcher and Rossing,
+      // chap. 13), so the fraction scales a slow envelope — one round
+      // trip, the bore's own period — and the samples between partials
+      // carry it. A lip has no reed channel.
+      if (!lip_ && reedTurbulence_ > 0.0 && open && mouth > 0.0 && !tongued) {
+        const double trip =
+            line_.empty() ? 1.0 : static_cast<double>(line_.size());
+        const double leak = 1.0 - std::exp(-1.0 / trip);
+        breathEnv_ += leak * (radiated * radiated - breathEnv_);
+        if (breathEnv_ < 0.0) breathEnv_ = 0.0;
+        const double scale = std::sqrt(breathEnv_);
+        radiated += reedTurbulence_ * scale * valve_detail::breathSample(noise_, breathState_);
+      }
       out[i] = radiated;
       if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);
       ++frame_;
@@ -231,6 +241,8 @@ class ConeValveVoice final : public IVoice {
     radiationState_ = 0.0;
     break_.reset();
     noise_ = 1u;
+    breathEnv_ = 0.0;
+    breathState_ = 0.0;
     prevOutgoing_ = 0.0;
     displacement_ = initialDisplacement_;
     velocity_ = 0.0;
@@ -531,7 +543,9 @@ class ConeValveVoice final : public IVoice {
   // written back. Peaks advance by β p L / (ρ c³) samples,
   // β = (γ+1)/2. The difference is a one-sample Taylor step, so the
   // advance stops at one sample, and a step (a length change) cannot
-  // add more than a quarter of the wave. See ValveBlow::brassiness.
+  // add more than a quarter of the wave. On these notes the unclamped
+  // advance is about two samples at the peaks, short of a shock.
+  // See ValveBlow::brassiness.
   [[nodiscard]] double steepenAtBell(double incident) {
     const double previous = prevOutgoing_;
     prevOutgoing_ = incident;
@@ -653,6 +667,8 @@ class ConeValveVoice final : public IVoice {
   double soundingLength_ = 0.0;
   double prevOutgoing_ = 0.0;
   std::uint32_t noise_ = 1u;
+  double breathEnv_ = 0.0;
+  double breathState_ = 0.0;
   valve_detail::BreakEnvelope break_{};
   bool useBoreThiran_ = false;
   double fundamentalHz_ = 0.0;
