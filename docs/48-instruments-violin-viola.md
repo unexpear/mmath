@@ -123,11 +123,11 @@ snare wires are not in those steppers.
 | Classical guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 650 mm course | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | no | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
 | Electric guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 25.5 in course | No body filter | Pickup position comb and coil velocity; no inductance | no | no | String and pickup step. The body filter is absent |
 | Piano | Felt hammer steps a stiff waveguide | Lossy stiff tuned waveguide; strike and stiffness are arguments | Hammer closes on a modal soundboard; bridge force is the drive | Compact monopole of the hammered bridge acceleration | yes | no | Mode frequency, Q, and mass are arguments. The other four courses are not coupled |
-| Clarinet | Inward reed steps a bore delay | Cylindrical delay; an open end replaces the constant magnitude | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\). Levine–Schwinger reflection when a radius is passed | yes | no | Caller holes and a register key sit on the lattice. Viscous wall loss is outside this bore |
-| Flute | Jet steps an open embouchure | Open-open cylindrical delay | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\). Levine–Schwinger reflection at the far end; the embouchure stays an ideal release | yes | no | Caller tone holes sit on the lattice. Viscous wall loss is outside this bore |
+| Clarinet | Inward reed steps a bore delay | Cylindrical delay; an open end replaces the constant magnitude | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\). Levine–Schwinger reflection when a radius is passed | yes | no | Caller holes and a register key sit on the lattice bore. Kirchhoff loss is on only when a reflection corner is set |
+| Flute | Jet steps an open embouchure | Open-open cylindrical delay | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\). Levine–Schwinger reflection at the far end; the embouchure stays an ideal release | yes | no | Caller tone holes sit on the lattice. Kirchhoff loss is on only when a reflection corner is set |
 | Trumpet | Outward lip steps a cone with the cup | Truncated cone, or a caller Bessel area exponent | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\) on the cone or the horn. Levine–Schwinger reflection when a radius is passed | yes | no | Engaged valve lengths are an argument. A caller Bessel area exponent is the flare. No measured bell curve is stored |
 | Trombone | Outward lip steps the slide length on a cone with the cup | Truncated cone at \(L = L_0 + 2x\), or a caller Bessel area exponent | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\) on the cone or the horn. Levine–Schwinger reflection when a radius is passed | yes | no | The F-attachment length is an argument. A caller Bessel area exponent is the flare. No measured slide chart is stored |
-| Saxophone | Inward reed steps the spherical-wave cone | Truncated-cone delay; the cylinder is not this stepper | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\). Levine–Schwinger reflection; bell radius is an argument | yes | no | Caller tone holes sit on the stepped cone. Viscous wall loss is outside this bore |
+| Saxophone | Inward reed steps the spherical-wave cone | Truncated-cone delay; the cylinder is not this stepper | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\). Levine–Schwinger reflection; bell radius is an argument | yes | no | Caller tone holes sit on the stepped cone. Kirchhoff loss is on only when a reflection corner is set |
 | Bass drum | Felt mallet steps the batter head | Damped membrane modes; a port is not opened | Closed cavity, not a ported shell | Monopole of the batter volume acceleration | no | no | Two heads and a closed cavity radiate. The port is absent |
 | Rack tom 10 in | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | no | Head tension and Q are arguments. No port is in this shell |
 | Rack tom 12 in | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | no | Head tension and Q are arguments. No port is in this shell |
@@ -163,7 +163,8 @@ metres or a pressure in pascals is audible. That scale is playback
 only. The assertions read the unscaled samples. The wind-tone test
 overwrites `mmath-clarinet.wav`, `mmath-saxophone.wav`,
 `mmath-flute.wav`, `mmath-trumpet.wav`, and `mmath-trombone.wav`
-with the two-second limit cycle. The soundboard test
+with the two-second limit cycle, loudness-normalized so those five
+files sit within 1 LU of each other. That gain is playback only. The soundboard test
 writes `mmath-violin-soundboard.wav`,
 `mmath-violin-soundboard-light.wav`, `mmath-harp-soundboard.wav`,
 `mmath-harpsichord-soundboard.wav`, and
@@ -685,15 +686,21 @@ not a violin with the labels rewritten.
 - A two-second blow of each wind is a periodic radiated note. The
   normalized autocorrelation at one period is above 0.9 in steady
   state, the RMS of the last two quarter-seconds stays within 10
-  percent, and the mean is small beside that RMS. The clarinet
-  fundamental is the quarter-wave and the second harmonic is weak.
+  percent, each 100 ms window from 1.0 s to 2.0 s stays within 1 dB
+  of their mean, and the mean is small beside that RMS. Every voice
+  radiates with the same \(\rho\dot U/(4\pi r)\) at \(r=1\,\mathrm{m}\).
+  The clarinet
+  fundamental is the quarter-wave. Its odd partials fall after the
+  third, and the evens are present once the reflection corner is set.
   The saxophone fundamental lies between \(c/(4L)\) and \(c/(2L)\) and
-  keeps a second harmonic. The flute is \(c/(2L)\) and keeps a second
-  harmonic once the jet is aimed off the edge center. Trumpet and
-  trombone sit near the cone fundamental and keep a second harmonic
-  when the lip resonance is below that peak. A clarinet below the
-  pressure threshold does not sustain. Lengthening the clarinet lowers
-  the pitch. The same clarinet at 44100 Hz and 48000 Hz agrees.
+  keeps a run of even and odd partials. The flute is near \(c/(2L)\),
+  the fundamental is the strongest partial, and the second harmonic is
+  present once the jet is aimed off the edge center. Trumpet and
+  trombone play the cone's second register, with the lip below that
+  root, and the magnitude centroid sits above \(2.5 f_0\). A clarinet
+  below the pressure threshold does not sustain. Lengthening the
+  clarinet lowers the pitch. The same clarinet at 44100 Hz and 48000 Hz
+  agrees.
 
 ## Bow
 
@@ -1325,20 +1332,52 @@ own resonance instead of the first bore root. That damping is the
 caller's argument. The flute edge is \(\tanh(y/h)\) of the delayed
 deflection, with the small-signal slope \(2 U_j y/h\). Aim zero is an
 odd function of deflection, so the second harmonic is absent; a
-nonzero aim is the even-harmonic operating point. An outward-striking
+nonzero aim is the even-harmonic operating point. A saturated jet
+plus a flat reflection radiates a square, because bell pressure is
+proportional to \(\mathrm{d}U/\mathrm{d}t\). The flute render therefore
+keeps a reflection corner, an aim offset, and a small turbulent
+centerline term. An outward-striking
 lip oscillates when its resonance sits below a bore peak (Fletcher,
 1979). On the cylinder the spring continues past \(S_{\max}\). On the
 cone the displacement stops at the rails, because otherwise a high
 blowing pressure winds the lip up and pins the opening at \(S_{\max}\).
 
+A positive `reflectionCutoffHz` is the low-pass reflection and the
+high-pass radiation corner. The same flag turns on Kirchhoff's wide-tube
+wall loss, \(\alpha=\sqrt{\omega\nu/2}\,(1+(\gamma-1)/\sqrt{\mathrm{Pr}})/(a c)\),
+with Sutherland's viscosity (\(\mu_0=1.716\times 10^{-5}\,\mathrm{Pa\cdot s}\)
+at 273.15 K, \(S=110.4\,\mathrm{K}\), \(\mathrm{Pr}=0.71\)). The one-pole
+is matched at a high frequency so it does not invent a cutoff inside the
+musical band; the caller's corner is what rolls the spectrum. A zero
+corner leaves \(|R|\) constant and skips the wall loss, so the ideal
+bore tests keep their pitch and their decay. A non-radiating bore adds
+the caller's end correction as length. Levine and Schwinger's unflanged
+pipe is about \(0.61a\); the flute render uses that. A positive radius
+already carries the correction inside the open-end filter.
+
 `tests/test_wind_tone.cpp` holds a two-second blow with a 30 ms
-raised-cosine attack, inside the 20–50 ms range. The playback files
-`mmath-clarinet.wav`, `mmath-saxophone.wav`, `mmath-flute.wav`,
-`mmath-trumpet.wav`, and `mmath-trombone.wav` are those notes,
-peak-scaled to 0.5. The assertions read the unscaled samples. Full
-instrument complete stays false: viscous wall loss, a fingering chart,
-and a measured bell are still out. The tone-hole lattice is unchanged
-and is not what these five files step.
+raised-cosine attack, inside the 20–50 ms range. Steady state is
+1.0–2.0 s. Ten 100 ms windows in that second each stay within 1 dB
+of their mean RMS. Partials below are dB re the fundamental. Levels
+are the unscaled steady RMS at the shared listener, \(r=1\,\mathrm{m}\),
+in dB re 1 Pa. A cone multiplies bell volume flow by \(x_\mathrm{bell}/x_0\)
+before that same radiator; a cylinder does not. The spread below is
+source strength, not a second distance.
+
+- clarinet, 192 Hz, corner 600 Hz, reed damping 0.12 N·s/m: 0, −28.0, −12.3, −35.6, −25.2, −39.9, −37.7, −44.1, −46.5, −45.7. Odds fall after the third. Autocorr 0.9993, HNR 32 dB. Level −15.8 dB re 1 Pa (78 dB SPL). Envelope ±0.05 dB.
+- flute, 282.4 Hz, corner 600 Hz, end correction \(0.61a\): 0, −10.9, −23.6, −41.7 and then lower. The fundamental is strongest and the second harmonic is above −40 dB. Autocorr 0.9999, HNR 39 dB. Level −14.4 dB re 1 Pa (80 dB SPL). Envelope ±0.03 dB.
+- saxophone, 230.8 Hz, 3600 Pa against a closure pressure of 8000 Pa, corner 10 kHz: 0, −5.1, +0.9, +0.1, −19.7, −5.7, −5.7, −16.3, −4.0, −10.7. Twenty-three partials stay above −40 dB, evens included. Autocorr 1, HNR 93 dB. Level +9.3 dB re 1 Pa (103 dB SPL). Envelope flat.
+- trumpet, 229.7 Hz, lip below the second cone root, near concert Bb3 (233 Hz): 0, −9.1, −15.0, −20.3, −25.0, −28.7, −31.4, −34.0, −36.4, −38.1. Magnitude centroid \(2.62 f_0\), eleven partials above −40 dB. Autocorr 0.99998, HNR 47 dB. Level +2.3 dB re 1 Pa (96 dB SPL). Envelope ±0.002 dB.
+- trombone, 122.4 Hz, same recipe on a 2.75 m cone, near concert Bb2 (117 Hz): 0, −12.4, −18.4, −22.7, −26.4, −29.5, −32.3, −34.7, −36.6, −38.0. Magnitude centroid \(2.82 f_0\), twelve partials above −40 dB. Autocorr 0.99997, HNR 45 dB. Level −21.4 dB re 1 Pa (73 dB SPL). Envelope ±0.08 dB.
+
+The playback files `mmath-clarinet.wav`, `mmath-saxophone.wav`,
+`mmath-flute.wav`, `mmath-trumpet.wav`, and `mmath-trombone.wav` are
+those notes, K-weighted to −20 LUFS over 1–2 s (ITU-R BS.1770-4) with
+a peak ceiling of −1 dBFS. Each file measured −20.0 LUFS, so the five
+sit within 1 LU. That gain is playback only. The assertions read the
+unscaled samples. Full instrument complete stays false: the tone-hole lattice
+still has no wall loss and no fingering chart, and there is no measured
+bell. The lattice is not what these five files step.
 
 ## Still planned
 
@@ -1357,9 +1396,10 @@ Images after the first from each hammer end are not in this layer. A
 viscous reed channel is not in this layer. Clarinet, flute, and
 saxophone holes are a lattice of caller radii; a register key is one
 open hole, and no fingering chart is stored. Viscous wall loss and
-hole interaction are not in that lattice. A flute end correction,
-embouchure-hole radiation, and the spatial growth of the jet are not in
-this layer. Trumpet valves and the trombone F attachment are an extra
+hole interaction are not in that lattice. The valve applies Kirchhoff
+loss only when the caller sets a reflection corner, and a non-radiating
+flute can add an end correction; embouchure-hole radiation and the
+spatial growth of the jet are not in this layer. Trumpet valves and the trombone F attachment are an extra
 length on the cone. A caller Bessel area exponent is the flare and is
 not a chain of cones. A measured bell curve and a stored slide chart are
 not. A saxophone mouthpiece volume beyond the apex distance is not in

@@ -58,6 +58,7 @@
 #include <vector>
 
 #include "../math/constants.h"
+#include "../physics/medium.h"
 #include "../physics/radiation.h"
 #include "../render/voice.h"
 #include "clarinet.h"
@@ -80,7 +81,12 @@ enum class ValveLaw { InwardReed, OutwardLip, Jet };
 // attackFrames and releaseFrames ramp the blowing pressure with a raised
 // cosine. listenerDistanceMeters is the free-field distance of the
 // radiated sample. jetAimMeters shifts the flute jet off the edge center;
-// zero is centered.
+// zero is centered. reflectionCutoffHz is the low-pass reflection
+// corner. Zero leaves the constant far-end magnitude and does not apply
+// wall loss, so an ideal bore keeps its pitch and its |R|. A positive
+// corner also enables Kirchhoff's wide-tube wall loss on the round
+// trip. jetNoiseMeters is a turbulent perturbation of the flute
+// centerline. Zero is a silent jet.
 struct ValveBlow {
   double pressurePa = 0.0;
   std::uint64_t frames = 0;
@@ -92,6 +98,8 @@ struct ValveBlow {
   std::uint64_t releaseFrames = 0;
   double listenerDistanceMeters = 1.0;
   double jetAimMeters = 0.0;
+  double reflectionCutoffHz = 0.0;
+  double jetNoiseMeters = 0.0;
 };
 
 namespace valve_detail {
@@ -142,7 +150,106 @@ namespace valve_detail {
   if (blow.attackFrames > 0 && blow.releaseFrames > 0 &&
       blow.attackFrames + blow.releaseFrames > blow.frames)
     return false;
+  if (!std::isfinite(blow.reflectionCutoffHz) || blow.reflectionCutoffHz < 0.0 ||
+      !std::isfinite(blow.jetNoiseMeters) || blow.jetNoiseMeters < 0.0)
+    return false;
   return true;
+}
+
+// One-pole low-pass, unity DC gain: (1−p)/(1−p z^{−1}). p = 0 is a wire.
+struct TripLoss {
+  double pole = 0.0;
+  double state = 0.0;
+
+  void reset() { state = 0.0; }
+
+  [[nodiscard]] double step(double x) {
+    if (!(pole > 0.0)) return x;
+    const double y = (1.0 - pole) * x + pole * state;
+    state = y;
+    return y;
+  }
+};
+
+// Pole in (0, 1) whose response magnitude at frequencyHz equals magnitude.
+// The quadratic is p + 1/p = 2b, and the root below 1 is kept.
+[[nodiscard]] inline double onePoleMatching(double magnitude, double frequencyHz,
+                                            double sampleRateHz) {
+  if (!(magnitude > 0.0) || !(magnitude < 1.0) || !(frequencyHz > 0.0) ||
+      !(sampleRateHz > frequencyHz * 2.0))
+    return 0.0;
+  const double omega = constants::twoPi * frequencyHz / sampleRateHz;
+  const double cosine = std::cos(omega);
+  const double m2 = magnitude * magnitude;
+  const double gap = 1.0 - m2;
+  if (!(gap > 0.0)) return 0.0;
+  const double b = (1.0 - m2 * cosine) / gap;
+  const double disc = b * b - 1.0;
+  if (!(disc > 0.0) || !std::isfinite(disc)) return 0.0;
+  const double pole = b - std::sqrt(disc);
+  if (!std::isfinite(pole) || !(pole > 0.0) || !(pole < 1.0)) return 0.0;
+  return pole;
+}
+
+[[nodiscard]] inline double onePoleMagnitude(double pole, double frequencyHz,
+                                             double sampleRateHz) {
+  if (!(pole > 0.0) || !(frequencyHz > 0.0) || !(sampleRateHz > 0.0)) return 1.0;
+  const double omega = constants::twoPi * frequencyHz / sampleRateHz;
+  const double den =
+      std::sqrt(1.0 + pole * pole - 2.0 * pole * std::cos(omega));
+  if (!(den > 0.0) || !std::isfinite(den)) return 1.0;
+  const double magnitude = (1.0 - pole) / den;
+  if (!std::isfinite(magnitude) || !(magnitude > 0.0)) return 1.0;
+  return magnitude;
+}
+
+// Samples of phase delay, −φ/ω, of the unity-DC one-pole.
+[[nodiscard]] inline double onePolePhaseDelay(double pole, double frequencyHz,
+                                              double sampleRateHz) {
+  if (!(pole > 0.0) || !(pole < 1.0) || !(frequencyHz > 0.0) ||
+      !(sampleRateHz > 0.0))
+    return 0.0;
+  const double omega = constants::twoPi * frequencyHz / sampleRateHz;
+  if (!(omega > 0.0)) return 0.0;
+  const double phase =
+      -std::atan2(pole * std::sin(omega), 1.0 - pole * std::cos(omega));
+  const double delay = -phase / omega;
+  if (!std::isfinite(delay) || delay < 0.0) return 0.0;
+  return delay;
+}
+
+// Round-trip transmission exp(−α 2L) of Kirchhoff's wide tube.
+// μ(T) is Sutherland's law for dry air, μ0 = 1.716e−5 Pa·s at 273.15 K
+// with S = 110.4 K. Prandtl's number for air is 0.71. T is recovered
+// from c = sqrt(γ R T). α = sqrt(ω ν / 2) (1 + (γ−1)/sqrt(Pr)) / (a c).
+[[nodiscard]] inline double kirchhoffTripMagnitude(double frequencyHz, double radius,
+                                                   double length, double speed,
+                                                   double density) {
+  if (!(frequencyHz > 0.0) || !(radius > 0.0) || !(length > 0.0) ||
+      !(speed > 0.0) || !(density > 0.0))
+    return 1.0;
+  const double temperature =
+      (speed * speed) /
+      (acoustic_constants::dryAirGamma * acoustic_constants::dryAirGasConstant);
+  if (!(temperature > 150.0) || !(temperature < 2000.0)) return 1.0;
+  const double t0 = 273.15;
+  const double sutherland = 110.4;
+  const double mu0 = 1.716e-5;
+  const double mu = mu0 * std::pow(temperature / t0, 1.5) * (t0 + sutherland) /
+                    (temperature + sutherland);
+  if (!(mu > 0.0) || !std::isfinite(mu)) return 1.0;
+  const double nu = mu / density;
+  const double prandtl = 0.71;
+  const double thermal =
+      1.0 + (acoustic_constants::dryAirGamma - 1.0) / std::sqrt(prandtl);
+  const double omega = constants::twoPi * frequencyHz;
+  const double alpha =
+      std::sqrt(omega * nu / 2.0) * thermal / (radius * speed);
+  if (!std::isfinite(alpha) || alpha < 0.0) return 1.0;
+  const double transmission = std::exp(-alpha * 2.0 * length);
+  if (!std::isfinite(transmission) || !(transmission > 0.0) || transmission > 1.0)
+    return 1.0;
+  return transmission;
 }
 
 }  // namespace valve_detail
@@ -258,6 +365,9 @@ class BoreValveVoice final : public IVoice {
     boreX_ = 0.0;
     boreY_ = 0.0;
     openEnd_.reset();
+    wall_.reset();
+    cutoff_.reset();
+    noise_ = 1u;
     std::fill(jetDelay_.begin(), jetDelay_.end(), initialDisplacement_);
     jetPos_ = 0;
     displacement_ = initialDisplacement_;
@@ -323,9 +433,41 @@ class BoreValveVoice final : public IVoice {
         !std::isfinite(density) || !(density > 0.0) ||
         !std::isfinite(impedance) || !(impedance > 0.0))
       return R::failure(QuantityError::InvalidArgument);
-    const double roundTrip = 2.0 * length / speed;
-    const double samples = fs * roundTrip;
+    // A non-radiating bore can still carry Levine's unflanged end
+    // correction, 0.61 a, as extra length. A positive radius already
+    // puts that correction inside OpenEndReflection, so it is not added
+    // again. Zero correction leaves the geometric length.
+    double airColumn = length;
+    if (!(blow.radiusMeters > 0.0)) airColumn += blow.endCorrectionMeters;
+    if (!std::isfinite(airColumn) || !(airColumn > 0.0))
+      return R::failure(QuantityError::RangeError);
+    const double roundTrip = 2.0 * airColumn / speed;
+    const double geometric = (law == ValveLaw::Jet) ? speed / (2.0 * airColumn)
+                                                    : speed / (4.0 * airColumn);
+    const bool lossy = blow.reflectionCutoffHz > 0.0;
+    double wallPole = 0.0;
+    double cutPole = 0.0;
+    double timed = fs * roundTrip;
+    if (lossy) {
+      const double radius = std::sqrt(area / constants::pi);
+      // Match Kirchhoff at the 4th harmonic so the one-pole does not
+      // invent a cutoff below the bore. The caller's corner is the
+      // radiation reflection, a separate section.
+      const double match = std::min(0.3 * fs, std::max(12.0 * geometric, 4000.0));
+      const double wall = valve_detail::kirchhoffTripMagnitude(
+          match, radius, airColumn, speed, density);
+      wallPole = valve_detail::onePoleMatching(wall, match, fs);
+      cutPole = std::exp(-constants::twoPi * blow.reflectionCutoffHz / fs);
+      if (!std::isfinite(cutPole) || !(cutPole > 0.0) || !(cutPole < 1.0))
+        return R::failure(QuantityError::RangeError);
+      if (!(blow.radiusMeters > 0.0)) {
+        timed -= valve_detail::onePolePhaseDelay(wallPole, geometric, fs);
+        timed -= valve_detail::onePolePhaseDelay(cutPole, geometric, fs);
+      }
+    }
+    const double samples = timed;
     if (!std::isfinite(roundTrip) || !(roundTrip > 0.0) || !std::isfinite(samples) ||
+        !(samples > 1.0) ||
         samples > static_cast<double>(std::numeric_limits<int>::max() / 4))
       return R::failure(QuantityError::RangeError);
     int delay = static_cast<int>(std::floor(samples));
@@ -373,7 +515,14 @@ class BoreValveVoice final : public IVoice {
         useBoreThiran = true;
       }
       decay = -std::log(blow.reflectionMagnitude) / roundTrip;
-      hertz = (law == ValveLaw::Jet) ? speed / (2.0 * length) : speed / (4.0 * length);
+      hertz = geometric;
+    }
+    if (lossy) {
+      const double extra = valve_detail::onePoleMagnitude(wallPole, hertz, fs) *
+                           valve_detail::onePoleMagnitude(cutPole, hertz, fs);
+      if (!(extra > 0.0) || !std::isfinite(extra))
+        return R::failure(QuantityError::RangeError);
+      decay -= std::log(extra) / roundTrip;
     }
     if (!std::isfinite(decay) || !std::isfinite(hertz) || !(hertz > 0.0))
       return R::failure(QuantityError::RangeError);
@@ -385,7 +534,13 @@ class BoreValveVoice final : public IVoice {
     voice.boreThiran_ = boreThiran;
     voice.useBoreThiran_ = useBoreThiran;
     const double radius = std::sqrt(area / constants::pi);
+    voice.wall_.pole = wallPole;
+    voice.cutoff_.pole = cutPole;
+    voice.jetNoise_ = blow.jetNoiseMeters;
     voice.radiationCorner_ = speed / radius;
+    // The caller's corner is the bell/embouchure radiation cutoff. It
+    // replaces c/a of the bore when the bore is not the radiating mouth.
+    if (lossy) voice.radiationCorner_ = constants::twoPi * blow.reflectionCutoffHz;
     if (!std::isfinite(voice.radiationCorner_) || !(voice.radiationCorner_ > 0.0))
       return R::failure(QuantityError::RangeError);
     return R::success(std::move(voice));
@@ -433,7 +588,7 @@ class BoreValveVoice final : public IVoice {
       boreY_ = y;
       x = y;
     }
-    return x;
+    return cutoff_.step(wall_.step(x));
   }
 
   [[nodiscard]] double mouthNow() const {
@@ -546,11 +701,19 @@ class BoreValveVoice final : public IVoice {
       if (!flow.ok()) return R::failure(flow.error());
       jetFlow = flow.value();
     }
-    const double yEdge = jetDelay_.empty() ? flueY_ : jetDelay_[jetPos_];
+    double yEdge = jetDelay_.empty() ? flueY_ : jetDelay_[jetPos_];
     // tanh is the captured fraction of a sech² jet. The factor 2 matches
     // the centered small-signal slope 2 U_j y / h of the top-hat jet.
+    // A turbulent offset, argument jetNoiseMeters, is the breath noise
+    // of the mixing layer. Zero leaves a deterministic jet.
     const double thickness = jetThickness_;
     if (!(thickness > 0.0)) return R::failure(QuantityError::InvalidArgument);
+    if (open && mouth > 0.0 && jetNoise_ > 0.0) {
+      noise_ = noise_ * 1664525u + 1013904223u;
+      const double unit =
+          (static_cast<double>(noise_ & 0x00ffffffu) / 16777215.0) * 2.0 - 1.0;
+      yEdge += jetNoise_ * unit;
+    }
     const double eta = std::tanh(yEdge / thickness + jetAim_ / thickness);
     const double eta0 = std::tanh(jetAim_ / thickness);
     const double acoustic = jetFlow * 2.0 * (eta - eta0);
@@ -613,6 +776,10 @@ class BoreValveVoice final : public IVoice {
   std::uint64_t attackFrames_ = 0;
   std::uint64_t releaseFrames_ = 0;
   double jetAim_ = 0.0;
+  double jetNoise_ = 0.0;
+  valve_detail::TripLoss wall_{};
+  valve_detail::TripLoss cutoff_{};
+  std::uint32_t noise_ = 1u;
   double bellFlow_ = 0.0;
   double radiationState_ = 0.0;
   double radiationCorner_ = 1.0;

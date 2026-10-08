@@ -185,6 +185,8 @@ class ConeValveVoice final : public IVoice {
     boreX_ = 0.0;
     boreY_ = 0.0;
     openEnd_.reset();
+    wall_.reset();
+    cutoff_.reset();
     integrator_ = 0.0;
     previousPressure_ = 0.0;
     cupPressure_ = 0.0;
@@ -245,8 +247,36 @@ class ConeValveVoice final : public IVoice {
     const double sounding = length + extraLength;
     if (!std::isfinite(sounding) || !(sounding > 0.0))
       return R::failure(QuantityError::RangeError);
-    const double samples = fs * 2.0 * sounding / speed;
-    if (!std::isfinite(samples) ||
+    const double roundTrip = 2.0 * sounding / speed;
+    double timed = fs * roundTrip;
+    double wallPole = 0.0;
+    double cutPole = 0.0;
+    const bool lossy = blow.reflectionCutoffHz > 0.0;
+    const double geometricGuess = speed / (2.0 * sounding);
+    if (lossy) {
+      // α ∝ 1/r and r grows linearly along the cone, so the trip uses
+      // the log-mean radius, not the throat alone.
+      const double throat = std::sqrt(area / constants::pi);
+      const double ratio = (apex + sounding) / apex;
+      const double logMean =
+          ratio > 1.0 ? throat * (ratio - 1.0) / std::log(ratio) : throat;
+      const double match =
+          std::min(0.3 * fs, std::max(12.0 * geometricGuess, 4000.0));
+      const double wall = valve_detail::kirchhoffTripMagnitude(
+          match, logMean, sounding, speed, density);
+      wallPole = valve_detail::onePoleMatching(wall, match, fs);
+      cutPole = std::exp(-constants::twoPi * blow.reflectionCutoffHz / fs);
+      if (!std::isfinite(cutPole) || !(cutPole > 0.0) || !(cutPole < 1.0) ||
+          !std::isfinite(logMean) || !(logMean > 0.0))
+        return R::failure(QuantityError::RangeError);
+      if (!(blow.radiusMeters > 0.0)) {
+        timed -= valve_detail::onePolePhaseDelay(wallPole, geometricGuess, fs);
+        timed -= valve_detail::onePolePhaseDelay(cutPole, geometricGuess, fs);
+      }
+    }
+    const double samples = timed;
+    if (!std::isfinite(roundTrip) || !(roundTrip > 0.0) || !std::isfinite(samples) ||
+        !(samples > 1.0) ||
         samples > static_cast<double>(std::numeric_limits<int>::max() / 4))
       return R::failure(QuantityError::RangeError);
     int delay = static_cast<int>(std::floor(samples));
@@ -312,8 +342,19 @@ class ConeValveVoice final : public IVoice {
     }
     if (!std::isfinite(hertz) || !(hertz > 0.0))
       return R::failure(QuantityError::RangeError);
+    if (lossy) {
+      const double extra = valve_detail::onePoleMagnitude(wallPole, hertz, fs) *
+                           valve_detail::onePoleMagnitude(cutPole, hertz, fs);
+      if (!(extra > 0.0) || !std::isfinite(extra))
+        return R::failure(QuantityError::RangeError);
+      const double trip = roundTrip > 0.0 ? roundTrip : static_cast<double>(delay) / fs;
+      decay -= std::log(extra) / trip;
+      if (!std::isfinite(decay)) return R::failure(QuantityError::RangeError);
+    }
     ConeValveVoice voice(rate, blow, alpha, impedance, density, delay, hertz, lip,
                          radiating);
+    voice.wall_.pole = wallPole;
+    voice.cutoff_.pole = cutPole;
     voice.decay_ = decay;
     voice.openEnd_ = std::move(openEnd);
     voice.boreThiran_ = boreThiran;
@@ -323,6 +364,10 @@ class ConeValveVoice final : public IVoice {
       return R::failure(QuantityError::RangeError);
     const double bellRadius = std::sqrt(area / constants::pi) * voice.bellScale_;
     voice.radiationCorner_ = speed / bellRadius;
+    // A complete-cone bell radius is not a measured brass bell. When the
+    // caller supplies a radiation cutoff, that corner is the ka = 1
+    // smoother on the radiated pressure.
+    if (lossy) voice.radiationCorner_ = constants::twoPi * blow.reflectionCutoffHz;
     if (!std::isfinite(voice.radiationCorner_) || !(voice.radiationCorner_ > 0.0))
       return R::failure(QuantityError::RangeError);
     voice.reed_ = reed;
@@ -355,7 +400,7 @@ class ConeValveVoice final : public IVoice {
       boreY_ = y;
       x = y;
     }
-    return x;
+    return cutoff_.step(wall_.step(x));
   }
 
   void stopLip() {
@@ -448,6 +493,8 @@ class ConeValveVoice final : public IVoice {
   double boreThiran_ = 0.0;
   double boreX_ = 0.0;
   double boreY_ = 0.0;
+  valve_detail::TripLoss wall_{};
+  valve_detail::TripLoss cutoff_{};
   std::uint64_t attackFrames_ = 0;
   std::uint64_t releaseFrames_ = 0;
   bool useBoreThiran_ = false;
