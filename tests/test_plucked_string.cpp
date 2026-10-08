@@ -195,7 +195,7 @@ StringCourse electricCourse() {
 
 TEST_CASE("three plucked soundboards meet the audible bar", "[pluck]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 15);
+  CHECK(instrumentsThatRenderAudio() == 16);
   for (const char* name : {"violin", "viola", "cello", "double bass"}) {
     const auto* row = statusNamed(name);
     REQUIRE(row != nullptr);
@@ -217,8 +217,8 @@ TEST_CASE("three plucked soundboards meet the audible bar", "[pluck]") {
   CHECK(std::strstr(electric->radiation, "coil") != nullptr);
   const auto* piano = statusNamed("piano");
   REQUIRE(piano != nullptr);
-  CHECK_FALSE(piano->rendersAudio);
-  CHECK(std::strstr(piano->gap, "hammer") != nullptr);
+  CHECK(piano->rendersAudio);
+  CHECK(std::strstr(piano->body, "soundboard") != nullptr);
   CHECK(std::strstr(statusNamed("clarinet")->gap, "bore") != nullptr);
 }
 

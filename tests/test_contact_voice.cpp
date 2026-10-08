@@ -185,15 +185,16 @@ TEST_CASE("a constant-force oscillator steps its own decay", "[contact]") {
         QuantityError::DomainError);
 }
 
-TEST_CASE("bow, hammer, and mallet still leave the audible bar unmet", "[contact]") {
+TEST_CASE("bow, hammer, and mallet record which instruments render", "[contact]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 15);
+  CHECK(instrumentsThatRenderAudio() == 16);
   CHECK(std::strstr(statusNamed("violin")->resonator, "waveguide") != nullptr);
   CHECK(std::strstr(statusNamed("violin")->excitation, "bow") != nullptr);
   CHECK(statusNamed("violin")->rendersAudio);
   CHECK(std::strstr(statusNamed("violin")->gap, "wolf") != nullptr);
-  CHECK_FALSE(statusNamed("piano")->rendersAudio);
-  CHECK(std::strstr(statusNamed("piano")->gap, "hammer") != nullptr);
+  CHECK(statusNamed("piano")->rendersAudio);
+  CHECK(std::strstr(statusNamed("piano")->radiation, "monopole") != nullptr);
+  CHECK(std::strstr(statusNamed("piano")->gap, "four") != nullptr);
   CHECK(std::strstr(statusNamed("clarinet")->gap, "bore") != nullptr);
   CHECK(statusNamed("clarinet")->rendersAudio);
   CHECK(statusNamed("flute")->rendersAudio);
@@ -409,6 +410,93 @@ TEST_CASE("a felt hammer rings the stiff string after contact", "[contact]") {
   const auto damped = renderOf(viscous, 4096);
   CHECK(peakOf(damped, 0, 4096) < peakOf(samples, 0, 4096));
   CHECK(peakOf(damped, 0, 4096) > 0.0);
+}
+
+TEST_CASE("a hammered bridge radiates through the soundboard", "[contact]") {
+  auto bank = unwrap(concertGrandStringBank());
+  const PianoStringSpec* spec = findPianoString(bank, "C#5");
+  REQUIRE(spec != nullptr);
+  const StringCourse course = unwrap(tunePianoString(*spec));
+  const WaveSystem1D stiff = unwrap(tunedPianoString(*spec));
+  const LossModel loss = courseLoss(course, 4.0, 0.4);
+  const HammerStrike strike{0.12, 0.008, 0.8};
+  const double frequency = course.tuning.frequency.value();
+  const BodyModeSpec heavyMode{frequency, 200.0, 1000.0};
+  const HammerBodyDrive heavy{std::span<const BodyModeSpec>(&heavyMode, 1), 0.02, 1.0, kAir,
+                              kTemp};
+  auto voice = unwrap(HammeredStringVoice::create(
+      course, strike, loss, stiff.stiffness, 3200.0, 1.0, 0.0, 4, 4, kRate, heavy));
+  CHECK(voice.radiating());
+  auto system = unwrap(pluckedCourseSystem(course, loss, stiff.stiffness));
+  auto design = unwrap(designTunedLoop(system, kRate, 4, 4));
+  const double pole = unwrap(loopPole(design.filters, kRate, 1)).frequency.value();
+  CHECK(std::fabs(voice.fundamentalHz() - pole) < 1.0e-9);
+  const auto samples = renderOf(voice, 49152);
+  CHECK(peakOf(samples, 8000, 16000) > 1.0e-5);
+  CHECK(std::fabs(pitchNear(samples, 24576, frequency - 40.0, frequency + 40.0) -
+                  voice.fundamentalHz()) < 1.0);
+  const double early = amplitudeNear(samples, 32768, frequency - 40.0, frequency + 40.0);
+  const double late = amplitudeNear(samples, 40960, frequency - 40.0, frequency + 40.0);
+  REQUIRE(early > 0.0);
+  const double expected = std::exp(-voice.fundamentalDecay() * (8192.0 / kFs));
+  CHECK(std::fabs(late / early - expected) / expected < 0.05);
+  writeListening(samples, "/opt/cursor/artifacts/mmath-piano-soundboard.wav");
+
+  voice.reset();
+  std::vector<double> once(512);
+  std::vector<double> blocked(512);
+  REQUIRE(voice.renderBlock(once.data(), FrameCount{512}).ok());
+  voice.reset();
+  for (std::size_t i = 0; i < blocked.size(); i += 128) {
+    REQUIRE(voice.renderBlock(blocked.data() + i, FrameCount{128}).ok());
+  }
+  for (std::size_t i = 0; i < once.size(); ++i) CHECK(once[i] == blocked[i]);
+
+  const BodyModeSpec lightMode{frequency, 40.0, 5.0};
+  const HammerBodyDrive light{std::span<const BodyModeSpec>(&lightMode, 1), 0.02, 1.0, kAir,
+                              kTemp};
+  const BodyModeSpec heavySameQ{frequency, 40.0, 1000.0};
+  const HammerBodyDrive heavyQuiet{std::span<const BodyModeSpec>(&heavySameQ, 1), 0.02, 1.0,
+                                   kAir, kTemp};
+  auto lightVoice = unwrap(HammeredStringVoice::create(
+      course, strike, loss, stiff.stiffness, 3200.0, 1.0, 0.0, 4, 4, kRate, light));
+  auto heavyVoice = unwrap(HammeredStringVoice::create(
+      course, strike, loss, stiff.stiffness, 3200.0, 1.0, 0.0, 4, 4, kRate, heavyQuiet));
+  const auto lightSamples = renderOf(lightVoice, 49152);
+  const auto heavySamples = renderOf(heavyVoice, 49152);
+  const double lightEarly =
+      amplitudeNear(lightSamples, 32768, frequency - 40.0, frequency + 40.0);
+  const double lightLate =
+      amplitudeNear(lightSamples, 40960, frequency - 40.0, frequency + 40.0);
+  const double heavyEarly =
+      amplitudeNear(heavySamples, 32768, frequency - 40.0, frequency + 40.0);
+  const double heavyLate =
+      amplitudeNear(heavySamples, 40960, frequency - 40.0, frequency + 40.0);
+  REQUIRE(lightEarly > 0.0);
+  REQUIRE(heavyEarly > 0.0);
+  CHECK(lightLate / lightEarly < 0.45);
+  CHECK(heavyLate / heavyEarly > 0.65);
+  CHECK(peakOf(lightSamples, 0, 8192) > 5.0 * peakOf(heavySamples, 0, 8192));
+  CHECK(std::fabs(pitchNear(lightSamples, 24576, frequency - 40.0, frequency + 40.0) -
+                  lightVoice.fundamentalHz()) < 1.0);
+  writeListening(lightSamples, "/opt/cursor/artifacts/mmath-piano-soundboard-light.wav");
+
+  const HammerBodyDrive empty{std::span<const BodyModeSpec>(), 0.02, 1.0, kAir, kTemp};
+  CHECK(HammeredStringVoice::create(course, strike, loss, stiff.stiffness, 3200.0, 1.0, 0.0, 4,
+                                    4, kRate, empty)
+            .error() == QuantityError::InvalidArgument);
+  const HammerBodyDrive negative{std::span<const BodyModeSpec>(&heavyMode, 1), -0.02, 1.0, kAir,
+                                 kTemp};
+  CHECK(HammeredStringVoice::create(course, strike, loss, stiff.stiffness, 3200.0, 1.0, 0.0, 4,
+                                    4, kRate, negative)
+            .error() == QuantityError::InvalidArgument);
+  const BodyModeSpec overdamped{frequency, 0.4, 1000.0};
+  const HammerBodyDrive soft{std::span<const BodyModeSpec>(&overdamped, 1), 0.02, 1.0, kAir,
+                             kTemp};
+  CHECK(HammeredStringVoice::create(course, strike, loss, stiff.stiffness, 3200.0, 1.0, 0.0, 4,
+                                    4, kRate, soft)
+            .error() == QuantityError::DomainError);
+  CHECK(statusNamed("piano")->rendersAudio);
 }
 
 TEST_CASE("a mallet rings a membrane mode and a free-plate mode", "[contact]") {

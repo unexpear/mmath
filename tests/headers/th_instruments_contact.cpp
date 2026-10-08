@@ -41,6 +41,13 @@ TEST_CASE("contact voices are self-contained", "[headers]") {
   CHECK(std::move(struck).value().renderBlock(block, mmathen::FrameCount{8}).ok());
 
   const mmathen::BodyModeSpec mode{440.0, 40.0, 1.0};
+  const mmathen::HammerBodyDrive hammerBoard{
+      std::span<const mmathen::BodyModeSpec>(&mode, 1), 0.01, 1.0, 101325.0, 293.15};
+  auto hammered = mmathen::HammeredStringVoice::create(
+      course.value(), hammer, loss.value(), 0.0, 2000.0, 1.0, 0.0, 2, 0, rate, hammerBoard);
+  REQUIRE(hammered.ok());
+  CHECK(std::move(hammered).value().renderBlock(block, mmathen::FrameCount{8}).ok());
+
   const mmathen::Excitation pluck{mmathen::ExcitationKind::Pluck, 0.3, 1.0e-4};
   auto board = mmathen::SoundboardVoice::create(
       course.value(), pluck, loss.value(), std::span<const mmathen::BodyModeSpec>(&mode, 1),

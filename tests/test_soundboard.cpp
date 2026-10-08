@@ -274,7 +274,7 @@ TEST_CASE("harp, harpsichord, and classical guitar radiate through a soundboard"
     writeListening(samples, row.path);
   }
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 15);
+  CHECK(instrumentsThatRenderAudio() == 16);
   for (const char* name : {"harp", "harpsichord", "classical guitar"}) {
     bool found = false;
     for (std::size_t i = 0; i < kInstrumentRenderStatusCount; ++i) {
@@ -287,7 +287,7 @@ TEST_CASE("harp, harpsichord, and classical guitar radiate through a soundboard"
     }
     CHECK(found);
   }
-  for (const char* name : {"piano", "electric guitar"}) {
+  for (const char* name : {"electric guitar"}) {
     for (std::size_t i = 0; i < kInstrumentRenderStatusCount; ++i) {
       if (std::strcmp(kInstrumentRenderStatus[i].name, name) == 0)
         CHECK_FALSE(kInstrumentRenderStatus[i].rendersAudio);

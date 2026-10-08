@@ -13,10 +13,11 @@
 // end in one voice. Violin, viola, cello, and double bass step the
 // bow, the lossy waveguide, a yielding modal soundboard, and a
 // compact monopole in one voice. Harp, harpsichord, and classical
-// guitar step a pluck through that same soundboard. The three toms
-// step a mallet, both heads, a closed cavity, and a monopole. The
-// felt hammer, the bass-drum port, and snare wires stay outside, so
-// those rows stay false.
+// guitar step a pluck through that same soundboard. The piano steps
+// a felt hammer, a stiff waveguide, that soundboard, and the same
+// monopole. The three toms step a mallet, both heads, a closed
+// cavity, and a monopole. The bass-drum port and snare wires stay
+// outside, so those rows stay false.
 //
 // The strings are the status, not stored physical constants.
 
@@ -82,10 +83,11 @@ inline constexpr InstrumentRenderStatus kInstrumentRenderStatus[] = {
      "no body filter",
      "pickup position comb and coil velocity; no inductance", false,
      "String and pickup step. The body filter is absent."},
-    {"piano", "felt hammer steps a stiff string",
-     "modal stiff string, loss and strike are arguments",
-     "no soundboard", "none", false,
-     "The felt hammer steps a stiff string. Soundboard and radiation are absent."},
+    {"piano", "felt hammer steps a stiff waveguide",
+     "lossy stiff tuned waveguide; strike and stiffness are arguments",
+     "hammer closes on a modal soundboard; bridge force is the drive",
+     "compact monopole of the hammered bridge acceleration", true,
+     "Mode frequency, Q, and mass are arguments. The other four courses are not coupled."},
     {"clarinet", "inward reed steps a bore delay",
      "cylindrical delay; an open end replaces the constant magnitude", "none",
      "Levine-Schwinger open end; radius and end correction are arguments", true,
