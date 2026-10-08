@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <cstring>
 #include <span>
@@ -104,6 +105,48 @@ double pitchNear(const std::vector<double>& samples, std::size_t begin,
   return unwrap(estimateSinusoid(window, kRate, Window::BlackmanHarris,
                                  FrequencyHz{lowHz}, FrequencyHz{highHz}))
       .frequency.value();
+}
+
+// Fraction of Hann-window energy above 0.4 fs. A Nyquist rail lives there.
+double energyAboveGuard(const std::vector<double>& samples, std::size_t origin) {
+  constexpr int kN = 8192;
+  REQUIRE(origin + static_cast<std::size_t>(kN) <= samples.size());
+  std::vector<std::complex<double>> buf(static_cast<std::size_t>(kN));
+  for (int i = 0; i < kN; ++i) {
+    const double window =
+        0.5 * (1.0 - std::cos(6.283185307179586 * static_cast<double>(i) / kN));
+    buf[static_cast<std::size_t>(i)] =
+        samples[origin + static_cast<std::size_t>(i)] * window;
+  }
+  auto spec = fft(std::move(buf));
+  REQUIRE(spec.ok());
+  const auto& bins = spec.value();
+  double total = 0.0;
+  double high = 0.0;
+  for (int k = 0; k < kN; ++k) {
+    const double power = std::norm(bins[static_cast<std::size_t>(k)]);
+    total += power;
+    const int folded = std::min(k, kN - k);
+    if (static_cast<double>(folded) / static_cast<double>(kN) > 0.4) high += power;
+  }
+  return total > 0.0 ? high / total : 1.0;
+}
+
+double autocorrelationAt(const std::vector<double>& samples, std::size_t origin,
+                         double frequencyHz) {
+  const int lag = std::max(8, static_cast<int>(std::llround(kFs / frequencyHz)));
+  REQUIRE(origin + static_cast<std::size_t>(lag + 4000) <= samples.size());
+  double energy0 = 0.0;
+  double energy1 = 0.0;
+  double cross = 0.0;
+  for (int i = 0; i < 4000; ++i) {
+    const double u = samples[origin + static_cast<std::size_t>(i)];
+    const double v = samples[origin + static_cast<std::size_t>(i + lag)];
+    energy0 += u * u;
+    energy1 += v * v;
+    cross += u * v;
+  }
+  return cross / std::sqrt(energy0 * energy1);
 }
 
 double amplitudeNear(const std::vector<double>& samples, std::size_t begin,
@@ -243,6 +286,8 @@ TEST_CASE("a bow on a lossy waveguide has the loop pitch and decay", "[contact]"
   CHECK(std::fabs(speaking - voice.fundamentalHz()) / voice.fundamentalHz() < 0.05);
   const double heard = pitchNear(samples, 16384, 400.0, 480.0);
   CHECK(std::fabs(heard - voice.fundamentalHz()) < 2.0);
+  CHECK(energyAboveGuard(samples, 16384) < 0.01);
+  CHECK(autocorrelationAt(samples, 16384, voice.fundamentalHz()) > 0.8);
   checkDecay(samples, 16384, 400.0, 480.0, voice.fundamentalDecay());
   writeListening(samples, "mmath-violin-bow.wav");
 
@@ -278,6 +323,25 @@ TEST_CASE("a bow on a lossy waveguide has the loop pitch and decay", "[contact]"
         kRate, 8000));
     auto rendered = renderOf(other, 16384);
     CHECK(peakOf(rendered, 1000, 8000) > 1.0e-3);
+    CHECK(energyAboveGuard(rendered, 4096) < 0.01);
+    // The bow's speaking period sits a few samples off the tuned loop.
+    // The best lag in that neighborhood is the heard pitch.
+    {
+      const double expect = other.fundamentalHz();
+      const int center = std::max(8, static_cast<int>(std::llround(kFs / expect)));
+      double best = -2.0;
+      int lag = center;
+      for (int candidate = std::max(8, center - 12); candidate <= center + 12;
+           ++candidate) {
+        const double value = autocorrelationAt(rendered, 4096, kFs / candidate);
+        if (value > best) {
+          best = value;
+          lag = candidate;
+        }
+      }
+      CHECK(best > 0.85);
+      CHECK(std::fabs(kFs / static_cast<double>(lag) - expect) / expect < 0.04);
+    }
     CHECK(std::strstr(statusNamed(bows[i])->excitation, "bow") != nullptr);
     writeListening(rendered, paths[i]);
   }
@@ -405,6 +469,8 @@ TEST_CASE("a felt hammer rings the stiff string after contact", "[contact]") {
   CHECK(peakOf(samples, 0, 2000) > 1.0e-5);
   const double heard = pitchNear(samples, 8192, pole - 40.0, pole + 40.0);
   CHECK(std::fabs(heard - pole) < 2.0);
+  CHECK(energyAboveGuard(samples, 8192) < 0.01);
+  CHECK(autocorrelationAt(samples, 8192, pole) > 0.8);
   checkDecay(samples, 8192, pole - 40.0, pole + 40.0, elastic.fundamentalDecay());
   writeListening(samples, "mmath-piano-hammer.wav");
 

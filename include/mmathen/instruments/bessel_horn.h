@@ -296,6 +296,8 @@ class BesselHornVoice final : public IVoice {
       voice.cupRate_ = cup;
     }
     voice.modes_.resize(static_cast<std::size_t>(modeCount));
+    voice.held_.resize(static_cast<std::size_t>(modeCount));
+    voice.driven_.resize(static_cast<std::size_t>(modeCount));
     const double trip = 2.0 * stepped / trumpet.soundSpeedMetersPerSecond;
     if (!std::isfinite(trip) || !(trip > 0.0)) return R::failure(QuantityError::RangeError);
     for (int index = 1; index <= modeCount; ++index) {
@@ -396,8 +398,6 @@ class BesselHornVoice final : public IVoice {
     if (!open) opening = 0.0;
     double pressure0 = 0.0;
     double gain = 0.0;
-    std::vector<OscillatorState> held(modes_.size());
-    std::vector<OscillatorState> driven(modes_.size());
     for (std::size_t i = 0; i < modes_.size(); ++i) {
       const Mode& mode = modes_[i];
       OscillatorState state{mode.displacement, mode.velocity};
@@ -405,10 +405,10 @@ class BesselHornVoice final : public IVoice {
       if (!zero.ok()) return R::failure(zero.error());
       auto unit = stepConstantForceOscillator(state, mode.omega, mode.sigma, mode.alpha, dt);
       if (!unit.ok()) return R::failure(unit.error());
-      held[i] = zero.value();
-      driven[i] = unit.value();
-      pressure0 += held[i].velocity;
-      gain += driven[i].velocity - held[i].velocity;
+      held_[i] = zero.value();
+      driven_[i] = unit.value();
+      pressure0 += held_[i].velocity;
+      gain += driven_[i].velocity - held_[i].velocity;
     }
     if (!std::isfinite(pressure0) || !std::isfinite(gain))
       return R::failure(QuantityError::RangeError);
@@ -429,8 +429,8 @@ class BesselHornVoice final : public IVoice {
     if (!std::isfinite(pressure)) return R::failure(QuantityError::RangeError);
     for (std::size_t i = 0; i < modes_.size(); ++i) {
       modes_[i].displacement =
-          held[i].displacement + flow * (driven[i].displacement - held[i].displacement);
-      modes_[i].velocity = held[i].velocity + flow * (driven[i].velocity - held[i].velocity);
+          held_[i].displacement + flow * (driven_[i].displacement - held_[i].displacement);
+      modes_[i].velocity = held_[i].velocity + flow * (driven_[i].velocity - held_[i].velocity);
       if (!std::isfinite(modes_[i].displacement) || !std::isfinite(modes_[i].velocity))
         return R::failure(QuantityError::RangeError);
     }
@@ -511,6 +511,8 @@ class BesselHornVoice final : public IVoice {
   double slitWidth_ = 0.0;
   Trumpet trumpet_{};
   std::vector<Mode> modes_;
+  std::vector<OscillatorState> held_;
+  std::vector<OscillatorState> driven_;
   std::uint64_t frame_ = 0;
 };
 

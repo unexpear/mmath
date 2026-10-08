@@ -107,13 +107,22 @@ class ConeValveVoice final : public IVoice {
     const double dt = 1.0 / rate_.value();
     const double beta = 0.5 * alpha_ * dt;
     for (std::uint64_t i = 0; i < count; ++i) {
-      const double arriving = readBore();
-      const double incoming = radiating_ ? openEnd_.step(arriving) : -arriving;
+      // The delay output is the wave that has traveled the bore. Wall loss
+      // and the Nyquist zero are on that trip. The reflection cutoff shapes
+      // only the wave that comes back to the reed: a passive open end
+      // radiates what it does not reflect, so the bell flow uses the
+      // incident wave, not the filtered return.
+      const double incident = readBore();
+      const double reflected = cutoff_.step(incident);
+      const double incoming = radiating_ ? openEnd_.step(reflected) : -reflected;
       if (!std::isfinite(incoming)) return R::failure(QuantityError::RangeError);
       const bool open = frame_ < blowFrames_;
       const double mouth = valve_detail::blowingPressure(
           pressure_, blowFrames_, attackFrames_, releaseFrames_, frame_);
-      if (!open) {
+      // A tongue holds the valve shut while mouth pressure rises, then
+      // lets go. The release frame is the start of the acoustic attack.
+      const bool tongued = tongueFrames_ > 0 && frame_ < tongueFrames_;
+      if (!open || tongued) {
         if (lip_) {
           displacement_ = -restOpening_ / slitWidth_;
           velocity_ = 0.0;
@@ -121,6 +130,9 @@ class ConeValveVoice final : public IVoice {
           displacement_ = closing_;
           velocity_ = 0.0;
         }
+      } else if (tongueFrames_ > 0 && frame_ == tongueFrames_) {
+        displacement_ = initialDisplacement_;
+        velocity_ = 0.0;
       }
       const double known = 2.0 * incoming - integrator_ - beta * previousPressure_;
       double pressure = 0.0;
@@ -143,7 +155,7 @@ class ConeValveVoice final : public IVoice {
       integrator_ += beta * (pressure + previousPressure_);
       previousPressure_ = pressure;
       cupPressure_ = pressure;
-      if (open && mouth > 0.0) {
+      if (open && mouth > 0.0 && !tongued) {
         const double delta = mouth - pressure;
         double acceleration = 0.0;
         if (lip_) {
@@ -170,7 +182,7 @@ class ConeValveVoice final : public IVoice {
       line_[pos_] = outgoing;
       pos_ = (pos_ + 1) % line_.size();
       const double bellFlow =
-          (arriving - incoming) / impedance_ * bellScale_;
+          (incident - incoming) / impedance_ * bellScale_;
       out[i] = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
                                         radiationState_, radiationCorner_, dt);
       if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);
@@ -184,6 +196,7 @@ class ConeValveVoice final : public IVoice {
     pos_ = 0;
     boreX_ = 0.0;
     boreY_ = 0.0;
+    nyquist_ = 0.0;
     openEnd_.reset();
     wall_.reset();
     cutoff_.reset();
@@ -219,6 +232,7 @@ class ConeValveVoice final : public IVoice {
         listener_(blow.listenerDistanceMeters),
         attackFrames_(blow.attackFrames),
         releaseFrames_(blow.releaseFrames),
+        tongueFrames_(blow.tongueReleaseFrames),
         fundamentalHz_(fundamentalHz),
         lip_(lip),
         radiating_(radiating),
@@ -248,7 +262,10 @@ class ConeValveVoice final : public IVoice {
     if (!std::isfinite(sounding) || !(sounding > 0.0))
       return R::failure(QuantityError::RangeError);
     const double roundTrip = 2.0 * sounding / speed;
-    double timed = fs * roundTrip;
+    // Half a sample is the linear-phase delay of the loop's Nyquist zero
+    // (readBore averages adjacent samples). Shortening the line by that
+    // amount keeps the low-frequency round trip on the geometric length.
+    double timed = fs * roundTrip - 0.5;
     double wallPole = 0.0;
     double cutPole = 0.0;
     const bool lossy = blow.reflectionCutoffHz > 0.0;
@@ -364,10 +381,14 @@ class ConeValveVoice final : public IVoice {
       return R::failure(QuantityError::RangeError);
     const double bellRadius = std::sqrt(area / constants::pi) * voice.bellScale_;
     voice.radiationCorner_ = speed / bellRadius;
-    // A complete-cone bell radius is not a measured brass bell. When the
-    // caller supplies a radiation cutoff, that corner is the ka = 1
-    // smoother on the radiated pressure.
-    if (lossy) voice.radiationCorner_ = constants::twoPi * blow.reflectionCutoffHz;
+    // A complete-cone bell radius is not a measured brass bell. A positive
+    // radiationHz is the ka = 1 smoother on the radiated pressure and does
+    // not change the loop filter. Omitting it keeps the older coupling:
+    // the reflection cutoff was that smoother.
+    if (blow.radiationHz > 0.0)
+      voice.radiationCorner_ = constants::twoPi * blow.radiationHz;
+    else if (lossy)
+      voice.radiationCorner_ = constants::twoPi * blow.reflectionCutoffHz;
     if (!std::isfinite(voice.radiationCorner_) || !(voice.radiationCorner_ > 0.0))
       return R::failure(QuantityError::RangeError);
     voice.reed_ = reed;
@@ -400,7 +421,14 @@ class ConeValveVoice final : public IVoice {
       boreY_ = y;
       x = y;
     }
-    return cutoff_.step(wall_.step(x));
+    x = wall_.step(x);
+    // A zero at z = −1. An odd-length delay plus a reed that is still
+    // a negative resistance at fs/2 otherwise locks onto Nyquist, and
+    // the bell differentiator then radiates only that rail. The average
+    // is linear phase of half a sample, already removed from the line.
+    const double y = 0.5 * (x + nyquist_);
+    nyquist_ = x;
+    return y;
   }
 
   void stopLip() {
@@ -493,10 +521,12 @@ class ConeValveVoice final : public IVoice {
   double boreThiran_ = 0.0;
   double boreX_ = 0.0;
   double boreY_ = 0.0;
+  double nyquist_ = 0.0;
   valve_detail::TripLoss wall_{};
   valve_detail::TripLoss cutoff_{};
   std::uint64_t attackFrames_ = 0;
   std::uint64_t releaseFrames_ = 0;
+  std::uint64_t tongueFrames_ = 0;
   bool useBoreThiran_ = false;
   double fundamentalHz_ = 0.0;
   double decay_ = 0.0;

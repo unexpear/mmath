@@ -123,6 +123,7 @@ std::vector<double> renderOf(IVoice& voice, std::uint64_t frames) {
 
 double pitchNear(const std::vector<double>& samples, std::size_t begin, double lowHz,
                  double highHz) {
+  REQUIRE(begin + 8192 <= samples.size());
   std::vector<double> window(samples.begin() + static_cast<std::ptrdiff_t>(begin),
                              samples.begin() + static_cast<std::ptrdiff_t>(begin + 8192));
   return unwrap(estimateSinusoid(window, kRate, Window::BlackmanHarris, FrequencyHz{lowHz},
@@ -132,6 +133,7 @@ double pitchNear(const std::vector<double>& samples, std::size_t begin, double l
 
 double amplitudeNear(const std::vector<double>& samples, std::size_t begin, double lowHz,
                      double highHz) {
+  REQUIRE(begin + 8192 <= samples.size());
   std::vector<double> window(samples.begin() + static_cast<std::ptrdiff_t>(begin),
                              samples.begin() + static_cast<std::ptrdiff_t>(begin + 8192));
   return unwrap(estimateSinusoid(window, kRate, Window::BlackmanHarris, FrequencyHz{lowHz},
@@ -266,7 +268,9 @@ TEST_CASE("a non-conical exponent rings and radiates", "[bore]") {
   auto longer = unwrap(BesselHornVoice::fromTrumpet(trumpet, 0.2, 4.0, corrected, kRate, 6));
   CHECK(longer.ringingHz() < longer.fundamentalHz() - 2.0);
 
-  const auto samples = renderOf(flared, 48000);
+  // 8192-sample analysis windows. A 48000-frame buffer ends before the
+  // window that starts at 40000, and that read faulted on MSVC (0xC0000005).
+  const auto samples = renderOf(flared, 48000 + 8192);
   CHECK(peakOf(samples, 24000, 40000) > 20.0);
   const double heard = pitchNear(samples, 32000, flared.ringingHz() - 40.0, flared.ringingHz() + 40.0);
   CHECK(std::fabs(heard - flared.ringingHz()) < 6.0);

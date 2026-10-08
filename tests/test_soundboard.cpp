@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <cstring>
 #include <span>
@@ -68,6 +69,47 @@ double pitchNear(const std::vector<double>& samples, std::size_t begin, double l
   return unwrap(estimateSinusoid(window, kRate, Window::BlackmanHarris,
                                  FrequencyHz{lowHz}, FrequencyHz{highHz}))
       .frequency.value();
+}
+
+double energyAboveGuard(const std::vector<double>& samples, std::size_t origin) {
+  constexpr int kN = 8192;
+  REQUIRE(origin + static_cast<std::size_t>(kN) <= samples.size());
+  std::vector<std::complex<double>> buf(static_cast<std::size_t>(kN));
+  for (int i = 0; i < kN; ++i) {
+    const double window =
+        0.5 * (1.0 - std::cos(6.283185307179586 * static_cast<double>(i) / kN));
+    buf[static_cast<std::size_t>(i)] =
+        samples[origin + static_cast<std::size_t>(i)] * window;
+  }
+  auto spec = fft(std::move(buf));
+  REQUIRE(spec.ok());
+  const auto& bins = spec.value();
+  double total = 0.0;
+  double high = 0.0;
+  for (int k = 0; k < kN; ++k) {
+    const double power = std::norm(bins[static_cast<std::size_t>(k)]);
+    total += power;
+    const int folded = std::min(k, kN - k);
+    if (static_cast<double>(folded) / static_cast<double>(kN) > 0.4) high += power;
+  }
+  return total > 0.0 ? high / total : 1.0;
+}
+
+double autocorrelationAt(const std::vector<double>& samples, std::size_t origin,
+                         double frequencyHz) {
+  const int lag = std::max(8, static_cast<int>(std::llround(kFs / frequencyHz)));
+  REQUIRE(origin + static_cast<std::size_t>(lag + 4000) <= samples.size());
+  double energy0 = 0.0;
+  double energy1 = 0.0;
+  double cross = 0.0;
+  for (int i = 0; i < 4000; ++i) {
+    const double u = samples[origin + static_cast<std::size_t>(i)];
+    const double v = samples[origin + static_cast<std::size_t>(i + lag)];
+    energy0 += u * u;
+    energy1 += v * v;
+    cross += u * v;
+  }
+  return cross / std::sqrt(energy0 * energy1);
 }
 
 double amplitudeNear(const std::vector<double>& samples, std::size_t begin, double lowHz,
@@ -270,6 +312,8 @@ TEST_CASE("harp, harpsichord, and classical guitar radiate through a soundboard"
     const double low = frequency - 40.0;
     const double high = frequency + 40.0;
     CHECK(std::fabs(pitchNear(samples, 16384, low, high) - voice.fundamentalHz()) < 1.5);
+    CHECK(energyAboveGuard(samples, 16384) < 0.01);
+    CHECK(autocorrelationAt(samples, 16384, voice.fundamentalHz()) > 0.8);
     const double early = amplitudeNear(samples, 16384, low, high);
     const double late = amplitudeNear(samples, 24576, low, high);
     REQUIRE(early > late);

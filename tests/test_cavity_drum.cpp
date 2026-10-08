@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -81,6 +82,47 @@ double bareDamped(const MembraneHead& head, int nodal, int radialIndex) {
   const double omega = constants::twoPi * hertz.value();
   const double sigma = omega / 80.0;
   return std::sqrt(omega * omega - sigma * sigma) / constants::twoPi;
+}
+
+double energyAboveGuard(const std::vector<double>& samples, std::size_t origin) {
+  constexpr int kN = 8192;
+  REQUIRE(origin + static_cast<std::size_t>(kN) <= samples.size());
+  std::vector<std::complex<double>> buf(static_cast<std::size_t>(kN));
+  for (int i = 0; i < kN; ++i) {
+    const double window =
+        0.5 * (1.0 - std::cos(6.283185307179586 * static_cast<double>(i) / kN));
+    buf[static_cast<std::size_t>(i)] =
+        samples[origin + static_cast<std::size_t>(i)] * window;
+  }
+  auto spec = fft(std::move(buf));
+  REQUIRE(spec.ok());
+  const auto& bins = spec.value();
+  double total = 0.0;
+  double high = 0.0;
+  for (int k = 0; k < kN; ++k) {
+    const double power = std::norm(bins[static_cast<std::size_t>(k)]);
+    total += power;
+    const int folded = std::min(k, kN - k);
+    if (static_cast<double>(folded) / static_cast<double>(kN) > 0.4) high += power;
+  }
+  return total > 0.0 ? high / total : 1.0;
+}
+
+double autocorrelationAt(const std::vector<double>& samples, std::size_t origin,
+                         double frequencyHz) {
+  const int lag = std::max(8, static_cast<int>(std::llround(kFs / frequencyHz)));
+  REQUIRE(origin + static_cast<std::size_t>(lag + 4000) <= samples.size());
+  double energy0 = 0.0;
+  double energy1 = 0.0;
+  double cross = 0.0;
+  for (int i = 0; i < 4000; ++i) {
+    const double u = samples[origin + static_cast<std::size_t>(i)];
+    const double v = samples[origin + static_cast<std::size_t>(i + lag)];
+    energy0 += u * u;
+    energy1 += v * v;
+    cross += u * v;
+  }
+  return cross / std::sqrt(energy0 * energy1);
 }
 
 std::vector<double> renderOf(CavityDrumVoice& voice, std::uint64_t frames) {
@@ -246,6 +288,14 @@ TEST_CASE("toms radiate through two heads and a cavity", "[cavity]") {
     const double low = voice.normalHz(0);
     const double high = voice.normalHz(1);
     CHECK(std::fabs(pitchNear(samples, 8192, low - 20.0, low + 20.0) - low) < 1.5);
+    if (row.renders) {
+      CHECK(energyAboveGuard(samples, 8192) < 0.01);
+      // Two heads ring at once, so one mode can sit near a null of the
+      // autocorrelation. The stronger of the two is the heard pitch.
+      const double lowAc = autocorrelationAt(samples, 8192, low);
+      const double highAc = autocorrelationAt(samples, 8192, high);
+      CHECK(std::max(lowAc, highAc) > 0.4);
+    }
     CHECK(std::fabs(pitchNear(samples, 8192, high - 25.0, high + 25.0) - high) < 1.5);
     writeListening(samples, row.path);
     const InstrumentRenderStatus* status = nullptr;

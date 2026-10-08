@@ -86,7 +86,12 @@ enum class ValveLaw { InwardReed, OutwardLip, Jet };
 // wall loss, so an ideal bore keeps its pitch and its |R|. A positive
 // corner also enables Kirchhoff's wide-tube wall loss on the round
 // trip. jetNoiseMeters is a turbulent perturbation of the flute
-// centerline. Zero is a silent jet.
+// centerline. Zero is a silent jet. radiationHz is the ka = 1 smoother
+// on the radiated pressure, separate from the loop cutoff. Zero keeps
+// the previous rule: a positive reflection cutoff supplies that corner.
+// tongueReleaseFrames keeps a reed or a lip on its closed stop until
+// that frame, then places it at initialDisplacementMeters. Zero leaves
+// the valve free from the first sample. Mouth pressure ramps on its own.
 struct ValveBlow {
   double pressurePa = 0.0;
   std::uint64_t frames = 0;
@@ -100,6 +105,8 @@ struct ValveBlow {
   double jetAimMeters = 0.0;
   double reflectionCutoffHz = 0.0;
   double jetNoiseMeters = 0.0;
+  double radiationHz = 0.0;
+  std::uint64_t tongueReleaseFrames = 0;
 };
 
 namespace valve_detail {
@@ -151,8 +158,10 @@ namespace valve_detail {
       blow.attackFrames + blow.releaseFrames > blow.frames)
     return false;
   if (!std::isfinite(blow.reflectionCutoffHz) || blow.reflectionCutoffHz < 0.0 ||
-      !std::isfinite(blow.jetNoiseMeters) || blow.jetNoiseMeters < 0.0)
+      !std::isfinite(blow.jetNoiseMeters) || blow.jetNoiseMeters < 0.0 ||
+      !std::isfinite(blow.radiationHz) || blow.radiationHz < 0.0)
     return false;
+  if (blow.tongueReleaseFrames > blow.frames) return false;
   return true;
 }
 
@@ -408,6 +417,7 @@ class BoreValveVoice final : public IVoice {
         listener_(blow.listenerDistanceMeters),
         attackFrames_(blow.attackFrames),
         releaseFrames_(blow.releaseFrames),
+        tongueFrames_(blow.tongueReleaseFrames),
         jetAim_(blow.jetAimMeters),
         delaySamples_(delay),
         fundamentalHz_(fundamentalHz),
@@ -540,7 +550,12 @@ class BoreValveVoice final : public IVoice {
     voice.radiationCorner_ = speed / radius;
     // The caller's corner is the bell/embouchure radiation cutoff. It
     // replaces c/a of the bore when the bore is not the radiating mouth.
-    if (lossy) voice.radiationCorner_ = constants::twoPi * blow.reflectionCutoffHz;
+    // radiationHz, when set, is that smoother alone. The loop cutoff
+    // stays on the returning wave.
+    if (blow.radiationHz > 0.0)
+      voice.radiationCorner_ = constants::twoPi * blow.radiationHz;
+    else if (lossy)
+      voice.radiationCorner_ = constants::twoPi * blow.reflectionCutoffHz;
     if (!std::isfinite(voice.radiationCorner_) || !(voice.radiationCorner_ > 0.0))
       return R::failure(QuantityError::RangeError);
     return R::success(std::move(voice));
@@ -628,8 +643,12 @@ class BoreValveVoice final : public IVoice {
     using R = Result<bool, QuantityError>;
     const bool open = frame_ < blowFrames_;
     const double mouth = mouthNow();
-    if (!open) {
+    const bool tongued = tongueFrames_ > 0 && frame_ < tongueFrames_;
+    if (!open || tongued) {
       displacement_ = closing_;
+      velocity_ = 0.0;
+    } else if (tongueFrames_ > 0 && frame_ == tongueFrames_) {
+      displacement_ = initialDisplacement_;
       velocity_ = 0.0;
     }
     auto opening =
@@ -642,7 +661,7 @@ class BoreValveVoice final : public IVoice {
     outgoing = pressure - incoming;
     if (!std::isfinite(outgoing) || !std::isfinite(pressure))
       return R::failure(QuantityError::RangeError);
-    if (open && mouth > 0.0) {
+    if (open && mouth > 0.0 && !tongued) {
       auto acceleration = reedTipAcceleration(
           reed_.inertia, displacement_, velocity_, delta.value());
       if (!acceleration.ok()) return R::failure(acceleration.error());
@@ -663,8 +682,12 @@ class BoreValveVoice final : public IVoice {
     using R = Result<bool, QuantityError>;
     const bool open = frame_ < blowFrames_;
     const double mouth = mouthNow();
-    if (!open) {
+    const bool tongued = tongueFrames_ > 0 && frame_ < tongueFrames_;
+    if (!open || tongued) {
       displacement_ = -restOpening_ / slitWidth_;
+      velocity_ = 0.0;
+    } else if (tongueFrames_ > 0 && frame_ == tongueFrames_) {
+      displacement_ = initialDisplacement_;
       velocity_ = 0.0;
     }
     double opening = restOpening_ + slitWidth_ * displacement_;
@@ -677,7 +700,7 @@ class BoreValveVoice final : public IVoice {
     outgoing = pressure - incoming;
     if (!std::isfinite(outgoing) || !std::isfinite(pressure))
       return R::failure(QuantityError::RangeError);
-    if (open && mouth > 0.0) {
+    if (open && mouth > 0.0 && !tongued) {
       auto acceleration = trumpetLipAcceleration(
           trumpet_, displacement_, velocity_, delta.value());
       if (!acceleration.ok()) return R::failure(acceleration.error());
@@ -775,6 +798,7 @@ class BoreValveVoice final : public IVoice {
   double listener_ = 1.0;
   std::uint64_t attackFrames_ = 0;
   std::uint64_t releaseFrames_ = 0;
+  std::uint64_t tongueFrames_ = 0;
   double jetAim_ = 0.0;
   double jetNoise_ = 0.0;
   valve_detail::TripLoss wall_{};

@@ -92,8 +92,10 @@ is a first-order Thiran section, folded into the end correction when
 the far end is Levine–Schwinger so the fraction is not applied twice.
 One sample per step is the Courant condition at speed \(c\).
 `attackFrames` and `releaseFrames` are a raised cosine on the blowing
-pressure; zero is a step. The listener distance omitted from
-`ValveBlow` is one metre, and the omitted jet aim is centered.
+pressure; zero is a step. `tongueReleaseFrames` holds a reed or a lip
+shut until that frame and then places it at the initial displacement;
+zero leaves the valve free from the first sample. The listener distance
+omitted from `ValveBlow` is one metre, and the omitted jet aim is centered.
 
 `SoundboardVoice` closes one plucked course on a bank of
 body modes: the bridge force \(Z(v_+-v_-)\) drives each mode, the
@@ -1355,20 +1357,42 @@ the caller's end correction as length. Levine and Schwinger's unflanged
 pipe is about \(0.61a\); the flute render uses that. A positive radius
 already carries the correction inside the open-end filter.
 
-`tests/test_wind_tone.cpp` holds a two-second blow with a 30 ms
-raised-cosine attack, inside the 20–50 ms range. Steady state is
-1.0–2.0 s. Ten 100 ms windows in that second each stay within 1 dB
-of their mean RMS. Partials below are dB re the fundamental. Levels
-are the unscaled steady RMS at the shared listener, \(r=1\,\mathrm{m}\),
-in dB re 1 Pa. A cone multiplies bell volume flow by \(x_\mathrm{bell}/x_0\)
-before that same radiator; a cylinder does not. The spread below is
-source strength, not a second distance.
+`tests/test_wind_tone.cpp` holds a two-second blow. The mouth-pressure
+ramp is a performance argument. The demo durations are published player
+times, not one shared 30 ms edge:
 
-- clarinet, 192 Hz, corner 600 Hz, reed damping 0.12 N·s/m: 0, −28.0, −12.3, −35.6, −25.2, −39.9, −37.7, −44.1, −46.5, −45.7. Odds fall after the third. Autocorr 0.9993, HNR 32 dB. Level −15.8 dB re 1 Pa (78 dB SPL). Envelope ±0.05 dB.
-- flute, 282.4 Hz, corner 600 Hz, end correction \(0.61a\): 0, −10.9, −23.6, −41.7 and then lower. The fundamental is strongest and the second harmonic is above −40 dB. Autocorr 0.9999, HNR 39 dB. Level −14.4 dB re 1 Pa (80 dB SPL). Envelope ±0.03 dB.
-- saxophone, 230.8 Hz, 3600 Pa against a closure pressure of 8000 Pa, corner 10 kHz: 0, −5.1, +0.9, +0.1, −19.7, −5.7, −5.7, −16.3, −4.0, −10.7. Twenty-three partials stay above −40 dB, evens included. Autocorr 1, HNR 93 dB. Level +9.3 dB re 1 Pa (103 dB SPL). Envelope flat.
-- trumpet, 229.7 Hz, lip below the second cone root, near concert Bb3 (233 Hz): 0, −9.1, −15.0, −20.3, −25.0, −28.7, −31.4, −34.0, −36.4, −38.1. Magnitude centroid \(2.62 f_0\), eleven partials above −40 dB. Autocorr 0.99998, HNR 47 dB. Level +2.3 dB re 1 Pa (96 dB SPL). Envelope ±0.002 dB.
-- trombone, 122.4 Hz, same recipe on a 2.75 m cone, near concert Bb2 (117 Hz): 0, −12.4, −18.4, −22.7, −26.4, −29.5, −32.3, −34.7, −36.6, −38.0. Magnitude centroid \(2.82 f_0\), twelve partials above −40 dB. Autocorr 0.99997, HNR 45 dB. Level −21.4 dB re 1 Pa (73 dB SPL). Envelope ±0.08 dB.
+- clarinet and saxophone, 0.40 s, inside the 0.35–0.60 s mouth-pressure
+  build-up measured by Fuks and Sundberg (KTH TMH-QPSR 3/1996, 41–56;
+  Acta Acustica 85, 1999) on clarinet, saxophone, oboe, and bassoon;
+- flute, 20 ms, inside the 10–30 ms flute-like attacks of Terrien, Blanc,
+  and Fabre (ISMA 2014), who also give an acoustic rise near
+  \(6\,\mathrm{ms}+9.5/f_0\) (Fletcher, Acustica 34, 1976);
+- trumpet, 40 ms, and trombone, 45 ms, the fast single-tonguing end of
+  the 40–128 ms tongue-tip movement in Bertsch and Hoole (ISMA 2014).
+  The lip is held shut until `tongueReleaseFrames` (25 ms trumpet, 12 ms
+  trombone) and then released. The sound is compared with Luce and Clark
+  (JASA 42, 1967): significant amplitude change about 50 ms, average
+  deviation about 20 ms; the trumpet fundamental transient about 10 ms;
+  the trombone fundamental about seven cycles and higher partials toward
+  70 ms.
+
+Attack time below is the first moment a 10 ms RMS stays within 1 dB of
+the 1.5–2.0 s level for 40 ms. That hold includes the exponential tail,
+so it is longer than a 10–90% rise. Steady state is 1.0–2.0 s. Ten
+100 ms windows in that second each stay within 1 dB of their mean RMS.
+Partials below are dB re the fundamental. Levels are the unscaled steady
+RMS at the shared listener, \(r=1\,\mathrm{m}\), in dB re 1 Pa, and the
+same level inside 20 Hz–16 kHz. A cone multiplies bell volume flow by
+\(x_\mathrm{bell}/x_0\) before that same radiator; a cylinder does not.
+The spread below is source strength, not a second distance. Energy above
+\(0.4 f_s\) is under 1% on each of these notes, and more than 90% of the
+energy is below 5 kHz.
+
+- clarinet, 192 Hz, corner 600 Hz, reed damping 0.12 N·s/m, ramp 0.40 s: 0, −28.2, −12.3, −35.9, −25.3, −39.6, −37.2, −42.9, −47.5, −47.1. Odds fall after the third. Autocorr 0.9994, HNR 32 dB. Level −15.8 dB re 1 Pa (78 dB SPL); audible band −15.8 dB. Envelope ±0.05 dB. Attack 360 ms, inside the Fuks and Sundberg 0.35–0.60 s pressure pattern.
+- flute, 282.4 Hz, corner 400 Hz, aim 0.4 jet thicknesses, end correction \(0.61a\), ramp 20 ms: 0, −15.1, −46.5, −35.8 and then lower. The fundamental is strongest and the second harmonic is above −40 dB. Autocorr 0.9999, HNR 41 dB. Level −14.7 dB re 1 Pa (79 dB SPL); audible band −14.7 dB. Envelope ±0.03 dB. Attack 45 ms, against Terrien's \(6\,\mathrm{ms}+9.5/f_0\) (about 40 ms at this pitch) and the 10–30 ms typical duration used as the ramp.
+- saxophone, 199 Hz, apex 0.20 m, 4200 Pa (about 43 cm H2O, inside the alto range of that Fuks and Sundberg paper) against a closure pressure of 7500 Pa, embouchure damping 0.09 N·s/m, corner 8 kHz, ramp 0.40 s: 0, −4.5, −12.7, −13.6, −9.8, −11.8, −12.6, −14.0, −22.5, −27.4. Seventeen partials stay above −40 dB, evens included, and the fundamental is the strongest. Autocorr 0.9986, HNR 29 dB. Level +7.6 dB re 1 Pa (102 dB SPL); audible band +7.7 dB. Envelope ±0.04 dB. Attack 750 ms. The ramp itself is inside 0.35–0.60 s; the 1 dB hold lands later because the reed is still closing the last decibel after the pressure has arrived. The level is already within about 2 dB at 0.5 s.
+- trumpet, 226.4 Hz, apex 0.26 m, lip below the second cone root, tongue release at 25 ms, ramp 40 ms, near concert Bb3 (233 Hz): 0, −9.3, −14.4, −18.6, −22.5, −26.6, −29.2, −31.1, −33.4, −34.3. Magnitude centroid \(3.11 f_0\), sixteen partials above −40 dB. Autocorr 0.9991, HNR 31 dB. Level −11.5 dB re 1 Pa (82 dB SPL); audible band −11.5 dB. Envelope ±0.06 dB. Attack 60 ms, inside Luce and Clark's 50±20 ms.
+- trombone, 121.5 Hz, apex 0.60 m, tongue release at 12 ms, ramp 45 ms, on a 2.75 m cone, near concert Bb2 (117 Hz): 0, −11.8, −18.3, −22.2, −25.2, −27.3, −30.6, −32.2, −33.4, −34.1. Magnitude centroid \(3.18 f_0\), seventeen partials above −40 dB. Autocorr 0.99997, HNR 45 dB. Level −34.3 dB re 1 Pa (60 dB SPL); audible band −34.3 dB. Envelope ±0.08 dB. Attack 135 ms. Luce and Clark's trombone fundamental is about seven cycles (about 60 ms here) and higher partials tend toward 70 ms; the 1 dB hold is the tail after that rise. The played note stays under 2.4 times the cone's first root.
 
 The playback files `mmath-clarinet.wav`, `mmath-saxophone.wav`,
 `mmath-flute.wav`, `mmath-trumpet.wav`, and `mmath-trombone.wav` are
