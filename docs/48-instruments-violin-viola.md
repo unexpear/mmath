@@ -1433,7 +1433,10 @@ window fails the bar. The bar is
 clarinet at least 4 (an odd-heavy series meets it), alto saxophone at
 least 6, flute at least 3, trumpet at least 5, and trombone at least 5.
 The files measure clarinet 24, alto saxophone 9, flute 8, trumpet 18,
-and trombone 20. Harmonics 1–10 of the same windows, dB re the strongest
+and trombone 20. Those counts are also the family checks. Alto saxophone
+carries even harmonics: partials 2, 4, 6, and 8 sit at −2.0, −9.9,
+−18.1, and −27.6 dB. Trumpet has 18 harmonics and trombone has 20, both
+meeting the brass minimum of 8. Harmonics 1–10 of the same windows, dB re the strongest
 partial: clarinet 0, −29.6, −2.0, −26.7, −6.5, −29.6, −10.2, −32.5,
 −15.9, −36.0; saxophone 0, −2.0, −9.2, −9.9, −10.9, −18.1, −23.3, −27.6,
 −37.7, −41.5; flute 0, −15.3, −15.9, −20.6, −31.8, −26.8, −55.6, −32.8,
