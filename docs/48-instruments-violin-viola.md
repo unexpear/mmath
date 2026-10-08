@@ -59,39 +59,46 @@ step is the CFL step, and the WAV voice is the tuned loop.
 
 The courses that step are violin, viola, cello, and double-bass
 pizzicato, one harp string, one harpsichord speaking length, one
-classical-guitar string, and one electric-guitar string. The table's
-renders-audio column stays no. A soundboard, bridge feedback, and the
-bow are not in the stepper. The electric guitar's body filter is not
-in it either.
+classical-guitar string, and one electric-guitar string. The same four
+bowed courses also step: `BowedStringVoice` is the Woodhouse stick-slip
+junction on that tuned loop. While the bow is down the sample is the
+bow-point velocity. After the caller lifts the bow the junction is
+transparent, so the ring is `loopPole`. A felt hammer steps the hinged
+modes of one stiff string (`FeltHammerVoice`, Hunt–Crossley contact).
+A mallet steps one membrane mode or one free-plate mode. One valve
+(`BoreValveVoice`) steps an inward reed, an outward lip, or a flute jet
+against a cylindrical bore delay. The table's renders-audio column
+stays no. A soundboard, bridge feedback, bell radiation, the saxophone
+cone, and a drum's air cavity are not in those steppers.
 
 | Instrument | Excitation | Resonator | Body | Radiation | Renders audio | Remaining gap |
 |---|---|---|---|---|---|---|
-| Violin | Pizzicato pluck steps; bow is not at audio rate | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Pizzicato steps. Bow, bridge feedback, and radiation are absent |
-| Viola | Pizzicato pluck steps; bow is not at audio rate | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Pizzicato steps. Bow, bridge feedback, and radiation are absent |
-| Cello | Pizzicato pluck steps; bow is not at audio rate | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Pizzicato steps. Bow, bridge feedback, and radiation are absent |
-| Double bass | Pizzicato pluck steps; bow is not at audio rate | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Pizzicato steps. Bow, bridge feedback, and radiation are absent |
+| Violin | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Bow and pizzicato step. Bridge feedback and radiation are absent |
+| Viola | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Bow and pizzicato step. Bridge feedback and radiation are absent |
+| Cello | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Bow and pizzicato step. Bridge feedback and radiation are absent |
+| Double bass | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Bow and pizzicato step. Bridge feedback and radiation are absent |
 | Harp | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | No soundboard | None | no | The plucked course steps. Soundboard and radiation are absent |
 | Harpsichord | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | No soundboard | None | no | The plucked course steps. Soundboard and radiation are absent |
 | Classical guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 650 mm course | No soundboard | None | no | The plucked course steps. Soundboard and radiation are absent |
 | Electric guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 25.5 in course | No body filter | Pickup position comb and coil velocity; no inductance | no | String and pickup step. The body filter is absent |
-| Piano | Hard-hammer and felt laws, one instant | Five stiff strings, not stepped against the hammer | No soundboard | None | no | No voice. The hammer is not stepping a stiff string |
-| Clarinet | Reed mouth, one pressure sample | Open cylinder, not a delay line | None | No bell radiation | no | No voice. The reed is not stepping a bore |
-| Flute | Jet formulas, one pressure sample | Open-open cylinder, not a delay line | None | No embouchure or end radiation | no | No voice. The jet is not stepping a bore |
-| Trumpet | Outward lip, one pressure sample | Cupped cylinder, not a delay line | None | No bell flare or radiation | no | No voice. The lip is not stepping a bore |
-| Trombone | Outward lip, one pressure sample | U-slide cylinder, not a delay line | None | No bell flare or radiation | no | No voice. The slide length is not a stepped bore |
-| Saxophone | Inward reed, one pressure sample | Truncated-cone impedance, not a stepped cone | None | No bell radiation | no | No voice. The reed is not stepping a cone |
-| Bass drum | Impulse coefficients, not a mallet step | Fixed-membrane zeros, not a damped modal stepper | Shell air not loaded | None | no | No voice. The head is not stepping |
-| Rack tom 10 in | Impulse coefficients, not a mallet step | Fixed-membrane zeros, not a damped modal stepper | Shell air not loaded | None | no | No voice. The head is not stepping |
-| Rack tom 12 in | Impulse coefficients, not a mallet step | Fixed-membrane zeros, not a damped modal stepper | Shell air not loaded | None | no | No voice. The head is not stepping |
-| Floor tom | Impulse coefficients, not a mallet step | Fixed-membrane zeros, not a damped modal stepper | Shell air not loaded | None | no | No voice. The head is not stepping |
-| Snare 5.5 in | Impulse coefficients, not a mallet step | One head, snare wires absent | Shell air not loaded | None | no | No voice. The head is not stepping |
-| Snare 6.5 in | Impulse coefficients, not a mallet step | One head, snare wires absent | Shell air not loaded | None | no | No voice. The head is not stepping |
-| Splash | Impulse on a free plate, not stepped | Kirchhoff eigenvalues, not a damped modal stepper | None | None | no | No voice. The plate is not stepping |
-| Hi-hat | Impulse on one free plate, plates uncoupled | Kirchhoff eigenvalues, not a damped modal stepper | None | None | no | No voice. The plate is not stepping |
-| Crash 16 in | Impulse on a free plate, not stepped | Kirchhoff eigenvalues, not a damped modal stepper | None | None | no | No voice. The plate is not stepping |
-| Crash 18 in | Impulse on a free plate, not stepped | Kirchhoff eigenvalues, not a damped modal stepper | None | None | no | No voice. The plate is not stepping |
-| China | Impulse on a free plate, flange not modeled | Kirchhoff eigenvalues, not a damped modal stepper | None | None | no | No voice. The plate is not stepping |
-| Ride | Impulse on a free plate, not stepped | Kirchhoff eigenvalues, not a damped modal stepper | None | None | no | No voice. The plate is not stepping |
+| Piano | Felt hammer steps a stiff string | Modal stiff string, loss and strike are arguments | No soundboard | None | no | The felt hammer steps a stiff string. Soundboard and radiation are absent |
+| Clarinet | Inward reed steps a bore delay | Cylindrical delay, far-end magnitude is an argument | None | Constant far-end magnitude, no bell filter | no | The reed steps a cylindrical bore. Bell radiation is absent |
+| Flute | Jet steps an open embouchure | Open-open cylindrical delay | None | Constant far-end magnitude, no embouchure radiation filter | no | The jet steps a bore. End radiation is absent |
+| Trumpet | Outward lip steps a bore delay | Cylindrical delay; the cup is not stepped | None | Constant far-end magnitude, no bell flare | no | The lip steps a cylinder. The cup, flare, and bell radiation are absent |
+| Trombone | Outward lip steps the slide length | Cylindrical delay at L = L0 + 2x; the cup is not stepped | None | Constant far-end magnitude, no bell flare | no | The lip steps the slide bore. The flare and bell radiation are absent |
+| Saxophone | Inward reed steps a cylindrical delay | Cylinder of the saxophone length; the cone is not this stepper | None | Constant far-end magnitude, no bell filter | no | The reed steps a cylinder. The cone and bell radiation are absent |
+| Bass drum | Felt mallet steps the head | Damped membrane modes; air cavity not loaded | Shell air not loaded | None | no | Mallet and head step. Air cavity and radiation are absent |
+| Rack tom 10 in | Felt mallet steps the head | Damped membrane modes; air cavity not loaded | Shell air not loaded | None | no | Mallet and head step. Air cavity and radiation are absent |
+| Rack tom 12 in | Felt mallet steps the head | Damped membrane modes; air cavity not loaded | Shell air not loaded | None | no | Mallet and head step. Air cavity and radiation are absent |
+| Floor tom | Felt mallet steps the head | Damped membrane modes; air cavity not loaded | Shell air not loaded | None | no | Mallet and head step. Air cavity and radiation are absent |
+| Snare 5.5 in | Felt mallet steps one head | Damped membrane modes; snare wires absent | Shell air not loaded | None | no | Mallet and one head step. Wires, cavity, and radiation are absent |
+| Snare 6.5 in | Felt mallet steps one head | Damped membrane modes; snare wires absent | Shell air not loaded | None | no | Mallet and one head step. Wires, cavity, and radiation are absent |
+| Splash | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | Mallet and plate step. Nonlinearity and radiation are absent |
+| Hi-hat | Felt mallet steps one free plate | Damped Kirchhoff mode; plates uncoupled | None | None | no | Mallet and one plate step. The pair, nonlinearity, and radiation are absent |
+| Crash 16 in | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | Mallet and plate step. Nonlinearity and radiation are absent |
+| Crash 18 in | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | Mallet and plate step. Nonlinearity and radiation are absent |
+| China | Felt mallet steps a free plate | Damped Kirchhoff mode; flange not modeled | None | None | no | Mallet and plate step. The flange, nonlinearity, and radiation are absent |
+| Ride | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | Mallet and plate step. Nonlinearity and radiation are absent |
 
 The example `instrument_voice_demo` writes
 `/tmp/mmath-voice-waveguide.wav` from the waveguide voice. The test
@@ -104,7 +111,11 @@ writes the same path and checks the file is not silent.
 `/tmp/mmath-pluck-electric-guitar.wav`. The electric-guitar file is
 the coil velocity. The test writes the same paths, shorter, and
 checks pitch, decay, finiteness, and a non-silent PCM payload. The
-files are generated artifacts and are not committed.
+files are generated artifacts and are not committed. The contact test
+writes the bow, hammer, mallet, and valve renders to
+`/opt/cursor/artifacts/mmath-<instrument>.wav`, peak-scaled to 0.5 so a
+displacement in metres or a pressure in pascals is audible. That scale
+is playback only. The assertions read the unscaled samples.
 
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
@@ -130,8 +141,13 @@ interval.
 | `instruments/flute.h` | Open-open flute and an embouchure jet. Length, bore area, jet area, thickness, flue-to-edge distance, and the convection ratio are arguments |
 | `instruments/trumpet.h` | Lip-driven cylinder and a mouthpiece cup. Length, bore area, cup volume, and the lip parameters are arguments |
 | `instruments/trombone.h` | That lip and cup on a U-slide. Closed length and handslide travel are arguments. The air column is \(L_0+2x\) |
-| `instruments/render_status.h` | Per-instrument audible-physics bar. Plucked courses step; none render audio yet |
+| `instruments/render_status.h` | Per-instrument audible-physics bar. Pluck, bow, hammer, mallet, and bore valve step; none render audio yet |
 | `instruments/plucked_string.h` | One course as a lossy tuned-waveguide voice, or the same pluck on `Fdtd1D`. Listen fraction and `CoilVelocity` are arguments. No stored T60, stiffness, or pickup location |
+| `instruments/bowed_string.h` | Stick-slip junction on the tuned loop. The bow-down duration is an argument. After the lift the ring is `loopPole`. No soundboard |
+| `instruments/struck_string.h` | Felt hammer against hinged stiff-string modes. Hunt–Crossley \(F=K\xi^{p}(1+\lambda\xi')\). \(K\), \(p\), \(\lambda\), and the mode count are arguments |
+| `instruments/mallet_voice.h` | Felt mallet on one membrane mode or one free-plate mode. Quality factor is an argument. No air cavity, snare wires, or plate nonlinearity |
+| `instruments/bore_valve.h` | Inward reed, outward lip, or flute jet on a cylindrical delay. Far-end magnitude is an argument, not a bell filter. The saxophone cone and the brass cup are not stepped |
+| `physics/oscillator.h` | Exact step of \(q''+2\sigma q'+\omega^{2}q=f\) with \(f\) held over one sample. Underdamped only |
 | `render/voice.h` | Block-based `IVoice` into any sink. No envelope |
 | `render/waveguide_voice.h` | Tuned waveguide stepped at the sample rate. Not an instrument |
 | `instruments/saxophone.h` | Inward reed on a truncated cone. Length, apex distance, throat area, and the reed parameters are arguments |
@@ -1182,6 +1198,9 @@ diameters and are not read. No instrument stores a core.
 
 ## Still planned
 
+The audio-rate bow, felt hammer, mallet, and bore valve write samples.
+They do not close the instrument: bridge feedback, bell radiation, the
+truncated-cone delay, and shell air are still outside those steppers.
 Images after the first from each hammer end are not in this layer. A
 viscous reed channel, clarinet tone holes, a bell correction, and a
 register key are not in this layer. A flute end correction, tone holes,

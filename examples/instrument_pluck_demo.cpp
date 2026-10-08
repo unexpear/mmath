@@ -12,8 +12,13 @@
 //   /tmp/mmath-pluck-classical-guitar.wav
 //   /tmp/mmath-pluck-electric-guitar.wav
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include <mmathen/instruments/cello.h>
 #include <mmathen/instruments/double_bass.h>
@@ -56,6 +61,23 @@ int renderOne(const char* path, const mmathen::StringCourse& course,
   std::printf("%s frames=%llu peak=%.6g pole=%.3f Hz\n", path,
               static_cast<unsigned long long>(stats.value().framesRendered),
               stats.value().peakAbs, voice.fundamentalHz());
+  // Playback-only copy. The /tmp file stays the unscaled physics.
+  voice.reset();
+  std::vector<double> samples(static_cast<std::size_t>(frames.value()));
+  if (!voice.renderBlock(samples.data(), frames).ok()) return 1;
+  double peak = 0.0;
+  for (double sample : samples) peak = std::max(peak, std::fabs(sample));
+  if (!(peak > 0.0)) return 1;
+  const double gain = 0.5 / peak;
+  for (double& sample : samples) sample *= gain;
+  const char* slash = std::strrchr(path, '/');
+  const char* name = slash != nullptr ? slash + 1 : path;
+  const std::string listening = std::string("/opt/cursor/artifacts/") + name;
+  auto opened = WavSink::open(listening.c_str(), rate, frames);
+  if (!opened.ok()) return 1;
+  auto listen = std::move(opened).value();
+  if (!listen.consume(samples.data(), frames)) return 1;
+  if (!listen.close().ok()) return 1;
   return 0;
 }
 
