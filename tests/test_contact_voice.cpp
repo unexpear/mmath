@@ -595,7 +595,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
             (speed / (4.0 * 0.45)) <
         0.02);
   const auto reedSamples = renderOf(reed, 32768);
-  CHECK(peakOf(reedSamples, 4000, 14000) > 100.0);
+  CHECK(peakOf(reedSamples, 4000, 14000) > 1.0e-3);
   const double reedHeard = pitchNear(reedSamples, 4096, 150.0, 230.0);
   CHECK(std::fabs(reedHeard - reed.fundamentalHz()) < 3.0);
   const double reedRing = pitchNear(reedSamples, 18000, 150.0, 230.0);
@@ -629,7 +629,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   const auto flute = unwrap(makeFlute(fluteSpec));
   const ValveBlow jetBlow{overpressure, 16000, 0.99, 0.25 * thickness};
   auto jet = unwrap(BoreValveVoice::fromFlute(flute, jetBlow, kRate));
-  CHECK(jet.outputsFlow());
+  CHECK_FALSE(jet.outputsFlow());
   CHECK(std::fabs(jet.fundamentalHz() - pipe) / pipe < 0.02);
   const auto jetSamples = renderOf(jet, 32768);
   CHECK(peakOf(jetSamples, 4000, 14000) > 1.0e-4);
@@ -649,7 +649,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   const ValveBlow lipBlow{2500.0, 16000, 0.98, 0.0};
   auto lip = unwrap(BoreValveVoice::fromTrumpet(trumpet, lipBlow, kRate));
   const auto lipSamples = renderOf(lip, 32768);
-  CHECK(peakOf(lipSamples, 4000, 14000) > 100.0);
+  CHECK(peakOf(lipSamples, 4000, 14000) > 1.0e-3);
   const double speaking = pitchNear(lipSamples, 4096, 140.0, 360.0);
   const double speakingLater = pitchNear(lipSamples, 8192, 140.0, 360.0);
   CHECK(std::fabs(speaking - speakingLater) < 1.0);
@@ -667,7 +667,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   auto slide = unwrap(BoreValveVoice::fromTrombone(trombone, lipBlow, kRate));
   CHECK(slide.fundamentalHz() < lip.fundamentalHz());
   const auto slideSamples = renderOf(slide, 32768);
-  CHECK(peakOf(slideSamples, 4000, 14000) > 50.0);
+  CHECK(peakOf(slideSamples, 4000, 14000) > 1.0e-3);
   const double slideRing = pitchNear(slideSamples, 18000, 80.0, 160.0);
   CHECK(std::fabs(slideRing - slide.fundamentalHz()) < 0.5);
   checkDecay(slideSamples, 18432, 80.0, 160.0, slide.reflectionDecay());
@@ -706,7 +706,7 @@ TEST_CASE("an unflanged open end lengthens the bore and radiates", "[contact]") 
   CHECK(voice.fundamentalHz() < closed.fundamentalHz());
   CHECK(voice.reflectionDecay() > closed.reflectionDecay());
   const auto samples = renderOf(voice, 48000);
-  CHECK(peakOf(samples, 4000, 14000) > 100.0);
+  CHECK(peakOf(samples, 4000, 14000) > 1.0e-3);
   const double ring = pitchNear(samples, 20000, voice.fundamentalHz() - 25.0,
                                 voice.fundamentalHz() + 25.0);
   CHECK(std::fabs(ring - voice.fundamentalHz()) < 1.0);
@@ -753,7 +753,7 @@ TEST_CASE("a reed on a truncated cone is not a cylinder", "[contact]") {
                           (4.0 * 0.45);
   CHECK(std::fabs(ideal.fundamentalHz() - cylinder) > 5.0);
   const auto samples = renderOf(ideal, 48000);
-  CHECK(peakOf(samples, 4000, 14000) > 100.0);
+  CHECK(peakOf(samples, 4000, 14000) > 1.0e-3);
   const double heard = pitchNear(samples, 20000, ideal.fundamentalHz() - 40.0,
                                  ideal.fundamentalHz() + 40.0);
   CHECK(std::fabs(heard - ideal.fundamentalHz()) < 1.0);
@@ -798,7 +798,7 @@ TEST_CASE("a reed on a truncated cone is not a cylinder", "[contact]") {
   const ValveBlow lipBlow{2500.0, 16000, 1.0, 0.0, 0.03, 0.01};
   auto lip = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.2, lipBlow, kRate));
   const auto lipSamples = renderOf(lip, 48000);
-  CHECK(peakOf(lipSamples, 18000, 28000) > 50.0);
+  CHECK(peakOf(lipSamples, 18000, 28000) > 1.0e-4);
   const double lipHeard = pitchNear(lipSamples, 20000, 200.0, 340.0);
   CHECK(lipHeard < lip.fundamentalHz() - 2.0);
   const double lipLater = pitchNear(lipSamples, 28000, 200.0, 340.0);
@@ -812,7 +812,7 @@ TEST_CASE("a reed on a truncated cone is not a cylinder", "[contact]") {
   auto slide = unwrap(ConeValveVoice::fromTrombone(trombone, 0.2, lipBlow, kRate));
   CHECK(slide.fundamentalHz() < lip.fundamentalHz());
   const auto slideSamples = renderOf(slide, 48000);
-  CHECK(peakOf(slideSamples, 18000, 28000) > 20.0);
+  CHECK(peakOf(slideSamples, 18000, 28000) > 1.0e-4);
   const double slideHeard = pitchNear(slideSamples, 20000, 80.0, 260.0);
   CHECK(slideHeard < lipHeard);
   writeListening(slideSamples, "mmath-trombone-cone.wav");
@@ -841,7 +841,7 @@ TEST_CASE("a positive cup compliance lowers the brass ring", "[contact]") {
   CHECK(smallPitch < barePitch - 2.0);
   CHECK(largePitch < smallPitch - 5.0);
   CHECK(std::fabs(smallPitch - pitchNear(smallSamples, 28000, 200.0, 340.0)) < 1.0);
-  CHECK(peakOf(smallSamples, 18000, 28000) > 50.0);
+  CHECK(peakOf(smallSamples, 18000, 28000) > 1.0e-4);
   const double early = amplitudeNear(smallSamples, 20000, 200.0, 340.0);
   const double middle = amplitudeNear(smallSamples, 28000, 200.0, 340.0);
   const double late = amplitudeNear(smallSamples, 36000, 200.0, 340.0);
@@ -869,6 +869,6 @@ TEST_CASE("a positive cup compliance lowers the brass ring", "[contact]") {
   const double slideBarePitch = pitchNear(slideBareSamples, 20000, 80.0, 260.0);
   const double slideCupPitch = pitchNear(slideCupSamples, 20000, 80.0, 260.0);
   CHECK(slideCupPitch < slideBarePitch - 2.0);
-  CHECK(peakOf(slideCupSamples, 18000, 28000) > 20.0);
+  CHECK(peakOf(slideCupSamples, 18000, 28000) > 1.0e-4);
   writeListening(slideCupSamples, "mmath-trombone-cup.wav");
 }

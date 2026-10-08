@@ -80,7 +80,22 @@ constant far-end magnitude with the Levine–Schwinger unflanged load:
 radius and end correction are arguments, and \(0.6133a\) is not stored.
 `ConeValveVoice` is the spherical-wave cone, bilinear at the throat, so
 a sealed mouth rings at \(\tan(kL)=-k x_0\). The same open end sits on
-that cone. `SoundboardVoice` closes one plucked course on a bank of
+that cone. The listening sample of both valves is the radiated pressure
+of the bell flow, \(p=\rho (dU_{\mathrm{bell}}/dt)/(4\pi r)\), smoothed
+with a one-pole at \(\omega=c/a\) so the differentiator stops rising
+past \(ka=1\). A steady flow does not radiate: that high-pass is what
+removes DC. On the cone the bell flow is the throat flow times
+\((x_0+L)/x_0\), because the spherical potential is conserved and the
+bell area grows with the square of that ratio. The round trip is
+\(f_s\cdot 2L/c\). The integer part is the delay line and the fraction
+is a first-order Thiran section, folded into the end correction when
+the far end is Levine–Schwinger so the fraction is not applied twice.
+One sample per step is the Courant condition at speed \(c\).
+`attackFrames` and `releaseFrames` are a raised cosine on the blowing
+pressure; zero is a step. The listener distance omitted from
+`ValveBlow` is one metre, and the omitted jet aim is centered.
+
+`SoundboardVoice` closes one plucked course on a bank of
 body modes: the bridge force \(Z(v_+-v_-)\) drives each mode, the
 bridge velocity is their sum, and that displacement replaces the rigid
 reflection. The sample is the compact monopole
@@ -108,11 +123,11 @@ snare wires are not in those steppers.
 | Classical guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 650 mm course | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | no | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
 | Electric guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 25.5 in course | No body filter | Pickup position comb and coil velocity; no inductance | no | no | String and pickup step. The body filter is absent |
 | Piano | Felt hammer steps a stiff waveguide | Lossy stiff tuned waveguide; strike and stiffness are arguments | Hammer closes on a modal soundboard; bridge force is the drive | Compact monopole of the hammered bridge acceleration | yes | no | Mode frequency, Q, and mass are arguments. The other four courses are not coupled |
-| Clarinet | Inward reed steps a bore delay | Cylindrical delay; an open end replaces the constant magnitude | None | Levine-Schwinger open end; radius and end correction are arguments | yes | no | Caller holes and a register key sit on the lattice. Viscous wall loss is outside this bore |
-| Flute | Jet steps an open embouchure | Open-open cylindrical delay | None | Levine-Schwinger open end at the far end; the embouchure stays an ideal release | yes | no | Caller tone holes sit on the lattice. Viscous wall loss is outside this bore |
-| Trumpet | Outward lip steps a cone with the cup | Truncated cone, or a caller Bessel area exponent | None | Levine-Schwinger open end on the cone or the horn | yes | no | Engaged valve lengths are an argument. A caller Bessel area exponent is the flare. No measured bell curve is stored |
-| Trombone | Outward lip steps the slide length on a cone with the cup | Truncated cone at \(L = L_0 + 2x\), or a caller Bessel area exponent | None | Levine-Schwinger open end on the cone or the horn | yes | no | The F-attachment length is an argument. A caller Bessel area exponent is the flare. No measured slide chart is stored |
-| Saxophone | Inward reed steps the spherical-wave cone | Truncated-cone delay; the cylinder is not this stepper | None | Levine-Schwinger open end; bell radius is an argument | yes | no | Caller tone holes sit on the stepped cone. Viscous wall loss is outside this bore |
+| Clarinet | Inward reed steps a bore delay | Cylindrical delay; an open end replaces the constant magnitude | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\). Levine–Schwinger reflection when a radius is passed | yes | no | Caller holes and a register key sit on the lattice. Viscous wall loss is outside this bore |
+| Flute | Jet steps an open embouchure | Open-open cylindrical delay | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\). Levine–Schwinger reflection at the far end; the embouchure stays an ideal release | yes | no | Caller tone holes sit on the lattice. Viscous wall loss is outside this bore |
+| Trumpet | Outward lip steps a cone with the cup | Truncated cone, or a caller Bessel area exponent | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\) on the cone or the horn. Levine–Schwinger reflection when a radius is passed | yes | no | Engaged valve lengths are an argument. A caller Bessel area exponent is the flare. No measured bell curve is stored |
+| Trombone | Outward lip steps the slide length on a cone with the cup | Truncated cone at \(L = L_0 + 2x\), or a caller Bessel area exponent | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\) on the cone or the horn. Levine–Schwinger reflection when a radius is passed | yes | no | The F-attachment length is an argument. A caller Bessel area exponent is the flare. No measured slide chart is stored |
+| Saxophone | Inward reed steps the spherical-wave cone | Truncated-cone delay; the cylinder is not this stepper | None | Radiated bell pressure \(\rho\dot U/(4\pi r)\). Levine–Schwinger reflection; bell radius is an argument | yes | no | Caller tone holes sit on the stepped cone. Viscous wall loss is outside this bore |
 | Bass drum | Felt mallet steps the batter head | Damped membrane modes; a port is not opened | Closed cavity, not a ported shell | Monopole of the batter volume acceleration | no | no | Two heads and a closed cavity radiate. The port is absent |
 | Rack tom 10 in | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | no | Head tension and Q are arguments. No port is in this shell |
 | Rack tom 12 in | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | no | Head tension and Q are arguments. No port is in this shell |
@@ -145,7 +160,10 @@ decay, finiteness, and a non-silent PCM payload. The contact test
 writes the bow, hammer, mallet, and valve renders as
 `mmath-<instrument>.wav`, peak-scaled to 0.5 so a displacement in
 metres or a pressure in pascals is audible. That scale is playback
-only. The assertions read the unscaled samples. The soundboard test
+only. The assertions read the unscaled samples. The wind-tone test
+overwrites `mmath-clarinet.wav`, `mmath-saxophone.wav`,
+`mmath-flute.wav`, `mmath-trumpet.wav`, and `mmath-trombone.wav`
+with the two-second limit cycle. The soundboard test
 writes `mmath-violin-soundboard.wav`,
 `mmath-violin-soundboard-light.wav`, `mmath-harp-soundboard.wav`,
 `mmath-harpsichord-soundboard.wav`, and
@@ -163,7 +181,7 @@ hammered soundboard writes `mmath-piano-soundboard.wav` and
 
 ## Defaults
 
-A physical number is a default only when a comment and this file name the source. The new voices do not store a T60, a Q, a modal mass, a felt \(K\) or \(p\), a hammer mass, a radiating area, a listening distance, or a bell radius. `ValveBlow`'s radius and end correction default to 0, and that 0 keeps the constant far-end magnitude; it is not \(0.6133a\). Passing \(0.6133a\) is the caller's choice. `OpenEndReflection::create` refuses a non-positive radius. The international inch \(0.0254\,\mathrm{m}\) and the avoirdupois pound \(0.45359237\,\mathrm{kg}\) are the SI definitions used by the catalog parsers. Dry air uses \(\gamma=1.4\) and \(R=287.058\,\mathrm{J/(kg\cdot K)}\), the engineering gas constant named in `medium.h`. `VoiceRenderConfig`'s block size of 512 only batches samples.
+A physical number is a default only when a comment and this file name the source. The new voices do not store a T60, a Q, a modal mass, a felt \(K\) or \(p\), a hammer mass, a radiating area, a listening distance, or a bell radius. `ValveBlow`'s radius and end correction default to 0, and that 0 keeps the constant far-end magnitude; it is not \(0.6133a\). Passing \(0.6133a\) is the caller's choice. Attack and release default to 0, which is a step in blowing pressure. The omitted listener distance is 1 m. The omitted jet aim is 0, on the edge center. `OpenEndReflection::create` refuses a non-positive radius. The international inch \(0.0254\,\mathrm{m}\) and the avoirdupois pound \(0.45359237\,\mathrm{kg}\) are the SI definitions used by the catalog parsers. Dry air uses \(\gamma=1.4\) and \(R=287.058\,\mathrm{J/(kg\cdot K)}\), the engineering gas constant named in `medium.h`. `VoiceRenderConfig`'s block size of 512 only batches samples.
 
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
@@ -193,14 +211,14 @@ interval.
 | `instruments/cavity_drum.h` | Mallet, one or two heads, closed-cavity compliance, and a monopole. Shell depth is the volume. A port and snare wires are not stored |
 | `instruments/soundboard_voice.h` | Plucked course on a yielding modal soundboard. Bridge force drives the modes; their velocity is the end displacement. The sample is \(\rho A a(t-r/c)/(4\pi r)\). Frequency, Q, mass, area, and distance are arguments |
 | `physics/radiation.h` | Unflanged open-end load \((1/4)(ka)^2+jk\Delta\) and its delay-plus-curvature stepper. Radius and end correction are arguments |
-| `instruments/cone_valve.h` | Reed or lip on the spherical-wave cone, optional open end, cup compliance, and a caller extra length for valves or the F attachment. Zero extra length leaves the cone unchanged |
+| `instruments/cone_valve.h` | Reed or lip on the spherical-wave cone, optional open end, cup compliance, and a caller extra length for valves or the F attachment. The sample is radiated bell pressure. Lip displacement stops at the opening rails. Zero extra length leaves the cone delay unchanged |
 | `instruments/bessel_horn.h` | Lip on a Webster power-law horn. Area exponent 0 is the cylinder and 2 is the cone. Any other non-negative exponent is the flare, solved with Bessel functions rather than a chain of cones. No measured bell curve is stored |
 | `instruments/plucked_string.h` | One course as a lossy tuned-waveguide voice, or the same pluck on `Fdtd1D`. Listen fraction and `CoilVelocity` are arguments. No stored T60, stiffness, or pickup location |
 | `instruments/bowed_string.h` | Stick-slip junction on the tuned loop, optionally closed on a modal soundboard. Without a body the sample is bow-point velocity and the bridge is rigid. With a body the sample is the compact monopole of the bridge acceleration. Frequency, Q, mass, area, and distance are arguments |
 | `instruments/struck_string.h` | Felt hammer against hinged stiff-string modes, and the same Hunt–Crossley force on a stiff tuned loop closed on a modal soundboard. The radiating sample is the compact monopole of the bridge acceleration. \(K\), \(p\), \(\lambda\), frequency, Q, mass, area, and distance are arguments |
 | `instruments/mallet_voice.h` | Felt mallet on one membrane mode or one free-plate mode. Quality factor is an argument. No air cavity, snare wires, or plate nonlinearity |
 | `instruments/bore_network.h` | Keefe, Lefebvre, and Dalmont tone-hole lengths, a lattice shared by clarinet, flute, and saxophone, and the sum of engaged brass slides. Hole radii and valve lengths are arguments. Viscous wall loss is not stepped |
-| `instruments/bore_valve.h` | Inward reed, outward lip, or flute jet on a cylindrical delay. Far-end magnitude is an argument, not a bell filter. The saxophone cone and the brass cup are not stepped |
+| `instruments/bore_valve.h` | Inward reed, outward lip, or flute jet on a cylindrical delay with a fractional Thiran section. The sample is radiated bell pressure. Far-end magnitude is an argument, not a stored bell. The saxophone cone and the brass cup are not stepped |
 | `physics/oscillator.h` | Exact step of \(q''+2\sigma q'+\omega^{2}q=f\) with \(f\) held over one sample. Underdamped only |
 | `render/voice.h` | Block-based `IVoice` into any sink. No envelope |
 | `render/waveguide_voice.h` | Tuned waveguide stepped at the sample rate. Not an instrument |
@@ -664,6 +682,18 @@ not a violin with the labels rewritten.
   doubling both does. The reed flow peaks at \(P_M/3\) and is zero at
   closure, where an outward lip of the same air is still open. A zero
   apex, a zero length, and a negative pressure difference are refused.
+- A two-second blow of each wind is a periodic radiated note. The
+  normalized autocorrelation at one period is above 0.9 in steady
+  state, the RMS of the last two quarter-seconds stays within 10
+  percent, and the mean is small beside that RMS. The clarinet
+  fundamental is the quarter-wave and the second harmonic is weak.
+  The saxophone fundamental lies between \(c/(4L)\) and \(c/(2L)\) and
+  keeps a second harmonic. The flute is \(c/(2L)\) and keeps a second
+  harmonic once the jet is aimed off the edge center. Trumpet and
+  trombone sit near the cone fundamental and keep a second harmonic
+  when the lip resonance is below that peak. A clarinet below the
+  pressure threshold does not sustain. Lengthening the clarinet lowers
+  the pitch. The same clarinet at 44100 Hz and 48000 Hz agrees.
 
 ## Bow
 
@@ -1270,7 +1300,45 @@ attachment. The cup, when the trumpet has one, stays
 \(C\,dp/dt=U_{\mathrm{lip}}-U_{\mathrm{bore}}\). Exponent 2 is not a
 different delay line from the cone, so the cone samples are unchanged.
 Full-instrument complete stays false: there is still no measured bell
-curve.
+curve. The Bessel file is this modal horn. It is not the cone trumpet
+or trombone note.
+
+## Wind tone
+
+The five self-sustained winds are a periodic radiated note, not the
+mouth pressure and not the ring after the player stops. The junction
+is the one in Julius O. Smith, *Physical Audio Signal Processing*
+(CCRMA), and in the STK clarinet, flute, saxofony, and brass models:
+a reed or lip solves \(Z U+\Delta P=p_m-2p_{\mathrm{in}}\) with an odd
+Bernoulli jet, a flute adds a delayed jet on an open-open bore, and a
+cone carries the spherical potential \(\psi=xp\) (Gary P. Scavone,
+PhD thesis, Stanford, 1997; Guillemain, Kergomard, and Voinier, JASA
+2005, "Real-time synthesis of clarinet-like instruments using
+digital impedance models"). Those
+references check the structure. No recording and no STK coefficient
+table is stored.
+
+The reed is the inertial mass on Dalmont's spring, stopped at the lay.
+A memoryless negative resistance chatters at the sample rate. If the
+embouchure damping is light beside the bore, the reed can lock to its
+own resonance instead of the first bore root. That damping is the
+caller's argument. The flute edge is \(\tanh(y/h)\) of the delayed
+deflection, with the small-signal slope \(2 U_j y/h\). Aim zero is an
+odd function of deflection, so the second harmonic is absent; a
+nonzero aim is the even-harmonic operating point. An outward-striking
+lip oscillates when its resonance sits below a bore peak (Fletcher,
+1979). On the cylinder the spring continues past \(S_{\max}\). On the
+cone the displacement stops at the rails, because otherwise a high
+blowing pressure winds the lip up and pins the opening at \(S_{\max}\).
+
+`tests/test_wind_tone.cpp` holds a two-second blow with a 30 ms
+raised-cosine attack, inside the 20–50 ms range. The playback files
+`mmath-clarinet.wav`, `mmath-saxophone.wav`, `mmath-flute.wav`,
+`mmath-trumpet.wav`, and `mmath-trombone.wav` are those notes,
+peak-scaled to 0.5. The assertions read the unscaled samples. Full
+instrument complete stays false: viscous wall loss, a fingering chart,
+and a measured bell are still out. The tone-hole lattice is unchanged
+and is not what these five files step.
 
 ## Still planned
 

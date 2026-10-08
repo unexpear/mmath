@@ -13,6 +13,19 @@
 // U = 0 and the ring is the root of tan(kL) = −k x0. That is the
 // saxophone cone, not a cylinder of the same length. Travel time is
 // still 2L/c; the junction, not a different delay, moves the pitch.
+// The traveling variable is the spherical-wave component at the throat,
+// p± = ψ± / x0, so a bell pressure release is ψ− = −ψ+ and the throat
+// sees the same −1. The round-trip delay is fs * 2L/c with a Thiran
+// fraction. This is the Smith / Scavone cone, not a cylinder of length L.
+//
+// The played reed is the same mass on Dalmont's spring, stopped at the
+// lay. Its resonance is not a cone mode; the caller damps it enough that
+// the first root of tan(kL) = −k x0 is the one that speaks. The lip keeps
+// its mass and is stopped at the opening rails. The sample is the
+// radiated bell pressure ρ (dU_bell/dt) / (4 π r), smoothed above ka = 1.
+// U_bell uses the throat traveling wave scaled by x_bell / x0, because ψ
+// is carried unchanged to the bell and the bell area is
+// S_throat (x_bell / x0)².
 //
 // A positive ValveBlow::radiusMeters replaces the ideal open-end −1
 // with OpenEndReflection. The bell radius and the end correction are
@@ -94,11 +107,12 @@ class ConeValveVoice final : public IVoice {
     const double dt = 1.0 / rate_.value();
     const double beta = 0.5 * alpha_ * dt;
     for (std::uint64_t i = 0; i < count; ++i) {
-      const double incoming =
-          radiating_ ? openEnd_.step(line_[pos_]) : -line_[pos_];
+      const double arriving = readBore();
+      const double incoming = radiating_ ? openEnd_.step(arriving) : -arriving;
       if (!std::isfinite(incoming)) return R::failure(QuantityError::RangeError);
       const bool open = frame_ < blowFrames_;
-      const double mouth = open ? pressure_ : 0.0;
+      const double mouth = valve_detail::blowingPressure(
+          pressure_, blowFrames_, attackFrames_, releaseFrames_, frame_);
       if (!open) {
         if (lip_) {
           displacement_ = -restOpening_ / slitWidth_;
@@ -108,28 +122,28 @@ class ConeValveVoice final : public IVoice {
           velocity_ = 0.0;
         }
       }
+      const double known = 2.0 * incoming - integrator_ - beta * previousPressure_;
+      double pressure = 0.0;
       double opening = 0.0;
       if (lip_) {
         opening = restOpening_ + slitWidth_ * displacement_;
         if (opening < 0.0) opening = 0.0;
         if (opening > maximumOpening_) opening = maximumOpening_;
-      } else {
+      } else if (open && mouth > 0.0) {
         auto area = reedAreaAtDisplacement(reed_, inertia_, displacement_);
         if (!area.ok()) return R::failure(area.error());
         opening = area.value();
       }
-      const double known = 2.0 * incoming - integrator_ - beta * previousPressure_;
-      auto solved = solvePressure(opening, mouth, known, beta, cupCoeff_,
-                                  cupPressure_);
+      auto solved = solvePressure(opening, mouth, known, beta, cupCoeff_, cupPressure_);
       if (!solved.ok()) return R::failure(solved.error());
-      const double pressure = solved.value();
+      pressure = solved.value();
       const double outgoing = pressure - incoming;
       if (!std::isfinite(pressure) || !std::isfinite(outgoing))
         return R::failure(QuantityError::RangeError);
       integrator_ += beta * (pressure + previousPressure_);
       previousPressure_ = pressure;
       cupPressure_ = pressure;
-      if (open) {
+      if (open && mouth > 0.0) {
         const double delta = mouth - pressure;
         double acceleration = 0.0;
         if (lip_) {
@@ -138,8 +152,7 @@ class ConeValveVoice final : public IVoice {
           if (!stepped.ok()) return R::failure(stepped.error());
           acceleration = stepped.value();
         } else {
-          auto stepped =
-              reedTipAcceleration(inertia_, displacement_, velocity_, delta);
+          auto stepped = reedTipAcceleration(inertia_, displacement_, velocity_, delta);
           if (!stepped.ok()) return R::failure(stepped.error());
           acceleration = stepped.value();
         }
@@ -147,10 +160,20 @@ class ConeValveVoice final : public IVoice {
         displacement_ += velocity_ * dt;
         if (!std::isfinite(velocity_) || !std::isfinite(displacement_))
           return R::failure(QuantityError::RangeError);
+        if (lip_)
+          stopLip();
+        else if (displacement_ > closing_) {
+          displacement_ = closing_;
+          if (velocity_ > 0.0) velocity_ = 0.0;
+        }
       }
       line_[pos_] = outgoing;
       pos_ = (pos_ + 1) % line_.size();
-      out[i] = pressure;
+      const double bellFlow =
+          (arriving - incoming) / impedance_ * bellScale_;
+      out[i] = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
+                                        radiationState_, radiationCorner_, dt);
+      if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);
       ++frame_;
     }
     return R::success(n);
@@ -159,10 +182,14 @@ class ConeValveVoice final : public IVoice {
   void reset() override {
     std::fill(line_.begin(), line_.end(), 0.0);
     pos_ = 0;
+    boreX_ = 0.0;
+    boreY_ = 0.0;
     openEnd_.reset();
     integrator_ = 0.0;
     previousPressure_ = 0.0;
     cupPressure_ = 0.0;
+    bellFlow_ = 0.0;
+    radiationState_ = 0.0;
     displacement_ = initialDisplacement_;
     velocity_ = 0.0;
     frame_ = 0;
@@ -187,6 +214,9 @@ class ConeValveVoice final : public IVoice {
         alpha_(alpha),
         impedance_(impedance),
         density_(density),
+        listener_(blow.listenerDistanceMeters),
+        attackFrames_(blow.attackFrames),
+        releaseFrames_(blow.releaseFrames),
         fundamentalHz_(fundamentalHz),
         lip_(lip),
         radiating_(radiating),
@@ -209,7 +239,8 @@ class ConeValveVoice final : public IVoice {
         !std::isfinite(density) || !(density > 0.0) ||
         !std::isfinite(impedance) || !(impedance > 0.0) ||
         !std::isfinite(blow.endCorrectionMeters) || blow.endCorrectionMeters < 0.0 ||
-        !std::isfinite(extraLength) || extraLength < 0.0)
+        !std::isfinite(extraLength) || extraLength < 0.0 ||
+        !valve_detail::blowShapeSane(blow))
       return R::failure(QuantityError::InvalidArgument);
     const double sounding = length + extraLength;
     if (!std::isfinite(sounding) || !(sounding > 0.0))
@@ -218,17 +249,29 @@ class ConeValveVoice final : public IVoice {
     if (!std::isfinite(samples) ||
         samples > static_cast<double>(std::numeric_limits<int>::max() / 4))
       return R::failure(QuantityError::RangeError);
-    int delay = static_cast<int>(std::llround(samples));
-    if (delay < 1) delay = 1;
+    int delay = static_cast<int>(std::floor(samples));
+    double fraction = samples - static_cast<double>(delay);
+    if (delay < 1) {
+      delay = 1;
+      fraction = 0.0;
+    }
+    if (fraction < 1.0e-9) fraction = 0.0;
+    if (fraction > 1.0 - 1.0e-9) {
+      fraction = 0.0;
+      ++delay;
+    }
     const double alpha = speed / apex;
     if (!std::isfinite(alpha) || !(alpha > 0.0))
       return R::failure(QuantityError::RangeError);
     const bool radiating = blow.radiusMeters > 0.0;
     OpenEndReflection openEnd;
     double decay = 0.0;
+    double boreThiran = 0.0;
+    bool useBoreThiran = false;
     if (radiating) {
-      auto filter = OpenEndReflection::create(blow.radiusMeters,
-                                              blow.endCorrectionMeters, speed, rate);
+      const double fractionMeters = fraction * speed / (2.0 * fs);
+      auto filter = OpenEndReflection::create(
+          blow.radiusMeters, blow.endCorrectionMeters + fractionMeters, speed, rate);
       if (!filter.ok()) return R::failure(filter.error());
       openEnd = std::move(filter).value();
       auto response =
@@ -241,6 +284,11 @@ class ConeValveVoice final : public IVoice {
       const double trip = static_cast<double>(delay) / fs;
       decay = -std::log(magnitude) / trip;
       if (!std::isfinite(decay)) return R::failure(QuantityError::RangeError);
+    } else if (fraction > 0.0) {
+      boreThiran = (1.0 - fraction) / (1.0 + fraction);
+      if (!std::isfinite(boreThiran) || !(std::fabs(boreThiran) < 1.0))
+        return R::failure(QuantityError::RangeError);
+      useBoreThiran = true;
     }
     double hertz = coneHz;
     if (!(hertz > 0.0)) {
@@ -268,6 +316,15 @@ class ConeValveVoice final : public IVoice {
                          radiating);
     voice.decay_ = decay;
     voice.openEnd_ = std::move(openEnd);
+    voice.boreThiran_ = boreThiran;
+    voice.useBoreThiran_ = useBoreThiran;
+    voice.bellScale_ = (apex + sounding) / apex;
+    if (!std::isfinite(voice.bellScale_) || !(voice.bellScale_ > 0.0))
+      return R::failure(QuantityError::RangeError);
+    const double bellRadius = std::sqrt(area / constants::pi) * voice.bellScale_;
+    voice.radiationCorner_ = speed / bellRadius;
+    if (!std::isfinite(voice.radiationCorner_) || !(voice.radiationCorner_ > 0.0))
+      return R::failure(QuantityError::RangeError);
     voice.reed_ = reed;
     voice.inertia_ = inertia;
     voice.closing_ = inertia.closingDisplacementMeters;
@@ -289,6 +346,31 @@ class ConeValveVoice final : public IVoice {
     }
     return R::success(std::move(voice));
   }
+
+  [[nodiscard]] double readBore() {
+    double x = line_[pos_];
+    if (useBoreThiran_) {
+      const double y = boreThiran_ * x + boreX_ - boreThiran_ * boreY_;
+      boreX_ = x;
+      boreY_ = y;
+      x = y;
+    }
+    return x;
+  }
+
+  void stopLip() {
+    if (!(slitWidth_ > 0.0)) return;
+    const double yMin = -restOpening_ / slitWidth_;
+    const double yMax = (maximumOpening_ - restOpening_) / slitWidth_;
+    if (displacement_ < yMin) {
+      displacement_ = yMin;
+      if (velocity_ < 0.0) velocity_ = 0.0;
+    } else if (displacement_ > yMax) {
+      displacement_ = yMax;
+      if (velocity_ > 0.0) velocity_ = 0.0;
+    }
+  }
+
 
   [[nodiscard]] double bernoulli(double opening, double deltaP) const {
     if (!(opening > 0.0) || deltaP == 0.0) return 0.0;
@@ -358,6 +440,17 @@ class ConeValveVoice final : public IVoice {
   double previousPressure_ = 0.0;
   double cupCoeff_ = 0.0;
   double cupPressure_ = 0.0;
+  double listener_ = 1.0;
+  double bellScale_ = 1.0;
+  double bellFlow_ = 0.0;
+  double radiationState_ = 0.0;
+  double radiationCorner_ = 1.0;
+  double boreThiran_ = 0.0;
+  double boreX_ = 0.0;
+  double boreY_ = 0.0;
+  std::uint64_t attackFrames_ = 0;
+  std::uint64_t releaseFrames_ = 0;
+  bool useBoreThiran_ = false;
   double fundamentalHz_ = 0.0;
   double decay_ = 0.0;
   double closing_ = 0.0;
