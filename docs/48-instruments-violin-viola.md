@@ -33,6 +33,54 @@ ideal strings on the published scale; it has no soundboard either. The
 electric guitar is the 25.5 in chart scale, not that classical body.
 The piano bank is five Table III strings and has no soundboard either.
 
+## Audible render
+
+An instrument is done only when the physics that affects its sound is
+stepped in time and that stepper is what a WAV file contains. A
+single-instant mouth, a modal formula, or an envelope is not that
+sound. `render/voice.h` pulls blocks from an `IVoice` into any
+`IAudioSink`, including `WavSink`. Block size does not change the
+samples. `WaveguideVoice` is one such voice: a tuned waveguide, read
+at one rail node and then stepped. Its decay is the loop's loss
+filter. It is not an instrument, and it stores no instrument length.
+
+No instrument header is an `IVoice`. The table is the bar. `renders
+audio` means the whole instrument, not a formula that could be
+rendered later.
+
+| Instrument | Excitation | Resonator | Body | Radiation | Renders audio | Remaining gap |
+|---|---|---|---|---|---|---|
+| Violin | Helmholtz and rigid-end stick-slip, not at audio rate | Ideal string, not a stepped lossy waveguide | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | No voice. Pluck, bow, body, and radiation are not one stepped sound |
+| Viola | Helmholtz and rigid-end stick-slip, not at audio rate | Ideal string, not a stepped lossy waveguide | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | No voice. Pluck, bow, body, and radiation are not one stepped sound |
+| Cello | Helmholtz and rigid-end stick-slip, not at audio rate | Ideal string, not a stepped lossy waveguide | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | No voice. Pluck, bow, body, and radiation are not one stepped sound |
+| Double bass | Helmholtz and rigid-end stick-slip, not at audio rate | Ideal string, not a stepped lossy waveguide | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | No voice. Pluck, bow, body, and radiation are not one stepped sound |
+| Harp | No time-stepped pluck | Ideal open strings, not a stepped lossy waveguide | No soundboard | None | no | No voice. A plucked course does not yet step a waveguide |
+| Harpsichord | No time-stepped pluck | Published speaking lengths, not a stepped waveguide | No soundboard | None | no | No voice. A plucked course does not yet step a waveguide |
+| Classical guitar | Ideal-string pluck shape, not stepped | Ideal string on 650 mm, not a lossy waveguide | No soundboard | None | no | No voice. A plucked course does not yet step a waveguide |
+| Electric guitar | Ideal-string pluck shape, not stepped | Ideal string on 25.5 in, not a lossy waveguide | No body filter | No pickup | no | No voice. No coil and no position comb on a stepped string |
+| Piano | Hard-hammer and felt laws, one instant | Five stiff strings, not stepped against the hammer | No soundboard | None | no | No voice. The hammer is not stepping a stiff string |
+| Clarinet | Reed mouth, one pressure sample | Open cylinder, not a delay line | None | No bell radiation | no | No voice. The reed is not stepping a bore |
+| Flute | Jet formulas, one pressure sample | Open-open cylinder, not a delay line | None | No embouchure or end radiation | no | No voice. The jet is not stepping a bore |
+| Trumpet | Outward lip, one pressure sample | Cupped cylinder, not a delay line | None | No bell flare or radiation | no | No voice. The lip is not stepping a bore |
+| Trombone | Outward lip, one pressure sample | U-slide cylinder, not a delay line | None | No bell flare or radiation | no | No voice. The slide length is not a stepped bore |
+| Saxophone | Inward reed, one pressure sample | Truncated-cone impedance, not a stepped cone | None | No bell radiation | no | No voice. The reed is not stepping a cone |
+| Bass drum | Impulse coefficients, not a mallet step | Fixed-membrane zeros, not a damped modal stepper | Shell air not loaded | None | no | No voice. The head is not stepping |
+| Rack tom 10 in | Impulse coefficients, not a mallet step | Fixed-membrane zeros, not a damped modal stepper | Shell air not loaded | None | no | No voice. The head is not stepping |
+| Rack tom 12 in | Impulse coefficients, not a mallet step | Fixed-membrane zeros, not a damped modal stepper | Shell air not loaded | None | no | No voice. The head is not stepping |
+| Floor tom | Impulse coefficients, not a mallet step | Fixed-membrane zeros, not a damped modal stepper | Shell air not loaded | None | no | No voice. The head is not stepping |
+| Snare 5.5 in | Impulse coefficients, not a mallet step | One head, snare wires absent | Shell air not loaded | None | no | No voice. The head is not stepping |
+| Snare 6.5 in | Impulse coefficients, not a mallet step | One head, snare wires absent | Shell air not loaded | None | no | No voice. The head is not stepping |
+| Splash | Impulse on a free plate, not stepped | Kirchhoff eigenvalues, not a damped modal stepper | None | None | no | No voice. The plate is not stepping |
+| Hi-hat | Impulse on one free plate, plates uncoupled | Kirchhoff eigenvalues, not a damped modal stepper | None | None | no | No voice. The plate is not stepping |
+| Crash 16 in | Impulse on a free plate, not stepped | Kirchhoff eigenvalues, not a damped modal stepper | None | None | no | No voice. The plate is not stepping |
+| Crash 18 in | Impulse on a free plate, not stepped | Kirchhoff eigenvalues, not a damped modal stepper | None | None | no | No voice. The plate is not stepping |
+| China | Impulse on a free plate, flange not modeled | Kirchhoff eigenvalues, not a damped modal stepper | None | None | no | No voice. The plate is not stepping |
+| Ride | Impulse on a free plate, not stepped | Kirchhoff eigenvalues, not a damped modal stepper | None | None | no | No voice. The plate is not stepping |
+
+The example `instrument_voice_demo` writes
+`/tmp/mmath-voice-waveguide.wav` from the waveguide voice. The test
+writes the same path and checks the file is not silent.
+
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
 string is asked to play. Those three stay separate; tension is the number
@@ -57,6 +105,9 @@ interval.
 | `instruments/flute.h` | Open-open flute and an embouchure jet. Length, bore area, jet area, thickness, flue-to-edge distance, and the convection ratio are arguments |
 | `instruments/trumpet.h` | Lip-driven cylinder and a mouthpiece cup. Length, bore area, cup volume, and the lip parameters are arguments |
 | `instruments/trombone.h` | That lip and cup on a U-slide. Closed length and handslide travel are arguments. The air column is \(L_0+2x\) |
+| `instruments/render_status.h` | Per-instrument audible-physics bar. None render audio yet |
+| `render/voice.h` | Block-based `IVoice` into any sink. No envelope |
+| `render/waveguide_voice.h` | Tuned waveguide stepped at the sample rate. Not an instrument |
 | `instruments/saxophone.h` | Inward reed on a truncated cone. Length, apex distance, throat area, and the reed parameters are arguments |
 | `instruments/harp.h` | Camac Atlantide Prestige concert pedal harp, 47 strings, height 1.86 m |
 | `instruments/harpsichord.h` | Goermans/Taskin 1764/1783–4 French double: 2×8′ + 4′, compass F1–F6 |

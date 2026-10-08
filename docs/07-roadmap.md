@@ -21,7 +21,7 @@ Status: planning · Nothing below may shape Phase 0–2 APIs
    stop, a Yamaha Tour Custom drum kit (circular membranes), and a SABIAN XSR
    cymbal set (free plates) (`docs/48-instruments-violin-viola.md`). Clarinet tone holes, a bell correction, and a register key, a flute end correction and tone holes, a trumpet bell flare and valves, a trombone bell flare, an F attachment, and a slide-position chart, a saxophone tone-hole lattice and a separate mouthpiece volume, a stored
    hammer or reed table, measured bridge admittance, and radiated pressure are
-   not built. This slice does not change Phase 0–2 APIs.
+   not built. A block voice can render a tuned waveguide to WAV; no instrument is that voice, so none of the twenty-six render audio. This slice does not change Phase 0–2 APIs.
 5. **Spatial + hearing:** `t=d/c`, Doppler from first principles, reverb/HRTF;
    loudness/pitch perception separate from physics.
 6. **Composition graph:** `Scale→Chords→VoiceLead→Rhythm→Humanize→Instrument→Room→Out`;

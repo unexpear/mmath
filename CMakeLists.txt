@@ -106,6 +106,7 @@ if(BUILD_TESTING)
     tests/test_time.cpp
     tests/test_signal.cpp
     tests/test_render.cpp
+    tests/test_voice_render.cpp
     tests/test_tuning.cpp
     tests/test_pitch.cpp
     tests/test_structures.cpp
@@ -179,6 +180,7 @@ if(BUILD_TESTING)
     tests/headers/th_sink_sink.cpp
     tests/headers/th_sink_wav.cpp
     tests/headers/th_render_offline.cpp
+    tests/headers/th_render_voice.cpp
     tests/headers/th_music_tuning.cpp
     tests/headers/th_music_pitch.cpp
     tests/headers/th_music_structures.cpp
@@ -351,6 +353,7 @@ if(MMATHEN_BUILD_EXAMPLES)
   foreach(example render_demo tuning_demo progression_demo timbre_demo
                   tempo_demo air_table stretch_demo modes_demo voice_demo
                   comma_demo dsp_demo wavetable_demo pm_demo
+                  instrument_voice_demo
                    solver_demo loss_demo stiff_demo pitch_error_demo
                    hearing_demo objects_demo spectrum_demo)
     add_executable(${example} examples/${example}.cpp)

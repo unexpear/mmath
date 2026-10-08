@@ -31,6 +31,8 @@ enum class RenderError {
   None = 0,
   InvalidConfig,  // bad rate / zero block / over-limit frames / bad t0
   SinkFailure,    // I/O or persistence failure; never a partial success
+  VoiceFailure,   // a stateful voice refused a block; samples already
+                  // consumed stay consumed
 };
 
 struct RenderStats {
