@@ -2,13 +2,14 @@
 //
 // The waveguide voice is the stepper already in tuned_waveguide.h. Its
 // decay is the loop's loss filter, not an envelope. Plucked courses have
-// their own voice. This file's status check is that none of the
-// twenty-six render audio.
+// their own voice. Clarinet, flute, and saxophone are the three that
+// render audio.
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <utility>
 #include <vector>
@@ -85,12 +86,16 @@ class FailingVoice final : public IVoice {
 };
 }  // namespace
 
-TEST_CASE("no instrument meets the audible-physics bar", "[voice]") {
+TEST_CASE("three winds meet the audible-physics bar", "[voice]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 0);
+  CHECK(instrumentsThatRenderAudio() == 3);
   for (std::size_t i = 0; i < kInstrumentRenderStatusCount; ++i) {
-    CHECK_FALSE(kInstrumentRenderStatus[i].rendersAudio);
-    CHECK(kInstrumentRenderStatus[i].name != nullptr);
+    const char* name = kInstrumentRenderStatus[i].name;
+    const bool renders = std::strcmp(name, "clarinet") == 0 ||
+                         std::strcmp(name, "flute") == 0 ||
+                         std::strcmp(name, "saxophone") == 0;
+    CHECK(kInstrumentRenderStatus[i].rendersAudio == renders);
+    CHECK(name != nullptr);
     CHECK(kInstrumentRenderStatus[i].gap != nullptr);
   }
 }

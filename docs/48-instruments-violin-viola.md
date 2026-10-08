@@ -67,9 +67,13 @@ transparent, so the ring is `loopPole`. A felt hammer steps the hinged
 modes of one stiff string (`FeltHammerVoice`, Hunt–Crossley contact).
 A mallet steps one membrane mode or one free-plate mode. One valve
 (`BoreValveVoice`) steps an inward reed, an outward lip, or a flute jet
-against a cylindrical bore delay. The table's renders-audio column
-stays no. A soundboard, bridge feedback, bell radiation, the saxophone
-cone, and a drum's air cavity are not in those steppers.
+against a cylindrical bore delay. A positive bore radius replaces the
+constant far-end magnitude with the Levine–Schwinger unflanged load:
+radius and end correction are arguments, and \(0.6133a\) is not stored.
+`ConeValveVoice` is the spherical-wave cone, bilinear at the throat, so
+a sealed mouth rings at \(\tan(kL)=-k x_0\). The same open end sits on
+that cone. Clarinet, flute, and saxophone render audio. The brass cup,
+bridge feedback, and a drum's air cavity are not in those steppers.
 
 | Instrument | Excitation | Resonator | Body | Radiation | Renders audio | Remaining gap |
 |---|---|---|---|---|---|---|
@@ -82,11 +86,11 @@ cone, and a drum's air cavity are not in those steppers.
 | Classical guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 650 mm course | No soundboard | None | no | The plucked course steps. Soundboard and radiation are absent |
 | Electric guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 25.5 in course | No body filter | Pickup position comb and coil velocity; no inductance | no | String and pickup step. The body filter is absent |
 | Piano | Felt hammer steps a stiff string | Modal stiff string, loss and strike are arguments | No soundboard | None | no | The felt hammer steps a stiff string. Soundboard and radiation are absent |
-| Clarinet | Inward reed steps a bore delay | Cylindrical delay, far-end magnitude is an argument | None | Constant far-end magnitude, no bell filter | no | The reed steps a cylindrical bore. Bell radiation is absent |
-| Flute | Jet steps an open embouchure | Open-open cylindrical delay | None | Constant far-end magnitude, no embouchure radiation filter | no | The jet steps a bore. End radiation is absent |
-| Trumpet | Outward lip steps a bore delay | Cylindrical delay; the cup is not stepped | None | Constant far-end magnitude, no bell flare | no | The lip steps a cylinder. The cup, flare, and bell radiation are absent |
-| Trombone | Outward lip steps the slide length | Cylindrical delay at L = L0 + 2x; the cup is not stepped | None | Constant far-end magnitude, no bell flare | no | The lip steps the slide bore. The flare and bell radiation are absent |
-| Saxophone | Inward reed steps a cylindrical delay | Cylinder of the saxophone length; the cone is not this stepper | None | Constant far-end magnitude, no bell filter | no | The reed steps a cylinder. The cone and bell radiation are absent |
+| Clarinet | Inward reed steps a bore delay | Cylindrical delay; an open end replaces the constant magnitude | None | Levine-Schwinger open end; radius and end correction are arguments | yes | Tone holes and a register key are outside this bore |
+| Flute | Jet steps an open embouchure | Open-open cylindrical delay | None | Levine-Schwinger open end at the far end; the embouchure stays an ideal release | yes | Tone holes are outside this bore |
+| Trumpet | Outward lip steps a cone | Truncated cone of the trumpet length; the cup is not stepped | None | Levine-Schwinger open end on the cone | no | The lip, cone, and open end step. The cup is absent |
+| Trombone | Outward lip steps the slide length on a cone | Truncated cone at L = L0 + 2x; the cup is not stepped | None | Levine-Schwinger open end on the cone | no | The lip, slide cone, and open end step. The cup is absent |
+| Saxophone | Inward reed steps the spherical-wave cone | Truncated-cone delay; the cylinder is not this stepper | None | Levine-Schwinger open end; bell radius is an argument | yes | Tone holes are outside this cone |
 | Bass drum | Felt mallet steps the head | Damped membrane modes; air cavity not loaded | Shell air not loaded | None | no | Mallet and head step. Air cavity and radiation are absent |
 | Rack tom 10 in | Felt mallet steps the head | Damped membrane modes; air cavity not loaded | Shell air not loaded | None | no | Mallet and head step. Air cavity and radiation are absent |
 | Rack tom 12 in | Felt mallet steps the head | Damped membrane modes; air cavity not loaded | Shell air not loaded | None | no | Mallet and head step. Air cavity and radiation are absent |
@@ -141,7 +145,9 @@ interval.
 | `instruments/flute.h` | Open-open flute and an embouchure jet. Length, bore area, jet area, thickness, flue-to-edge distance, and the convection ratio are arguments |
 | `instruments/trumpet.h` | Lip-driven cylinder and a mouthpiece cup. Length, bore area, cup volume, and the lip parameters are arguments |
 | `instruments/trombone.h` | That lip and cup on a U-slide. Closed length and handslide travel are arguments. The air column is \(L_0+2x\) |
-| `instruments/render_status.h` | Per-instrument audible-physics bar. Pluck, bow, hammer, mallet, and bore valve step; none render audio yet |
+| `instruments/render_status.h` | Per-instrument audible-physics bar. Clarinet, flute, and saxophone render audio; the other twenty-three do not |
+| `physics/radiation.h` | Unflanged open-end load \((1/4)(ka)^2+jk\Delta\) and its delay-plus-curvature stepper. Radius and end correction are arguments |
+| `instruments/cone_valve.h` | Reed or lip on the spherical-wave cone, optional open end. Apex, bell radius, and end correction are arguments. The cup is not stepped |
 | `instruments/plucked_string.h` | One course as a lossy tuned-waveguide voice, or the same pluck on `Fdtd1D`. Listen fraction and `CoilVelocity` are arguments. No stored T60, stiffness, or pickup location |
 | `instruments/bowed_string.h` | Stick-slip junction on the tuned loop. The bow-down duration is an argument. After the lift the ring is `loopPole`. No soundboard |
 | `instruments/struck_string.h` | Felt hammer against hinged stiff-string modes. Hunt–Crossley \(F=K\xi^{p}(1+\lambda\xi')\). \(K\), \(p\), \(\lambda\), and the mode count are arguments |
@@ -1198,9 +1204,10 @@ diameters and are not read. No instrument stores a core.
 
 ## Still planned
 
-The audio-rate bow, felt hammer, mallet, and bore valve write samples.
-They do not close the instrument: bridge feedback, bell radiation, the
-truncated-cone delay, and shell air are still outside those steppers.
+The audio-rate bow, felt hammer, mallet, bore valve, and cone valve
+write samples. Clarinet, flute, and saxophone close excitation, bore,
+and bell radiation. Bridge feedback, the brass cup, and shell air are
+still outside those steppers.
 Images after the first from each hammer end are not in this layer. A
 viscous reed channel, clarinet tone holes, a bell correction, and a
 register key are not in this layer. A flute end correction, tone holes,

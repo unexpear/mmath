@@ -195,7 +195,7 @@ StringCourse electricCourse() {
 
 TEST_CASE("plucked courses still leave the audible bar unmet", "[pluck]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 0);
+  CHECK(instrumentsThatRenderAudio() == 3);
   const char* stepped[] = {"violin", "viola", "cello", "double bass",
                            "harp", "harpsichord", "classical guitar",
                            "electric guitar"};

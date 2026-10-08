@@ -7,9 +7,10 @@
 // single-instant mouth, a modal formula, or an envelope is not enough.
 // rendersAudio is that bar. render/voice.h pulls any IVoice into a
 // WavSink. Plucked courses, a bowed course, a felt hammer, a mallet,
-// and a bore valve each step. The soundboard, bridge feedback, bell
-// radiation, the saxophone cone, and the drum's air cavity are still
-// outside those steppers, so every row below stays false.
+// and a bore valve each step. Clarinet, flute, and saxophone now step
+// excitation, bore, and bell radiation in one voice. The brass cup,
+// bridge feedback, and the drum's air cavity are still outside, so
+// those rows stay false.
 //
 // The strings are the status, not stored physical constants.
 
@@ -74,25 +75,25 @@ inline constexpr InstrumentRenderStatus kInstrumentRenderStatus[] = {
      "no soundboard", "none", false,
      "The felt hammer steps a stiff string. Soundboard and radiation are absent."},
     {"clarinet", "inward reed steps a bore delay",
-     "cylindrical delay, far-end magnitude is an argument", "none",
-     "constant far-end magnitude, no bell filter", false,
-     "The reed steps a cylindrical bore. Bell radiation is absent."},
+     "cylindrical delay; an open end replaces the constant magnitude", "none",
+     "Levine-Schwinger open end; radius and end correction are arguments", true,
+     "Tone holes and a register key are outside this bore."},
     {"flute", "jet steps an open embouchure",
      "open-open cylindrical delay", "none",
-     "constant far-end magnitude, no embouchure radiation filter", false,
-     "The jet steps a bore. End radiation is absent."},
-    {"trumpet", "outward lip steps a bore delay",
-     "cylindrical delay; the cup is not stepped", "none",
-     "constant far-end magnitude, no bell flare", false,
-     "The lip steps a cylinder. The cup, flare, and bell radiation are absent."},
-    {"trombone", "outward lip steps the slide length",
-     "cylindrical delay at L = L0 + 2x; the cup is not stepped", "none",
-     "constant far-end magnitude, no bell flare", false,
-     "The lip steps the slide bore. The flare and bell radiation are absent."},
-    {"saxophone", "inward reed steps a cylindrical delay",
-     "cylinder of the saxophone length; the cone is not this stepper",
-     "none", "constant far-end magnitude, no bell filter", false,
-     "The reed steps a cylinder. The cone and bell radiation are absent."},
+     "Levine-Schwinger open end at the far end; the embouchure stays an ideal release",
+     true, "Tone holes are outside this bore."},
+    {"trumpet", "outward lip steps a cone",
+     "truncated cone of the trumpet length; the cup is not stepped", "none",
+     "Levine-Schwinger open end on the cone", false,
+     "The lip, cone, and open end step. The cup is absent."},
+    {"trombone", "outward lip steps the slide length on a cone",
+     "truncated cone at L = L0 + 2x; the cup is not stepped", "none",
+     "Levine-Schwinger open end on the cone", false,
+     "The lip, slide cone, and open end step. The cup is absent."},
+    {"saxophone", "inward reed steps the spherical-wave cone",
+     "truncated-cone delay; the cylinder is not this stepper",
+     "none", "Levine-Schwinger open end; bell radius is an argument", true,
+     "Tone holes are outside this cone."},
     {"bass drum", "felt mallet steps the head",
      "damped membrane modes; air cavity not loaded",
      "shell air not loaded", "none", false,

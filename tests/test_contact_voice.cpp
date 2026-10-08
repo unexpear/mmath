@@ -18,6 +18,7 @@
 
 #include <mmathen/analysis/fft.h>
 #include <mmathen/instruments/bore_valve.h>
+#include <mmathen/instruments/cone_valve.h>
 #include <mmathen/instruments/bowed_string.h>
 #include <mmathen/instruments/cello.h>
 #include <mmathen/instruments/cymbal.h>
@@ -185,12 +186,16 @@ TEST_CASE("a constant-force oscillator steps its own decay", "[contact]") {
 
 TEST_CASE("contact voices leave the audible bar unmet", "[contact]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 0);
+  CHECK(instrumentsThatRenderAudio() == 3);
   CHECK(std::strstr(statusNamed("violin")->resonator, "waveguide") != nullptr);
   CHECK(std::strstr(statusNamed("violin")->excitation, "bow") != nullptr);
   CHECK_FALSE(statusNamed("piano")->rendersAudio);
   CHECK(std::strstr(statusNamed("piano")->gap, "hammer") != nullptr);
   CHECK(std::strstr(statusNamed("clarinet")->gap, "bore") != nullptr);
+  CHECK(statusNamed("clarinet")->rendersAudio);
+  CHECK(statusNamed("flute")->rendersAudio);
+  CHECK(statusNamed("saxophone")->rendersAudio);
+  CHECK_FALSE(statusNamed("trumpet")->rendersAudio);
   CHECK(std::strstr(statusNamed("saxophone")->resonator, "cone") != nullptr);
   CHECK(std::strstr(statusNamed("bass drum")->gap, "cavity") != nullptr);
   CHECK_FALSE(statusNamed("splash")->rendersAudio);
@@ -474,4 +479,144 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   CHECK(BoreValveVoice::fromClarinet(
             clarinet, ValveBlow{4000.0, 100, 0.0, 0.0}, kRate)
             .error() == QuantityError::InvalidArgument);
+}
+
+TEST_CASE("an unflanged open end lengthens the bore and radiates", "[contact]") {
+  const double wave = constants::twoPi * 180.0 / 343.0;
+  const auto ratio = unwrap(openEndImpedanceRatio(wave, 0.02, 0.012));
+  CHECK(std::fabs(ratio.real - 0.25 * wave * wave * 0.02 * 0.02) < 1.0e-12);
+  CHECK(std::fabs(ratio.imag - wave * 0.012) < 1.0e-12);
+  const auto reflected = unwrap(openEndPressureReflection(ratio));
+  const double magnitude = std::hypot(reflected.real, reflected.imag);
+  CHECK(magnitude < 1.0);
+  CHECK(reflected.real < 0.0);
+  const auto atZero = unwrap(openEndPressureReflection(
+      unwrap(openEndImpedanceRatio(0.0, 0.02, 0.012))));
+  CHECK(std::fabs(atZero.real + 1.0) < 1.0e-12);
+  CHECK(std::fabs(atZero.imag) < 1.0e-12);
+  CHECK(openEndImpedanceRatio(wave, 0.0, 0.012).error() ==
+        QuantityError::InvalidArgument);
+
+  ClarinetSpec clarinetSpec{0.45, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0,
+                            1.0e-6, 1.0e-4, 1.0e-3, 0.01};
+  const auto clarinet = unwrap(makeClarinet(clarinetSpec));
+  const ValveBlow plain{4000.0, 16000, 1.0, 2.0e-5};
+  auto closed = unwrap(BoreValveVoice::fromClarinet(clarinet, plain, kRate));
+  ValveBlow loaded = plain;
+  loaded.radiusMeters = 0.02;
+  loaded.endCorrectionMeters = 0.012;
+  auto voice = unwrap(BoreValveVoice::fromClarinet(clarinet, loaded, kRate));
+  CHECK(voice.fundamentalHz() < closed.fundamentalHz());
+  CHECK(voice.reflectionDecay() > closed.reflectionDecay());
+  const auto samples = renderOf(voice, 48000);
+  CHECK(peakOf(samples, 4000, 14000) > 100.0);
+  const double ring = pitchNear(samples, 20000, voice.fundamentalHz() - 25.0,
+                                voice.fundamentalHz() + 25.0);
+  CHECK(std::fabs(ring - voice.fundamentalHz()) < 1.0);
+  checkDecay(samples, 20000, voice.fundamentalHz() - 25.0,
+             voice.fundamentalHz() + 25.0, voice.reflectionDecay());
+  writeListening(samples, "/opt/cursor/artifacts/mmath-clarinet-open-end.wav");
+
+  ValveBlow wider = loaded;
+  wider.radiusMeters = 0.03;
+  auto wide = unwrap(BoreValveVoice::fromClarinet(clarinet, wider, kRate));
+  CHECK(wide.reflectionDecay() > voice.reflectionDecay());
+
+  const double length = 0.55;
+  const double density =
+      unwrap(airDensity(PressurePascals{kAir}, TemperatureKelvin{kTemp})).value();
+  const double speed =
+      unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  const double area = 2.8e-4;
+  FluteSpec fluteSpec{length, area, kAir, kTemp, 1.2e-5, 1.2e-3, 8.0e-3, 0.4};
+  const auto flute = unwrap(makeFlute(fluteSpec));
+  const double jetSpeed = (8.0e-3 / 0.4) / (length / speed);
+  const double jetPressure = 0.5 * density * jetSpeed * jetSpeed;
+  ValveBlow jetBlow{jetPressure, 16000, 1.0, 0.25 * 1.2e-3, 0.015, 0.008};
+  auto jet = unwrap(BoreValveVoice::fromFlute(flute, jetBlow, kRate));
+  CHECK(jet.fundamentalHz() < speed / (2.0 * length));
+  const auto jetSamples = renderOf(jet, 48000);
+  CHECK(peakOf(jetSamples, 4000, 14000) > 1.0e-6);
+  const double jetRing = pitchNear(jetSamples, 20000, jet.fundamentalHz() - 30.0,
+                                   jet.fundamentalHz() + 30.0);
+  CHECK(std::fabs(jetRing - jet.fundamentalHz()) < 1.5);
+  checkDecay(jetSamples, 20000, jet.fundamentalHz() - 30.0,
+             jet.fundamentalHz() + 30.0, jet.reflectionDecay());
+  writeListening(jetSamples, "/opt/cursor/artifacts/mmath-flute-open-end.wav");
+}
+
+TEST_CASE("a reed on a truncated cone is not a cylinder", "[contact]") {
+  SaxophoneSpec saxSpec{0.45, 0.12, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0,
+                        1.0e-6, 1.0e-4, 1.0e-3, 0.01};
+  const auto saxophone = unwrap(makeSaxophone(saxSpec));
+  const ValveBlow blow{4000.0, 16000, 1.0, 2.0e-5};
+  auto ideal = unwrap(ConeValveVoice::fromSaxophone(saxophone, blow, kRate));
+  CHECK(std::fabs(ideal.fundamentalHz() - saxophone.fundamentalHz) < 1.0e-9);
+  const double cylinder = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value() /
+                          (4.0 * 0.45);
+  CHECK(std::fabs(ideal.fundamentalHz() - cylinder) > 5.0);
+  const auto samples = renderOf(ideal, 48000);
+  CHECK(peakOf(samples, 4000, 14000) > 100.0);
+  const double heard = pitchNear(samples, 20000, ideal.fundamentalHz() - 40.0,
+                                 ideal.fundamentalHz() + 40.0);
+  CHECK(std::fabs(heard - ideal.fundamentalHz()) < 1.0);
+  const double early = amplitudeNear(samples, 24000, ideal.fundamentalHz() - 40.0,
+                                     ideal.fundamentalHz() + 40.0);
+  const double late = amplitudeNear(samples, 32000, ideal.fundamentalHz() - 40.0,
+                                    ideal.fundamentalHz() + 40.0);
+  CHECK(std::fabs(late / early - 1.0) < 0.05);
+  writeListening(samples, "/opt/cursor/artifacts/mmath-saxophone-cone.wav");
+
+  ValveBlow radiating = blow;
+  radiating.radiusMeters = 0.03;
+  radiating.endCorrectionMeters = 0.01;
+  auto bell = unwrap(ConeValveVoice::fromSaxophone(saxophone, radiating, kRate));
+  const auto flared = renderOf(bell, 48000);
+  const double flaredHeard =
+      pitchNear(flared, 18000, 250.0, 340.0);
+  CHECK(flaredHeard < ideal.fundamentalHz() - 5.0);
+  const double a1 = amplitudeNear(flared, 16000, 250.0, 340.0);
+  const double a2 = amplitudeNear(flared, 24192, 250.0, 340.0);
+  const double a3 = amplitudeNear(flared, 32384, 250.0, 340.0);
+  const double ratio1 = a2 / a1;
+  const double ratio2 = a3 / a2;
+  CHECK(ratio1 < 0.9);
+  CHECK(std::fabs(ratio1 - ratio2) / ratio1 < 0.08);
+  ValveBlow wider = radiating;
+  wider.radiusMeters = 0.045;
+  auto wide = unwrap(ConeValveVoice::fromSaxophone(saxophone, wider, kRate));
+  const auto wideSamples = renderOf(wide, 40000);
+  const double wideRatio = amplitudeNear(wideSamples, 24192, 220.0, 340.0) /
+                           amplitudeNear(wideSamples, 16000, 220.0, 340.0);
+  CHECK(wideRatio < ratio1);
+  writeListening(flared, "/opt/cursor/artifacts/mmath-saxophone-bell.wav");
+
+  const double lipMass = 2.0e-5;
+  const double speed =
+      unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  const double lipOmega = 2.0 * constants::pi * (speed / (4.0 * 0.45));
+  TrumpetSpec trumpetSpec{0.45, 1.2e-4, kAir, kTemp, 0.0, 8.0e-6, 4.0e-5, 8.0e-3,
+                          lipMass, lipOmega * lipOmega * lipMass, 1.5e-5, 0.002};
+  const auto trumpet = unwrap(makeTrumpet(trumpetSpec));
+  const ValveBlow lipBlow{2500.0, 16000, 1.0, 0.0, 0.03, 0.01};
+  auto lip = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.2, lipBlow, kRate));
+  const auto lipSamples = renderOf(lip, 48000);
+  CHECK(peakOf(lipSamples, 18000, 28000) > 50.0);
+  const double lipHeard = pitchNear(lipSamples, 20000, 200.0, 340.0);
+  CHECK(lipHeard < lip.fundamentalHz() - 2.0);
+  const double lipLater = pitchNear(lipSamples, 28000, 200.0, 340.0);
+  CHECK(std::fabs(lipHeard - lipLater) < 1.0);
+  writeListening(lipSamples, "/opt/cursor/artifacts/mmath-trumpet-cone.wav");
+
+  TromboneSpec tromboneSpec{0.45, 0.15, 1.2e-4, kAir, kTemp, 0.0, 8.0e-6, 4.0e-5,
+                            8.0e-3, lipMass, lipOmega * lipOmega * lipMass, 1.5e-5,
+                            0.002};
+  const auto trombone = unwrap(makeTrombone(tromboneSpec));
+  auto slide = unwrap(ConeValveVoice::fromTrombone(trombone, 0.2, lipBlow, kRate));
+  CHECK(slide.fundamentalHz() < lip.fundamentalHz());
+  const auto slideSamples = renderOf(slide, 48000);
+  CHECK(peakOf(slideSamples, 18000, 28000) > 20.0);
+  const double slideHeard = pitchNear(slideSamples, 20000, 80.0, 260.0);
+  CHECK(slideHeard < lipHeard);
+  writeListening(slideSamples, "/opt/cursor/artifacts/mmath-trombone-cone.wav");
 }

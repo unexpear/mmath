@@ -1,5 +1,7 @@
 // Header self-containment: the contact voices compile from their headers.
 #include <mmathen/instruments/bore_valve.h>
+#include <mmathen/instruments/cone_valve.h>
+#include <mmathen/physics/radiation.h>
 #include <mmathen/instruments/bowed_string.h>
 #include <mmathen/instruments/mallet_voice.h>
 #include <mmathen/instruments/struck_string.h>

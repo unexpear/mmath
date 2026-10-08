@@ -4,8 +4,10 @@
 //
 // The bore is a round trip of N = round(fs * 2L/c) samples. The far-end
 // pressure reflection is the bore's open-end sign, −1, times the caller's
-// magnitude in (0, 1]. The magnitude is not a bell filter: a radiation
-// load is a later piece. |R| = 1 does not decay. After the blow, a reed
+// magnitude in (0, 1]. A positive radiusMeters replaces that constant
+// with the unflanged open-end filter in physics/radiation.h: the
+// Levine–Schwinger load, end correction and radius both arguments.
+// |R| = 1 does not decay. After the blow, a reed
 // or a lip is held shut, so the mouth is a closed end and the ringing
 // samples are that delay. Decay of the traveling wave is −ln(|R|) per
 // round trip. Holding the valve shut is the player stopping, not an
@@ -37,6 +39,7 @@
 #include <vector>
 
 #include "../math/constants.h"
+#include "../physics/radiation.h"
 #include "../render/voice.h"
 #include "clarinet.h"
 #include "flute.h"
@@ -52,11 +55,16 @@ enum class ValveLaw { InwardReed, OutwardLip, Jet };
 // how long it stays open. reflectionMagnitude is |R| at the far end.
 // initialDisplacementMeters is the reed or lip displacement, or the
 // flute's centerline displacement, at the start. All four are arguments.
+// radiusMeters and endCorrectionMeters are the unflanged-pipe load.
+// Both are arguments. A non-positive radius means the far end stays the
+// constant magnitude above.
 struct ValveBlow {
   double pressurePa = 0.0;
   std::uint64_t frames = 0;
   double reflectionMagnitude = 0.0;
   double initialDisplacementMeters = 0.0;
+  double radiusMeters = 0.0;
+  double endCorrectionMeters = 0.0;
 };
 
 class BoreValveVoice final : public IVoice {
@@ -123,7 +131,8 @@ class BoreValveVoice final : public IVoice {
                            blow.initialDisplacementMeters);
     voice.flueY_ = blow.initialDisplacementMeters;
     voice.flowOutput_ = true;
-    voice.fundamentalHz_ = fs / static_cast<double>(voice.delaySamples_);
+    if (!voice.radiating_)
+      voice.fundamentalHz_ = fs / static_cast<double>(voice.delaySamples_);
     return R::success(std::move(voice));
   }
 
@@ -137,7 +146,8 @@ class BoreValveVoice final : public IVoice {
     if (out == nullptr) return R::failure(QuantityError::InvalidArgument);
     const double dt = 1.0 / rate_.value();
     for (std::uint64_t i = 0; i < count; ++i) {
-      const double incoming = reflection_ * line_[pos_];
+      const double incoming =
+        radiating_ ? openEnd_.step(line_[pos_]) : reflection_ * line_[pos_];
       if (!std::isfinite(incoming)) return R::failure(QuantityError::RangeError);
       double sample = 0.0;
       double outgoing = 0.0;
@@ -162,6 +172,7 @@ class BoreValveVoice final : public IVoice {
   void reset() override {
     std::fill(line_.begin(), line_.end(), 0.0);
     pos_ = 0;
+    openEnd_.reset();
     std::fill(jetDelay_.begin(), jetDelay_.end(), initialDisplacement_);
     jetPos_ = 0;
     displacement_ = initialDisplacement_;
@@ -227,17 +238,42 @@ class BoreValveVoice final : public IVoice {
       return R::failure(QuantityError::RangeError);
     int delay = static_cast<int>(std::llround(samples));
     if (delay < 1) delay = 1;
-    const double zeta = -blow.reflectionMagnitude;
-    const double trip = static_cast<double>(delay) / fs;
-    const double decay = -std::log(blow.reflectionMagnitude) / trip;
-    const double hertz = (law == ValveLaw::Jet)
-                             ? fs / static_cast<double>(delay)
-                             : fs / (2.0 * static_cast<double>(delay));
+    const bool radiating = blow.radiusMeters > 0.0;
+    double zeta = -blow.reflectionMagnitude;
+    double decay = 0.0;
+    double hertz = 0.0;
+    OpenEndReflection openEnd;
+    if (radiating) {
+      auto filter = OpenEndReflection::create(blow.radiusMeters, blow.endCorrectionMeters,
+                                              speed, rate);
+      if (!filter.ok()) return R::failure(filter.error());
+      openEnd = std::move(filter).value();
+      const bool openOpen = law == ValveLaw::Jet;
+      auto solved = openEnd.resonanceHz(delay, openOpen);
+      if (!solved.ok()) return R::failure(solved.error());
+      auto response = openEnd.response(solved.value());
+      if (!response.ok()) return R::failure(response.error());
+      const double magnitude =
+          std::hypot(response.value().real, response.value().imag);
+      if (!(magnitude > 0.0) || !(magnitude <= 1.0))
+        return R::failure(QuantityError::RangeError);
+      hertz = solved.value();
+      const double trip = openOpen ? 1.0 / hertz : 1.0 / (2.0 * hertz);
+      decay = -std::log(magnitude) / trip;
+      zeta = -1.0;
+    } else {
+      const double trip = static_cast<double>(delay) / fs;
+      decay = -std::log(blow.reflectionMagnitude) / trip;
+      hertz = (law == ValveLaw::Jet) ? fs / static_cast<double>(delay)
+                                    : fs / (2.0 * static_cast<double>(delay));
+    }
     if (!std::isfinite(decay) || !std::isfinite(hertz) || !(hertz > 0.0))
       return R::failure(QuantityError::RangeError);
     BoreValveVoice voice(rate, law, blow, zeta, density, area, delay, hertz,
                          decay);
     voice.impedance_ = impedance;
+    voice.radiating_ = radiating;
+    voice.openEnd_ = std::move(openEnd);
     return R::success(std::move(voice));
   }
 
@@ -448,6 +484,8 @@ class BoreValveVoice final : public IVoice {
   double fundamentalHz_ = 0.0;
   double reflectionDecay_ = 0.0;
   bool flowOutput_ = false;
+  bool radiating_ = false;
+  OpenEndReflection openEnd_{};
   ReedPack reed_{};
   Trumpet trumpet_{};
   std::vector<double> line_;
