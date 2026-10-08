@@ -189,7 +189,13 @@ class ConeValveVoice final : public IVoice {
       }
       line_[pos_] = outgoing;
       pos_ = (pos_ + 1) % line_.size();
-      const double bellFlow = (incident - incoming) / impedance_ * bellScale_;
+      // One pass of cylindrical steepening on the wave that has already
+      // traveled the bore. The lip keeps the linear return, so the
+      // limit cycle (and a length change) stays the one the note was
+      // tuned with. See ValveBlow::brassiness.
+      double atBell = incident;
+      if (lip_ && brassiness_ > 0.0) atBell = steepenAtBell(incident);
+      const double bellFlow = (atBell - incoming) / impedance_ * bellScale_;
       double radiated = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
                                                  radiationState_, radiationCorner_, dt);
       // Benade and Lutgen's external envelope, when a break frequency
@@ -225,6 +231,7 @@ class ConeValveVoice final : public IVoice {
     radiationState_ = 0.0;
     break_.reset();
     noise_ = 1u;
+    prevOutgoing_ = 0.0;
     displacement_ = initialDisplacement_;
     velocity_ = 0.0;
     frame_ = 0;
@@ -277,6 +284,7 @@ class ConeValveVoice final : public IVoice {
     variableAge_ = timed;
     variableRead_ = true;
     bellScale_ = scale;
+    soundingLength_ = lengthMeters;
     return true;
   }
 
@@ -457,15 +465,22 @@ class ConeValveVoice final : public IVoice {
     voice.bellScale_ = (apex + sounding) / apex;
     if (!std::isfinite(voice.bellScale_) || !(voice.bellScale_ > 0.0))
       return R::failure(QuantityError::RangeError);
+    voice.soundingLength_ = sounding;
+    voice.brassiness_ = blow.brassiness;
     const double bellRadius = std::sqrt(area / constants::pi) * voice.bellScale_;
     voice.radiationCorner_ = speed / bellRadius;
-    // A complete-cone bell radius is not a measured brass bell. A positive
-    // radiationHz is the ka = 1 smoother on the radiated pressure and does
-    // not change the loop filter. Omitting it keeps the older coupling:
-    // the reflection cutoff was that smoother.
+    // ka = 1 of this cone's bell is the radiation smoother. A positive
+    // radiationHz replaces it and does not change the loop filter. The
+    // reflection cutoff is a different section: it is what returns to
+    // the valve. Copying that cutoff onto the radiator low-passes the
+    // partials the open end just passed. Benade's envelope, when set,
+    // is the external saxophone transfer and is not filtered again.
+    // A lip with no envelope keeps the older coupling, because that
+    // cutoff (several kHz on these cones) is the brightness control
+    // the brass notes were tuned with.
     if (blow.radiationHz > 0.0)
       voice.radiationCorner_ = constants::twoPi * blow.radiationHz;
-    else if (lossy)
+    else if (lossy && !(blow.spectrumBreakHz > 0.0))
       voice.radiationCorner_ = constants::twoPi * blow.reflectionCutoffHz;
     if (!std::isfinite(voice.radiationCorner_) || !(voice.radiationCorner_ > 0.0))
       return R::failure(QuantityError::RangeError);
@@ -509,6 +524,31 @@ class ConeValveVoice final : public IVoice {
     // is linear phase of half a sample, already removed from the line.
     const double y = 0.5 * (x + nyquist_);
     nyquist_ = x;
+    return y;
+  }
+
+  // One trip of plane-wave steepening, heard at the bell and not
+  // written back. Peaks advance by β p L / (ρ c³) samples,
+  // β = (γ+1)/2. The difference is a one-sample Taylor step, so the
+  // advance stops at one sample, and a step (a length change) cannot
+  // add more than a quarter of the wave. See ValveBlow::brassiness.
+  [[nodiscard]] double steepenAtBell(double incident) {
+    const double previous = prevOutgoing_;
+    prevOutgoing_ = incident;
+    const double c = speed_;
+    const double denom = density_ * c * c * c;
+    if (!(denom > 0.0) || !(soundingLength_ > 0.0) || !std::isfinite(incident))
+      return incident;
+    const double beta = 0.5 * (acoustic_constants::dryAirGamma + 1.0);
+    double adv = brassiness_ * beta * incident * soundingLength_ * rate_.value() / denom;
+    if (adv > 1.0) adv = 1.0;
+    if (adv < -1.0) adv = -1.0;
+    double extra = adv * (incident - previous);
+    const double cap = 0.25 * std::fabs(incident);
+    if (extra > cap) extra = cap;
+    if (extra < -cap) extra = -cap;
+    const double y = incident + extra;
+    if (!std::isfinite(y)) return incident;
     return y;
   }
 
@@ -609,6 +649,9 @@ class ConeValveVoice final : public IVoice {
   std::uint64_t releaseFrames_ = 0;
   std::uint64_t tongueFrames_ = 0;
   double reedTurbulence_ = 0.0;
+  double brassiness_ = 0.0;
+  double soundingLength_ = 0.0;
+  double prevOutgoing_ = 0.0;
   std::uint32_t noise_ = 1u;
   valve_detail::BreakEnvelope break_{};
   bool useBoreThiran_ = false;

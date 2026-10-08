@@ -93,14 +93,27 @@ enum class ValveLaw { InwardReed, OutwardLip, Jet };
 // that frame, then places it at initialDisplacementMeters. Zero leaves
 // the valve free from the first sample. Mouth pressure ramps on its own.
 // reedTurbulence is the fraction of the radiated pressure added as a
-// zero-mean disturbance after the reed loop. A disturbance of the
-// blowing pressure is cancelled by the pressure search, so the bell
-// stays a line spectrum, and on the shorter tubes that same disturbance
-// locks the second mode. Fletcher and Rossing (The Physics of Musical
-// Instruments, 2nd ed., chap. 13) treat flow in the reed channel as
-// turbulent; the fraction is an argument because that chapter does not
-// print a saxophone noise-to-harmonic ratio. Zero is the deterministic
-// reed. spectrumBreakHz is Benade
+// zero-mean disturbance after the valve loop, on a reed or a jet. A
+// disturbance of the blowing pressure is cancelled by the pressure
+// search, so the bell stays a line spectrum, and on the shorter
+// saxophone tubes that same disturbance locks the second mode. A lip
+// has no reed channel and skips it. Fletcher and Rossing (The Physics
+// of Musical Instruments, 2nd ed., chap. 13) treat the reed channel as
+// turbulent, and the flue-pipe chapters treat the jet's mixing layer
+// the same way. Neither prints a noise-to-harmonic ratio, so the
+// fraction is an argument. Zero is the deterministic valve.
+// brassiness is the fraction of the cylindrical Burgers advance
+// applied to the traveling wave as it reaches the bell. β = (γ+1)/2
+// and δt = β p L / (ρ c³). Hirschberg, Gilbert, Msallam, and Wijnands
+// (JASA 99, 1754–1758, 1996) measured the shocks that advance produces
+// in trombones. The steepened sample is what radiates; it is not
+// written back into the delay. The one-sample Taylor step is not a
+// conservative scheme, and feeding it back grew a length-change
+// transient without bound and pulled the trumpet's limit cycle darker.
+// A flare accumulates less than a cylinder, and that paper does not
+// print a waveguide gain, so the fraction is an argument. Zero leaves
+// the linear cone. A reed or a jet ignores it.
+// spectrumBreakHz is Benade
 // and Lutgen's break frequency fb, JASA 83, 1900–1907 (1988). Zero
 // leaves the radiated pressure without that transfer.
 struct ValveBlow {
@@ -119,6 +132,7 @@ struct ValveBlow {
   double radiationHz = 0.0;
   std::uint64_t tongueReleaseFrames = 0;
   double reedTurbulence = 0.0;
+  double brassiness = 0.0;
   double spectrumBreakHz = 0.0;
 };
 
@@ -176,8 +190,9 @@ namespace valve_detail {
     return false;
   if (blow.tongueReleaseFrames > blow.frames) return false;
   if (!std::isfinite(blow.reedTurbulence) || blow.reedTurbulence < 0.0 ||
-      blow.reedTurbulence > 1.0 || !std::isfinite(blow.spectrumBreakHz) ||
-      blow.spectrumBreakHz < 0.0)
+      blow.reedTurbulence > 1.0 || !std::isfinite(blow.brassiness) ||
+      blow.brassiness < 0.0 || blow.brassiness > 1.0 ||
+      !std::isfinite(blow.spectrumBreakHz) || blow.spectrumBreakHz < 0.0)
     return false;
   return true;
 }
@@ -454,9 +469,15 @@ class BoreValveVoice final : public IVoice {
     if (out == nullptr) return R::failure(QuantityError::InvalidArgument);
     const double dt = 1.0 / rate_.value();
     for (std::uint64_t i = 0; i < count; ++i) {
-      const double arriving = readBore();
+      // Wall loss is on the trip. The reflection cutoff shapes only the
+      // wave that returns: an open end radiates what it does not reflect,
+      // the same split ConeValveVoice uses. Filtering the incident wave
+      // before the bell deletes the harmonics the reed or the jet just
+      // put on the bore.
+      const double incident = readBore();
+      const double reflected = cutoff_.step(incident);
       const double incoming =
-          radiating_ ? openEnd_.step(arriving) : reflection_ * arriving;
+          radiating_ ? openEnd_.step(reflected) : reflection_ * reflected;
       if (!std::isfinite(incoming)) return R::failure(QuantityError::RangeError);
       double outgoing = 0.0;
       if (law_ == ValveLaw::Jet) {
@@ -472,9 +493,19 @@ class BoreValveVoice final : public IVoice {
       if (!std::isfinite(outgoing)) return R::failure(QuantityError::RangeError);
       line_[pos_] = outgoing;
       pos_ = (pos_ + 1) % line_.size();
-      const double bellFlow = (arriving - incoming) / impedance_;
-      out[i] = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
-                                        radiationState_, radiationCorner_, dt);
+      const double bellFlow = (incident - incoming) / impedance_;
+      double radiated = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
+                                                 radiationState_, radiationCorner_, dt);
+      // After the loop, so the limit cycle is unchanged, and after the
+      // radiator, so the smoother does not turn the disturbance back
+      // into a line spectrum. See ValveBlow::reedTurbulence.
+      const bool open = frame_ < blowFrames_;
+      const bool tongued = tongueFrames_ > 0 && frame_ < tongueFrames_;
+      const double mouth = mouthNow();
+      if (reedTurbulence_ > 0.0 && law_ != ValveLaw::OutwardLip && open && mouth > 0.0 &&
+          !(law_ == ValveLaw::InwardReed && tongued))
+        radiated += reedTurbulence_ * radiated * valve_detail::unitNoise(noise_);
+      out[i] = radiated;
       if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);
       ++frame_;
     }
@@ -732,6 +763,7 @@ class BoreValveVoice final : public IVoice {
     voice.speed_ = speed;
     voice.endCorrection_ = radiating ? 0.0 : blow.endCorrectionMeters;
     voice.jetNoise_ = blow.jetNoiseMeters;
+    voice.reedTurbulence_ = blow.reedTurbulence;
     voice.radiationCorner_ = speed / radius;
     // The caller's corner is the bell/embouchure radiation cutoff. It
     // replaces c/a of the bore when the bore is not the radiating mouth.
@@ -790,7 +822,9 @@ class BoreValveVoice final : public IVoice {
       boreY_ = y;
       x = y;
     }
-    return cutoff_.step(wall_.step(x));
+    // The reflection cutoff is applied to the returning wave in
+    // renderBlock, not to this incident read.
+    return wall_.step(x);
   }
 
   [[nodiscard]] double mouthNow() const {
@@ -995,6 +1029,7 @@ class BoreValveVoice final : public IVoice {
   std::uint64_t tongueFrames_ = 0;
   double jetAim_ = 0.0;
   double jetNoise_ = 0.0;
+  double reedTurbulence_ = 0.0;
   valve_detail::TripLoss wall_{};
   valve_detail::TripLoss cutoff_{};
   std::uint32_t noise_ = 1u;

@@ -4,8 +4,8 @@
 // These renders use published shapes and example arguments:
 //   clarinet — quarter-wave cylinder, Dalmont slit, bore near 15 mm
 //     (Benade, Fundamentals of Musical Acoustics). The reflection corner
-//     is 600 Hz, under Benade's open-hole cutoff near 1.5 kHz, so the
-//     odd partials roll off and the evens are not absent;
+//     is 1500 Hz, Benade's open-hole cutoff near 1.5 kHz. Odds dominate
+//     and several of them carry real energy; the evens are not absent;
 //   saxophone — truncated cone, tan(kL) = -k x0, small x0/L so the
 //     series is near n c/(2L) (Dalmont; saxophone.h). The reflection
 //     corner is 1500 Hz, the high end of the alto tone-hole cutoffs in
@@ -18,11 +18,18 @@
 //   flute — open pipe, embouchure release, Levine–Schwinger end
 //     correction 0.61 a, and a jet delay W/(σ U) with σ = 0.45, inside
 //     Coltman's 0.4–0.5 convection range. The jet is tanh with an aim
-//     offset. A 400 Hz reflection corner and an aim of 0.4 jet
-//     thicknesses keep the fundamental strongest without the overshoot
-//     a centered jet leaves in the attack;
+//     offset of 0.4 thicknesses. The reflection corner is 1800 Hz, an
+//     argument: 400 Hz left the third harmonic under −40 dB. Fletcher
+//     (JASA 57, 233–244, 1975) measured second and third partials
+//     within about 10 dB of the fundamental in the middle octave.
+//     Jet turbulence is the same unsourced fraction 0.12 as the
+//     saxophone, radiated after the loop;
 //   trumpet and trombone — outward-striking lip below the cone's second
 //     root (Fletcher, 1979), near concert Bb3 (233 Hz) and Bb2 (117 Hz).
+//     The outgoing wave takes the cylindrical Burgers advance,
+//     β p L / (ρ c³), β = (γ+1)/2 (Hirschberg, Gilbert, Msallam, and
+//     Wijnands, JASA 99, 1754–1758, 1996). The fraction is 1; a flare
+//     would accumulate less, and that paper prints no waveguide gain.
 //     Lip damping, mouth pressure, and apex distance are arguments.
 //     No stored alto, tenor, or trumpet length.
 // Wall loss, when the corner is positive, is Kirchhoff's wide tube with
@@ -307,6 +314,55 @@ struct Tone {
 // The old dull trumpet, partials falling about 7 dB each from 119 Hz,
 // sits near 2.2–2.5. A flat odd square sits far above that and is
 // rejected separately.
+// Median Hann bin more than 20 Hz from every harmonic, 300 Hz–8 kHz,
+// relative to the strongest bin in 80 Hz–2 kHz. A deterministic bore
+// sits near −147 dB. Rectangular-window leakage is not this number.
+double offHarmonicFloorDb(const std::vector<double>& x, std::size_t origin, double f0,
+                          double rate) {
+  constexpr int kN = 16384;
+  std::vector<std::complex<double>> buf(static_cast<std::size_t>(kN));
+  for (int i = 0; i < kN; ++i) {
+    const double window =
+        0.5 * (1.0 - std::cos(constants::twoPi * static_cast<double>(i) / static_cast<double>(kN)));
+    buf[static_cast<std::size_t>(i)] = x[origin + static_cast<std::size_t>(i)] * window;
+  }
+  auto spec = fft(std::move(buf));
+  REQUIRE(spec.ok());
+  const auto& bins = spec.value();
+  const double df = rate / static_cast<double>(kN);
+  int kPeak = 1;
+  double best = 0.0;
+  const int kLo = std::max(1, static_cast<int>(80.0 / df));
+  const int kHi = std::min(kN / 2 - 1, static_cast<int>(2000.0 / df));
+  for (int k = kLo; k <= kHi; ++k) {
+    const double power = std::norm(bins[static_cast<std::size_t>(k)]);
+    if (power > best) {
+      best = power;
+      kPeak = k;
+    }
+  }
+  const double peakMag = std::abs(bins[static_cast<std::size_t>(kPeak)]) + 1.0e-30;
+  std::vector<double> floors;
+  const int from = std::max(1, static_cast<int>(300.0 / df));
+  const int to = std::min(kN / 2 - 1, static_cast<int>(8000.0 / df));
+  for (int k = from; k <= to; ++k) {
+    const double hz = static_cast<double>(k) * df;
+    bool near = false;
+    for (int h = 1; h < 48; ++h) {
+      if (std::fabs(hz - static_cast<double>(h) * f0) <= 20.0) {
+        near = true;
+        break;
+      }
+    }
+    if (near) continue;
+    floors.push_back(
+        20.0 * std::log10(std::abs(bins[static_cast<std::size_t>(k)]) / peakMag + 1.0e-30));
+  }
+  REQUIRE(!floors.empty());
+  std::sort(floors.begin(), floors.end());
+  return floors[floors.size() / 2];
+}
+
 void checkSpectrum(const Tone& tone, double f0, double rate) {
   const auto& x = tone.samples;
   const std::size_t a = 70000;
@@ -348,9 +404,29 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     CHECK(db[4] < db[2] - 1.0);
     CHECK(db[6] < db[4] - 1.0);
     CHECK(db[8] < db[6] - 1.0);
+    // Benade's open-hole cutoff near 1.5 kHz. A 600 Hz corner left
+    // the seventh partial near −37 dB.
+    CHECK(db[2] > -12.0);
+    CHECK(db[6] > -25.0);
+    const double clarFloor = offHarmonicFloorDb(x, a, f0, rate);
+    std::cout << tone.name << " interharmonic floor " << clarFloor << " dB\n";
+    CHECK(clarFloor > -72.0);
+    CHECK(clarFloor < -48.0);
   } else if (tone.spectrum == Spectrum::Flute) {
+    // Fletcher, JASA 57, 233–244 (1975): in the middle octave the
+    // second and third partials sit within about 10 dB of the
+    // fundamental. This low-octave note stays fundamental-led. The
+    // 400 Hz corner had put the third under −40 dB.
     for (int h = 1; h < 10; ++h) CHECK(db[h] < -3.0);
-    CHECK(db[1] > -40.0);
+    CHECK(db[1] > -25.0);
+    CHECK(db[2] > -30.0);
+    CHECK(above >= 5);
+    const double floorDb = offHarmonicFloorDb(x, a, f0, rate);
+    std::cout << tone.name << " interharmonic floor " << floorDb << " dB\n";
+    // Same window as the saxophone. Fletcher and Rossing do not print
+    // a jet noise ratio; 0.12 is the argument. Zero sits near −147 dB.
+    CHECK(floorDb > -72.0);
+    CHECK(floorDb < -48.0);
   } else if (tone.spectrum == Spectrum::Saxophone) {
     CHECK(above >= 6);
     CHECK(evens >= 1);
@@ -691,6 +767,77 @@ Period phrasePeriod(const std::vector<double>& x, std::size_t begin, std::size_t
   return Period{rate / refined, best};
 }
 
+// YIN (de Cheveigné and Kawahara, JASA 111, 1917–1930, 2002). The lag
+// search is not centered on the scored pitch. An autocorrelation that
+// only looks near the target period reports the octave below when the
+// tone is the octave above.
+Period yinEstimate(const std::vector<double>& x, std::size_t begin, std::size_t end,
+                   double rate) {
+  if (end <= begin + 512) return {};
+  const int span = static_cast<int>(end - begin);
+  const int W = std::min(2048, span / 3);
+  if (W < 256) return {};
+  const int tauMin = std::max(2, static_cast<int>(rate / 1400.0));
+  const int tauMax = std::min(W, static_cast<int>(rate / 60.0));
+  if (tauMax <= tauMin + 2) return {};
+  const std::size_t origin = end - static_cast<std::size_t>(W + tauMax + 2);
+  if (origin < begin) return {};
+  std::vector<double> diff(static_cast<std::size_t>(tauMax + 1), 0.0);
+  double energy0 = 0.0;
+  for (int i = 0; i < W; ++i) {
+    const double s = x[origin + static_cast<std::size_t>(i)];
+    energy0 += s * s;
+  }
+  for (int tau = 1; tau <= tauMax; ++tau) {
+    double energy1 = 0.0;
+    double cross = 0.0;
+    for (int i = 0; i < W; ++i) {
+      const double u = x[origin + static_cast<std::size_t>(i)];
+      const double v = x[origin + static_cast<std::size_t>(i + tau)];
+      energy1 += v * v;
+      cross += u * v;
+    }
+    diff[static_cast<std::size_t>(tau)] = energy0 + energy1 - 2.0 * cross;
+  }
+  std::vector<double> prime(static_cast<std::size_t>(tauMax + 1), 1.0);
+  double acc = 0.0;
+  for (int tau = 1; tau <= tauMax; ++tau) {
+    acc += diff[static_cast<std::size_t>(tau)];
+    prime[static_cast<std::size_t>(tau)] =
+        acc > 1.0e-18 ? diff[static_cast<std::size_t>(tau)] * static_cast<double>(tau) / acc : 1.0;
+  }
+  constexpr double kThreshold = 0.15;
+  int found = -1;
+  for (int tau = tauMin; tau <= tauMax; ++tau) {
+    if (prime[static_cast<std::size_t>(tau)] < kThreshold) {
+      while (tau + 1 <= tauMax &&
+             prime[static_cast<std::size_t>(tau + 1)] < prime[static_cast<std::size_t>(tau)])
+        ++tau;
+      found = tau;
+      break;
+    }
+  }
+  if (found < 0) {
+    found = tauMin;
+    for (int tau = tauMin + 1; tau <= tauMax; ++tau) {
+      if (prime[static_cast<std::size_t>(tau)] < prime[static_cast<std::size_t>(found)]) found = tau;
+    }
+  }
+  double refined = static_cast<double>(found);
+  if (found > 1 && found < tauMax) {
+    const double y0 = diff[static_cast<std::size_t>(found - 1)];
+    const double y1 = diff[static_cast<std::size_t>(found)];
+    const double y2 = diff[static_cast<std::size_t>(found + 1)];
+    const double denom = y0 - 2.0 * y1 + y2;
+    if (std::fabs(denom) > 1.0e-12) {
+      const double delta = 0.5 * (y0 - y2) / denom;
+      if (std::fabs(delta) < 1.0) refined += delta;
+    }
+  }
+  if (!(refined > 1.0)) return {};
+  return Period{rate / refined, 1.0 - prime[static_cast<std::size_t>(found)]};
+}
+
 struct PhraseNote {
   const char* name;
   double startSec = 0.0;
@@ -874,10 +1021,13 @@ void reportPhrase(const char* instrument, const std::vector<PhraseNote>& notes,
                       static_cast<std::size_t>(windowEnd * kFs) <= samples.size() &&
                       static_cast<std::size_t>(windowBegin * kFs) < samples.size();
     Period period{};
+    Period yin{};
     double rms = 0.0;
     if (fits) {
       period = phrasePeriod(samples, static_cast<std::size_t>(windowBegin * kFs),
                             static_cast<std::size_t>(windowEnd * kFs), note.targetHz, kFs);
+      yin = yinEstimate(samples, static_cast<std::size_t>(windowBegin * kFs),
+                        static_cast<std::size_t>(windowEnd * kFs), kFs);
       rms = rmsOf(samples, static_cast<std::size_t>(windowBegin * kFs),
                   static_cast<std::size_t>(windowEnd * kFs));
     }
@@ -885,6 +1035,8 @@ void reportPhrase(const char* instrument, const std::vector<PhraseNote>& notes,
         fits && period.autocorrelation > 0.85 && rms > note.minRms && period.frequencyHz > 1.0;
     const double cents =
         spoke ? 1200.0 * std::log2(period.frequencyHz / note.targetHz) : 0.0;
+    const double yinCents =
+        yin.frequencyHz > 1.0 ? 1200.0 * std::log2(yin.frequencyHz / note.targetHz) : 0.0;
     const double peakHz =
         fits ? strongestPeakHz(samples, static_cast<std::size_t>(windowBegin * kFs),
                                static_cast<std::size_t>(windowEnd * kFs), kFs)
@@ -892,9 +1044,10 @@ void reportPhrase(const char* instrument, const std::vector<PhraseNote>& notes,
     const double peakCents =
         peakHz > 1.0 ? 1200.0 * std::log2(peakHz / note.targetHz) : 0.0;
     std::cout << "\n  " << note.name << " " << note.dynamic << " " << (endSec - note.startSec)
-              << " s target " << note.targetHz << " played " << period.frequencyHz << " cents "
-              << cents << " peak " << peakHz << " peak-cents " << peakCents << " ac "
-              << period.autocorrelation << " rms " << rms;
+              << " s target " << note.targetHz << " yin " << yin.frequencyHz << " yin-cents "
+              << yinCents << " acf " << period.frequencyHz << " acf-cents " << cents << " peak "
+              << peakHz << " peak-cents " << peakCents << " ac " << period.autocorrelation
+              << " rms " << rms;
     if (!spoke) {
       std::cout << " DID NOT SPEAK";
       ++silent;
@@ -902,6 +1055,10 @@ void reportPhrase(const char* instrument, const std::vector<PhraseNote>& notes,
     if (note.require && fits) {
       CHECK(spoke);
       CHECK(std::fabs(cents) < note.tolCents);
+      // YIN does not search around the target, so an octave lock fails
+      // here even when the narrow autocorrelation does not.
+      CHECK(yin.frequencyHz > 1.0);
+      CHECK(std::fabs(yinCents) < note.tolCents);
     }
     // Autocorrelation at the expected period also matches two periods of
     // the octave above. Graded saxophone notes have to put the strongest
@@ -961,8 +1118,12 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
 
   auto clarinet = workingClarinet(0.45);
   const double clarinetHz = speed / (4.0 * 0.45);
-  auto clarinetVoice = unwrap(
-      BoreValveVoice::fromClarinet(clarinet, sustained(4000.0, 600.0, kClarinetAttack), kRate));
+  ValveBlow clarinetBlow = sustained(4000.0, 1500.0, kClarinetAttack);
+  // Same unsourced fraction as the saxophone. The reed channel is
+  // turbulent (Fletcher and Rossing, chap. 13); that chapter prints
+  // no ratio. Zero leaves a line spectrum.
+  clarinetBlow.reedTurbulence = 0.12;
+  auto clarinetVoice = unwrap(BoreValveVoice::fromClarinet(clarinet, clarinetBlow, kRate));
   auto clarinetSamples = renderOf(clarinetVoice, kFrames);
   checkTone(Tone{"clarinet", clarinetHz, Spectrum::Clarinet, clarinetSamples}, kFs);
   CHECK(clarinetHz > 140.0);
@@ -971,15 +1132,18 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
       writeListening(clarinetSamples, "mmath-clarinet.wav", kFs);
 
   auto quiet = unwrap(
-      BoreValveVoice::fromClarinet(clarinet, sustained(250.0, 600.0, kClarinetAttack), kRate));
+      BoreValveVoice::fromClarinet(clarinet, sustained(250.0, 1500.0, kClarinetAttack), kRate));
   auto quietSamples = renderOf(quiet, kFrames);
+  // 250 Pa against 4000 Pa. At 1500 Hz the soft tone radiates partials
+  // a 600 Hz reflection had removed, so its RMS is about 7% of the
+  // loud note rather than under 5%.
   CHECK(rmsOf(quietSamples, 72000, 96000) <
-        0.05 * rmsOf(clarinetSamples, 72000, 96000));
+        0.10 * rmsOf(clarinetSamples, 72000, 96000));
 
   auto longer = workingClarinet(0.60);
   const double longerHz = speed / (4.0 * 0.60);
   auto longerVoice =
-      unwrap(BoreValveVoice::fromClarinet(longer, sustained(4000.0, 600.0, kClarinetAttack), kRate));
+      unwrap(BoreValveVoice::fromClarinet(longer, sustained(4000.0, 1500.0, kClarinetAttack), kRate));
   auto longerSamples = renderOf(longerVoice, kFrames);
   const Period low = periodNear(clarinetSamples, 70000, clarinetHz, kFs);
   const Period high = periodNear(longerSamples, 70000, longerHz, kFs);
@@ -987,12 +1151,12 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
 
   const SampleRateHz other{44100.0};
   auto otherVoice =
-      unwrap(BoreValveVoice::fromClarinet(clarinet, sustained(4000.0, 600.0, kClarinetAttack), other));
+      unwrap(BoreValveVoice::fromClarinet(clarinet, sustained(4000.0, 1500.0, kClarinetAttack), other));
   auto otherSamples = renderOf(otherVoice, 88200);
   const Period at44 = periodNear(otherSamples, 60000, clarinetHz, 44100.0);
   CHECK(std::fabs(at44.frequencyHz - low.frequencyHz) < 3.0);
 
-  ValveBlow released = sustained(4000.0, 600.0, kClarinetAttack);
+  ValveBlow released = sustained(4000.0, 1500.0, kClarinetAttack);
   released.frames = 70000;
   released.releaseFrames = 2400;
   auto releaseVoice =
@@ -1047,14 +1211,17 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   const double convection = unwrap(fluteConvectionTime(flute, overpressure));
   CHECK(std::fabs(convection - 0.5 / pipe) / (0.5 / pipe) < 0.02);
   const double fluteRadius = std::sqrt(flute.crossSectionM2 / constants::pi);
-  // Aim 0.4 thicknesses and a 400 Hz corner keep the fundamental
-  // strongest. A centered, brighter jet overshoots and the last decibel
-  // of that ring takes a few hundred milliseconds.
-  ValveBlow jet = sustained(overpressure, 400.0, kFluteAttack);
+  // Aim 0.4 thicknesses. The corner is 1800 Hz, an argument: 400 Hz
+  // left the third harmonic under −40 dB. Fletcher, JASA 57, 233–244
+  // (1975), measured the second and third within about 10 dB of the
+  // fundamental in the middle octave. reedTurbulence 0.12 is the same
+  // unsourced fraction as the saxophone, on the radiated pressure.
+  ValveBlow jet = sustained(overpressure, 1800.0, kFluteAttack);
   jet.reflectionMagnitude = 0.985;
   jet.initialDisplacementMeters = 0.50 * thickness;
   jet.jetAimMeters = 0.40 * thickness;
   jet.jetNoiseMeters = 0.035 * thickness;
+  jet.reedTurbulence = 0.12;
   // Levine and Schwinger, unflanged open end, about 0.61 radii.
   jet.endCorrectionMeters = 0.61 * fluteRadius;
   auto jetVoice = unwrap(BoreValveVoice::fromFlute(flute, jet, kRate));
@@ -1087,6 +1254,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   lip.reflectionMagnitude = 0.999;
   lip.initialDisplacementMeters = 0.0;
   lip.tongueReleaseFrames = kTrumpetTongue;
+  lip.brassiness = 1.0;
   auto lipVoice =
       unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
   CHECK(lipVoice.fundamentalHz() > 80.0);
@@ -1132,6 +1300,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   bone.reflectionMagnitude = 0.999;
   bone.initialDisplacementMeters = 0.0;
   bone.tongueReleaseFrames = kTromboneTongue;
+  bone.brassiness = 1.0;
   auto boneVoice =
       unwrap(ConeValveVoice::fromTrombone(trombone, 0.60, bone, kRate));
   CHECK(boneVoice.fundamentalHz() > 40.0);
@@ -1178,8 +1347,13 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // closing after the pressure has arrived. Radiated turbulence keeps a
   // 10 ms window from sitting inside that 1 dB until about 0.96 s.
   CHECK(saxMs < 1100.0);
+  // The 20 ms pressure ramp is unchanged. A 400 Hz reflection is
+  // inside this 1 dB band by about 50 ms and leaves the third partial
+  // under −30 dB. The 1800 Hz corner reaches a limit cycle about 21 dB
+  // louder; the last decibel of that growth lands near 300 ms.
+  // Terrien's 10–30 ms is the significant rise, not this hold.
   CHECK(fluteMs > 20.0);
-  CHECK(fluteMs < 80.0);
+  CHECK(fluteMs < 420.0);
   CHECK(trumpetMs > 30.0);
   CHECK(trumpetMs < 90.0);
   CHECK(tromboneMs > 70.0);
@@ -1202,8 +1376,8 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
 // not a valve chart, and not a sampled waveform. The melodies are in
 // wind_excerpts.h.
 //
-// Clarinet — air-column length. The 2 s demo keeps its 600 Hz corner.
-// The excerpt uses 1500 Hz. This reed plays about 8 cents sharp of
+// Clarinet — air-column length. The 2 s demo and this excerpt both use
+// 1500 Hz, Benade's open-hole cutoff. This reed plays about 8 cents sharp of
 // c/(4L) at that corner, so the length is the geometric one times
 // 2^(8/1200). That offset is this voice, not a published correction.
 //
@@ -1215,8 +1389,8 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
 // Vibrato is a length modulation, arguments 5.5 Hz and 12 cents.
 //
 // Flute — bore length, jet delay, and blowing pressure together. The
-// 2 s corner is 400 Hz, and this excerpt stays in that corner: it does
-// not reach the C7 that needed the 1200 Hz argument.
+// corner is 1800 Hz, the same argument as the two-second note. 400 Hz
+// left the third harmonic under −40 dB.
 //
 // Trumpet and trombone — sounding length plus lip resonance. Brass
 // length jumps at the note. A tongued note takes the new length and lip
@@ -1263,6 +1437,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
     ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack);
     blow.frames = frames;
+    blow.reedTurbulence = 0.12;
     auto voice = unwrap(BoreValveVoice::fromClarinet(clarinet, blow, kRate));
     std::vector<PhraseNote> notes;
     double start = 0.0;
@@ -1340,7 +1515,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     const double total = excerpts::excerptSeconds(excerpts::kFlute);
     std::cout << "flute excerpt: Debussy, Prélude à l'après-midi d'un faune, "
                  "opening, bars 1–2, quarter = 44. Mechanism: bore length, "
-                 "jet delay, and pressure. Corner 400 Hz, the 2 s demo.\n";
+                 "jet delay, and pressure. Corner 1800 Hz, the 2 s demo.\n";
     double longest = 0.0;
     double lowest = 1.0e9;
     for (const auto& src : excerpts::kFlute) {
@@ -1358,12 +1533,13 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     // is sized from the construction pressure, so that pressure is half
     // the lowest note's, which is a longer delay than the dip.
     const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
-    ValveBlow jet = sustained(pressureFor(lowest) * 0.50, 400.0, kFluteAttack);
+    ValveBlow jet = sustained(pressureFor(lowest) * 0.50, 1800.0, kFluteAttack);
     jet.frames = frames;
     jet.reflectionMagnitude = 0.985;
     jet.initialDisplacementMeters = 0.50 * thickness;
     jet.jetAimMeters = 0.40 * thickness;
     jet.jetNoiseMeters = 0.035 * thickness;
+    jet.reedTurbulence = 0.12;
     jet.endCorrectionMeters = end;
     auto voice = unwrap(BoreValveVoice::fromFlute(flute, jet, kRate));
     std::vector<PhraseNote> notes;
@@ -1426,6 +1602,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     lip.reflectionMagnitude = 0.999;
     lip.initialDisplacementMeters = 0.0;
     lip.tongueReleaseFrames = kTrumpetTongue;
+    lip.brassiness = 1.0;
     auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
     std::vector<PhraseNote> notes;
     double start = 0.0;
@@ -1474,6 +1651,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     bone.reflectionMagnitude = 0.999;
     bone.initialDisplacementMeters = 0.0;
     bone.tongueReleaseFrames = kTromboneTongue;
+    bone.brassiness = 1.0;
     auto voice = unwrap(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate));
     std::vector<PhraseNote> notes;
     double start = 0.0;
