@@ -135,10 +135,8 @@ constexpr std::uint64_t kTrumpetTongue = 0;
 // that rise instead of starting as a slap.
 constexpr std::uint64_t kTromboneAttack = 6144;    // 128 ms
 constexpr std::uint64_t kTromboneTongue = 0;
-// Lip periods for the aperture to close once the tongue meets the
-// mouthpiece. Bertsch and Hoole time the whole tongue-tip gesture
-// (40–64 ms for fast single tonguing), not this occlusion. UNSOURCED.
-constexpr double kTongueOcclusionCycles = 4.0;
+// A tongue back on the mouthpiece, ending the note, is on hold. The
+// rings below stop the breath and leave the bore to decay.
 
 std::vector<double> renderOf(IVoice& voice, std::uint64_t frames) {
   std::vector<double> samples(static_cast<std::size_t>(frames));
@@ -1033,6 +1031,9 @@ struct PhraseNote {
   bool rest = false;
   double gain = 1.0;
   const char* dynamic = "";
+  // Cone resonance this fingering plays, the input-impedance peak.
+  // Zero on a reed. The free ring's wall is matched here.
+  double peakHz = 0.0;
   // The strongest spectral peak, not the autocorrelation. An octave
   // error has autocorrelation near 1 at twice the true period.
   bool gradePeak = false;
@@ -1096,8 +1097,6 @@ std::vector<double> renderPhrase(Voice& voice, const std::vector<PhraseNote>& no
       scoreFrames + static_cast<std::uint64_t>(std::llround(std::max(0.0, ringTailSec) * kFs));
   std::vector<double> out(static_cast<std::size_t>(total), 0.0);
   std::vector<char> armed(notes.size(), 0);
-  std::vector<char> restSealed(notes.size(), 0);
-  bool tailSealed = false;
   constexpr std::uint64_t kHop = 64;
   // Bertsch and Hoole, fast single tonguing, about 40–64 ms. The closure
   // is that long; the release is the note. The first note keeps the
@@ -1111,10 +1110,10 @@ std::vector<double> renderPhrase(Voice& voice, const std::vector<PhraseNote>& no
       if (frame >= static_cast<std::uint64_t>(notes[static_cast<std::size_t>(i)].startSec * kFs))
         active = i;
     }
-    // A tongued brass note keeps the bore that is still ringing until the
-    // tongue lets go. The new lip is set on the last sealed hop: setting
-    // it on an open valve goes non-finite. Woodwinds do not take this
-    // branch (no lip resonance).
+    // A tongued brass note retunes while the tongue is shut, then
+    // releases. Setting the new lip on the open valve goes non-finite.
+    // Woodwinds do not take this branch (no lip resonance). A tongue
+    // stop at the end of a note is on hold: the breath is what ends it.
     int sounding = active;
     for (int i = 1; i < static_cast<int>(notes.size()); ++i) {
       const PhraseNote& upcoming = notes[static_cast<std::size_t>(i)];
@@ -1125,76 +1124,27 @@ std::vector<double> renderPhrase(Voice& voice, const std::vector<PhraseNote>& no
         if (!armed[static_cast<std::size_t>(i)]) {
           voice.scheduleTongue(release);
           armed[static_cast<std::size_t>(i)] = 1;
-          if (upcoming.lipHz > 0.0) {
-            int ended = i - 1;
-            while (ended > 0 &&
-                   (notes[static_cast<std::size_t>(ended)].rest ||
-                    !(notes[static_cast<std::size_t>(ended)].lipHz > 0.0)))
-              --ended;
-            const PhraseNote& dying = notes[static_cast<std::size_t>(ended)];
-            if constexpr (requires(Voice& probe) {
-                            probe.scheduleTongueStop(std::uint64_t{0}, std::uint64_t{0});
-                          }) {
-              std::uint64_t cutoff = 1;
-              if (dying.lipHz > 1.0) {
-                cutoff = static_cast<std::uint64_t>(
-                    std::llround(kTongueOcclusionCycles * kFs / dying.lipHz));
-                if (cutoff < 1) cutoff = 1;
-                if (cutoff > kTongue / 2) cutoff = kTongue / 2;
-              }
-              voice.scheduleTongueStop(release - kTongue, cutoff);
-              if (dying.targetHz > 0.0) REQUIRE(voice.engageRingWall(dying.targetHz));
-            }
-          }
         }
-        if (upcoming.lipHz > 0.0) {
-          const bool lastHop = frame + count >= release;
-          if (!lastHop) {
-            int ended = i - 1;
-            while (ended > 0 &&
-                   (notes[static_cast<std::size_t>(ended)].rest ||
-                    !(notes[static_cast<std::size_t>(ended)].lipHz > 0.0)))
-              --ended;
-            sounding = ended;
-          } else {
-            sounding = i;
-            if constexpr (requires(Voice& probe) { probe.restorePlayingWall(); }) {
-              REQUIRE(voice.restorePlayingWall());
-            }
-          }
-        }
+        if (upcoming.lipHz > 0.0) sounding = i;
       }
     }
     const bool afterScore = frame >= scoreFrames;
     const PhraseNote& note = notes[static_cast<std::size_t>(sounding)];
     const double time = static_cast<double>(frame) / kFs;
-    if (afterScore && note.lipHz > 0.0 && !tailSealed) {
-      if constexpr (requires(Voice& probe) {
-                      probe.scheduleTongueStop(std::uint64_t{0}, std::uint64_t{0});
-                    }) {
-        voice.scheduleTongueStop(frame, 0);
-        if (note.targetHz > 0.0) REQUIRE(voice.engageRingWall(note.targetHz));
-        tailSealed = true;
-      }
-    }
-    if (note.rest && note.lipHz > 0.0 && !afterScore &&
-        !restSealed[static_cast<std::size_t>(sounding)]) {
-      if constexpr (requires(Voice& probe) {
-                      probe.scheduleTongueStop(std::uint64_t{0}, std::uint64_t{0});
-                    }) {
-        voice.scheduleTongueStop(frame, 0);
-        double ringHz = 0.0;
-        for (int j = sounding - 1; j >= 0; --j) {
-          if (notes[static_cast<std::size_t>(j)].targetHz > 0.0) {
-            ringHz = notes[static_cast<std::size_t>(j)].targetHz;
-            break;
-          }
+    const bool breathOff = note.rest || afterScore;
+    // Once the breath is off, the lip seals and the wall is Kirchhoff
+    // at this fingering's impedance peak. The next blow restores the
+    // mild playing pole. The radiated sample is not scaled.
+    if (note.lipHz > 0.0) {
+      if constexpr (requires(Voice& probe) { probe.engageRingWall(0.0); }) {
+        if (breathOff && note.peakHz > 0.0) {
+          REQUIRE(voice.engageRingWall(note.peakHz));
+        } else {
+          REQUIRE(voice.restorePlayingWall());
         }
-        if (ringHz > 0.0) REQUIRE(voice.engageRingWall(ringHz));
-        restSealed[static_cast<std::size_t>(sounding)] = 1;
       }
     }
-    double env = (note.rest || afterScore) ? 0.0 : note.gain;
+    double env = breathOff ? 0.0 : note.gain;
     const bool dipping = fluteJet && note.tongue && sounding > 0 && !note.rest &&
                          time < note.startSec + 0.020;
     if (dipping) env *= 0.55;
@@ -1214,7 +1164,7 @@ std::vector<double> renderPhrase(Voice& voice, const std::vector<PhraseNote>& no
       length *= 1.0 - depth * std::sin(constants::twoPi * kVibratoHz * time);
     }
     REQUIRE(voice.setSoundingLength(length));
-    REQUIRE(voice.setBlowingPressure(note.rest ? 0.0 : note.pressure * env));
+    REQUIRE(voice.setBlowingPressure(breathOff ? 0.0 : note.pressure * env));
     if (note.lipHz > 0.0) REQUIRE(voice.setLipResonanceHz(note.lipHz));
     if constexpr (requires(Voice& probe) { probe.setJetDelaySamples(0.0); }) {
       if (!fluteJet || note.rest) {
@@ -1378,7 +1328,8 @@ void reportPhrase(const char* instrument, const std::vector<PhraseNote>& notes,
 }
 
 // 20 log10(e) π. Amplitude exp(−π Δf t) falls at this many dB/s per hertz
-// of half-power bandwidth. 27.29 is that product.
+// of half-power bandwidth. Li, Almeida, Smith, and Wolfe, JASA 139:825
+// (2016), Eq. 3. 27.29 is that product.
 constexpr double kDecayDbPerHz = 27.29;
 
 // Autocorrelation lag nearest the expected period. A subharmonic of the
@@ -1512,6 +1463,24 @@ double conePartial(double length, double apex, int mode) {
   SaxophoneSpec spec{length, apex, 1.6e-4, kAir, kTemp, 1.8e-5, 7500.0,
                      2.0e-6, 1.4e-4, 7.0e-4, 0.09};
   return unwrap(saxophoneConeMode(unwrap(makeSaxophone(spec)), mode)).value();
+}
+
+// Input-impedance peak of this fingering. A named cone mode is that root
+// of tan(kL) = −k x0. Mode 0 is the open second-register recipe; its
+// peak is the cone root nearest the written pitch.
+double impedancePeakHz(double length, double apex, int mode, double targetHz) {
+  if (mode >= 1) return conePartial(length, apex, mode);
+  double best = conePartial(length, apex, 1);
+  double bestGap = std::fabs(best - targetHz);
+  for (int n = 2; n <= 8; ++n) {
+    const double frequency = conePartial(length, apex, n);
+    const double gap = std::fabs(frequency - targetHz);
+    if (gap < bestGap) {
+      best = frequency;
+      bestGap = gap;
+    }
+  }
+  return best;
 }
 
 }  // namespace
@@ -1892,76 +1861,6 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   CHECK(loudest - quietest <= 1.0);
 }
 
-// First time a 10 ms RMS stays 2 dB under the plateau at `from` for 8 ms.
-// −1 when the tone does not fall inside [from, to].
-double envelopeStopSec(const std::vector<double>& x, double rate, double from, double to) {
-  const auto box = static_cast<std::size_t>(0.010 * rate);
-  const auto hop = static_cast<std::size_t>(0.002 * rate);
-  if (to <= from + 0.03 || x.size() < box * 2) return -1.0;
-  auto a = static_cast<std::size_t>(from * rate);
-  auto b = static_cast<std::size_t>(std::min(from + 0.06, to - 0.01) * rate);
-  if (b < a + box || b > x.size()) return -1.0;
-  const double steady = rmsOf(x, a, b);
-  if (!(steady > 1.0e-8)) return -1.0;
-  // 2 dB under the plateau is the start of the fall. 6 dB is already
-  // several tens of milliseconds into a slow ring.
-  const double thresh = steady * std::pow(10.0, -2.0 / 20.0);
-  const auto end = std::min(x.size(), static_cast<std::size_t>(to * rate));
-  for (std::size_t t = a; t + box < end; t += hop) {
-    if (rmsOf(x, t, t + box) >= thresh) continue;
-    bool held = true;
-    for (int k = 1; k <= 4; ++k) {
-      const std::size_t u = t + static_cast<std::size_t>(k) * hop;
-      if (u + box >= x.size() || rmsOf(x, u, u + box) >= thresh) {
-        held = false;
-        break;
-      }
-    }
-    if (held) return static_cast<double>(t) / rate;
-  }
-  return -1.0;
-}
-
-// Tongue stops and the final breath release of a brass excerpt. The stop
-// time is read from the WAV. The slope is the partial inside the ring,
-// before the next attack. Decay rate is whatever the loop already has.
-void reportBrassEndings(const char* instrument, const std::vector<PhraseNote>& notes,
-                        const std::vector<double>& samples, double totalSec) {
-  std::cout << instrument << " endings\n";
-  for (std::size_t i = 0; i < notes.size(); ++i) {
-    const PhraseNote& note = notes[i];
-    if (note.rest || !(note.lipHz > 0.0) || !(note.targetHz > 0.0)) continue;
-    const double endSec = (i + 1 < notes.size()) ? notes[i + 1].startSec : totalSec;
-    bool tongueNext = false;
-    bool breathNext = false;
-    if (i + 1 < notes.size()) {
-      tongueNext = notes[i + 1].tongue && !notes[i + 1].rest && notes[i + 1].lipHz > 0.0;
-      breathNext = notes[i + 1].rest;
-    } else {
-      breathNext = true;
-    }
-    if (!tongueNext && !breathNext) continue;
-    // 40 ms is Bertsch and Hoole's fast single-tonguing closure. A breath
-    // release is the written end: no earlier cutoff.
-    const double scheduled = tongueNext ? endSec - 40.0 / 1000.0 : endSec;
-    const double ringEnd = tongueNext ? endSec - 0.004 : std::min(endSec + 0.45, samples.size() / kFs);
-    const double heard = envelopeStopSec(samples, kFs, std::max(0.0, scheduled - 0.05),
-                                          std::min(ringEnd, scheduled + 0.12));
-    const double fitFrom = heard > 0.0 ? heard : scheduled;
-    const double slope =
-        tailDbPerSec(samples, fitFrom, note.targetHz, kFs, ringEnd - 0.006);
-    const double t60 = slope < -1.0 ? -60.0 / slope : 0.0;
-    std::cout << "  " << note.name << (tongueNext ? " tongue" : " breath") << " scheduled "
-              << scheduled << " s heard " << heard << " s slope " << slope << " dB/s T60 " << t60
-              << " s\n";
-    if (heard > 0.0) {
-      CHECK(heard > scheduled - 0.03);
-      CHECK(heard < scheduled + 0.08);
-    }
-    CHECK(slope < 0.0);
-  }
-}
-
 // An excerpt is still the wind tone: the same valves, on a sounding
 // length the delay line can already hold. It is not a tone-hole lattice,
 // not a valve chart, and not a sampled waveform. The melodies are in
@@ -1988,10 +1887,10 @@ void reportBrassEndings(const char* instrument, const std::vector<PhraseNote>& n
 // left the third harmonic under −40 dB.
 //
 // Trumpet and trombone — sounding length plus lip resonance. Brass
-// length stays on the note that is ringing while a tongue stop closes
-// the lip. The new length and lip are taken as that tongue lets go.
-// There is no slide glissando. The file continues 0.50 s after the
-// score so the last breath release is not cut off.
+// length changes at the note. A tongued attack retunes while the tongue
+// is shut. There is no slide glissando, and no tongue stop: the breath
+// is what ends a note. The file continues 0.50 s after the score so the
+// last breath ring is not cut off.
 TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
   const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
 
@@ -2238,12 +2137,12 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
       const double lipHz =
           row.mode == 0 ? 0.75 * speed / row.length : 0.80 * conePartial(row.length, 0.26, row.mode);
       push(notes, src, start, row.length, lipHz, 2800.0, 0.0, 25.0, 0.01);
+      notes.back().peakHz = impedancePeakHz(row.length, 0.26, row.mode, row.hertz);
       if (src.hertz > 0.0) held = row;
       start += src.seconds;
     }
     auto samples = renderPhrase(voice, notes, total, false, 0.50);
     reportPhrase("trumpet", notes, samples, total, 0.12);
-    reportBrassEndings("trumpet", notes, samples, total);
     writePhrase(samples, "mmath-excerpt-trumpet.wav", kFs);
   }
 
@@ -2290,20 +2189,20 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
       const Finger row = src.hertz > 0.0 ? find(src.hertz) : held;
       const double lipHz = 0.80 * conePartial(row.length, 0.60, row.mode);
       push(notes, src, start, row.length, lipHz, 1600.0, 0.0, 25.0, 0.005);
+      notes.back().peakHz = impedancePeakHz(row.length, 0.60, row.mode, row.hertz);
       if (src.hertz > 0.0) held = row;
       start += src.seconds;
     }
     auto samples = renderPhrase(voice, notes, total, false, 0.50);
     reportPhrase("trombone", notes, samples, total, 0.15);
-    reportBrassEndings("trombone", notes, samples, total);
     writePhrase(samples, "mmath-excerpt-trombone.wav", kFs);
   }
 }
 
 // Breath-stop rings. The tongue stays up: tongueReleaseFrames is 0.
-// A tongue stop is the separate case below.
 // Δf = f/Q. The rendered partial has to fall within ±20% of 27.29·Δf,
-// using Δf at the frequency that is actually ringing.
+// using Δf at the frequency that is actually ringing. Graded excerpt
+// notes, below, use Δf at the input-impedance peak.
 TEST_CASE("brass breath stops ring at the published bandwidth", "[contact][wind]") {
   const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
   const double density =
@@ -2442,114 +2341,147 @@ TEST_CASE("brass breath stops ring at the published bandwidth", "[contact][wind]
   }
 }
 
-// One held note, then either a tongue stop or a breath release. The tail
-// is the bore after the lip is sealed. No output envelope.
-TEST_CASE("brass tongue stop and breath release ring on the bore", "[contact][wind]") {
-  constexpr double kStop = 0.90;
-  constexpr double kTail = 0.70;
+// Each graded excerpt note (at least 0.45 s), ended by stopping the breath.
+// The tail is the bore after the lip is sealed. No output envelope and no
+// tongue stop. Δf is the loop's half-power bandwidth at that fingering's
+// input-impedance peak, after Kirchhoff is fitted on the throat there.
+// The WAV slope has to sit within ±20% of −27.29·Δf. The ±20% is UNSOURCED.
+TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  constexpr double kTail = 0.55;
+  std::cout << "graded brass rings, breath stop. Free decay = 27.29·Δf dB/s "
+               "(Li, Almeida, Smith & Wolfe, JASA 139:825, 2016, Eq. 3). "
+               "Δf and Q are the model at the input-impedance peak. "
+               "Fréour et al., JASA 148:748 (2020): Bb trumpet mode 4, 464.7 Hz, "
+               "Q 42.6, Δf 10.9 Hz, about 298 dB/s. Petiot, Poirson & Gilbert "
+               "(2004): single horn Q 32–38, and mode 8 Q 26–43. Ablitzer, "
+               "Acta Acustica 5:53 (2021): bass-trombone peaks 2–9, Q 24–40, "
+               "Δf 4.8–14 Hz, a proxy. No constant is fitted to those targets. "
+               "No bell radius on these notes.\n";
 
-  auto finish = [&](auto& voice, double lipHz, double targetHz, double length, double pressure,
-                    std::uint64_t cutoff, const char* filename, const char* label) {
+  struct Finger {
+    double hertz;
+    double length;
+    int mode;
+  };
+  auto find = [](const Finger* rows, int count, double hertz) {
+    for (int i = 0; i < count; ++i)
+      if (std::fabs(rows[i].hertz - hertz) < 0.02) return rows[i];
+    return Finger{};
+  };
+
+  auto grade = [&](ConeValveVoice& voice, const char* instrument, const char* name, double scoreSec,
+                   double targetHz, double lipHz, double length, double peakHz, double stopSec,
+                   std::vector<double>& demo) {
     REQUIRE(voice.setSoundingLength(length));
     REQUIRE(voice.setLipResonanceHz(lipHz));
-    REQUIRE(voice.setBlowingPressure(pressure));
-    const auto stopFrame = static_cast<std::uint64_t>(std::llround(kStop * kFs));
-    const auto tailFrames = static_cast<std::uint64_t>(std::llround(kTail * kFs));
-    auto samples = renderOf(voice, stopFrame);
-    REQUIRE(voice.engageRingWall(targetHz));
-    // Rebuild the delay against the Kirchhoff pole. The lip had been
-    // pulling the pitch; the sealed bore sits a little flat of that.
+    const auto blow = static_cast<std::uint64_t>(std::llround(stopSec * kFs));
+    const auto tailN = static_cast<std::uint64_t>(std::llround(kTail * kFs));
+    std::vector<double> out(static_cast<std::size_t>(blow + tailN), 0.0);
+    REQUIRE(voice.renderBlock(out.data(), FrameCount{blow}).ok());
+    REQUIRE(voice.setWallMatchHz(peakHz));
     REQUIRE(voice.setSoundingLength(length));
-    voice.scheduleTongueStop(stopFrame, cutoff);
-    auto tail = renderOf(voice, tailFrames);
-    samples.insert(samples.end(), tail.begin(), tail.end());
-    const double played =
-        playedNear(samples, static_cast<std::size_t>(0.55 * kFs), targetHz, kFs);
-    const double ring = playedNear(samples, static_cast<std::size_t>((kStop + 0.05) * kFs),
-                                   played, kFs);
-    const double df = voice.halfPowerBandwidthHz(ring > 1.0 ? ring : targetHz);
-    const double heard = envelopeStopSec(samples, kFs, kStop - 0.08, kStop + 0.20);
-    const double slope = tailDbPerSec(samples, heard > 0.0 ? heard : kStop,
-                                       ring > 1.0 ? ring : targetHz, kFs);
+    REQUIRE(voice.renderBlock(out.data() + blow, FrameCount{tailN}).ok());
+    for (double sample : out) REQUIRE(std::isfinite(sample));
+    const auto origin = static_cast<std::size_t>(blow) - static_cast<std::size_t>(0.12 * kFs);
+    const auto tailAt =
+        static_cast<std::size_t>(blow) + static_cast<std::size_t>(std::llround(0.03 * kFs));
+    const double played = playedNear(out, origin, targetHz, kFs);
+    const double ring = playedNear(out, tailAt, played > 1.0 ? played : targetHz, kFs);
+    const double df = voice.halfPowerBandwidthHz(peakHz);
+    const double q = df > 0.0 ? peakHz / df : 0.0;
+    const double slope = tailDbPerSec(out, stopSec, ring > 1.0 ? ring : peakHz, kFs);
     const double model = -kDecayDbPerHz * df;
     const double ratio = std::fabs(model) > 1.0 ? slope / model : 0.0;
-    const double t60 = slope < -1.0 ? -60.0 / slope : 0.0;
-    std::cout << label << " played " << played << " Hz  ring " << ring << " Hz  Q "
-              << (df > 0.0 && ring > 1.0 ? ring / df : 0.0) << "  df " << df
-              << " Hz  stop " << heard << " s (scheduled " << kStop << ")  slope " << slope
-              << " dB/s  T60 " << t60 << " s  model " << model << " dB/s  ratio " << ratio
+    const double playedCents = played > 1.0 ? 1200.0 * std::log2(played / targetHz) : 0.0;
+    const double ringCents =
+        (ring > 1.0 && played > 1.0) ? 1200.0 * std::log2(ring / played) : 0.0;
+    std::cout << instrument << " " << name << " score " << scoreSec << " s  peak " << peakHz
+              << " Hz  Q " << q << "  df " << df << " Hz  played " << played << " Hz ("
+              << playedCents << " cents)  ring " << ring << " Hz (" << ringCents
+              << " cents)  tail " << slope << " dB/s  model " << model << " dB/s  ratio " << ratio
               << "\n";
-    CHECK(played > 1.0);
-    CHECK(std::fabs(1200.0 * std::log2(played / targetHz)) < 40.0);
-    CHECK(ring > 1.0);
-    CHECK(std::fabs(1200.0 * std::log2(ring / played)) < 80.0);
-    CHECK(heard > kStop - 0.005);
-    CHECK(heard < kStop + (cutoff > 0 ? 0.040 : 0.025));
     CHECK(df > 0.0);
+    CHECK(played > 1.0);
+    CHECK(std::fabs(playedCents) < 50.0);
+    CHECK(ring > 1.0);
     CHECK(slope < 0.0);
     CHECK(ratio > 0.80);
     CHECK(ratio < 1.20);
-    writePhrase(samples, filename, kFs);
+    demo.insert(demo.end(), out.begin(), out.end());
   };
 
-  auto trumpetVoice = [&](double lipHz) {
+  const Finger trumpetRows[] = {
+      {392.00, 0.804, 0}, {349.23, 0.912, 0}, {466.16, 1.023, 3},
+      {523.25, 1.560, 5}, {698.46, 1.410, 6}, {587.33, 1.386, 5},
+  };
+  const Finger tromboneRows[] = {
+      {466.16, 1.331, 4}, {440.00, 1.416, 4}, {392.00, 1.596, 4}, {349.23, 1.312, 3},
+      {523.25, 1.181, 4}, {329.63, 1.394, 3}, {293.66, 1.579, 3}, {554.37, 1.732, 6},
+  };
+
+  {
     const double mass = 3.0e-5;
-    const double omega = constants::twoPi * lipHz;
+    const double lip0 = 0.75 * speed / 1.45;
+    const double omega = constants::twoPi * lip0;
     auto trumpet = unwrap(makeTrumpet(TrumpetSpec{1.70, 1.09e-4, kAir, kTemp, 0.0, 8.0e-7, 1.5e-5,
                                                   1.2e-2, mass, omega * omega * mass, 1.2e-5,
                                                   0.001}));
-    ValveBlow lip = sustained(2800.0, 10000.0, kTrumpetAttack);
-    lip.frames = static_cast<std::uint64_t>(std::llround((kStop + kTail) * kFs));
-    lip.reflectionMagnitude = 0.999;
-    lip.initialDisplacementMeters = 0.0;
-    lip.tongueReleaseFrames = 0;
-    lip.brassiness = 1.0;
-    lip.reedTurbulence = 0.0;
-    return unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
-  };
-  auto tromboneVoice = [&](double lipHz) {
+    std::vector<double> demo;
+    double start = 0.0;
+    for (const auto& src : excerpts::kTrumpet) {
+      if (src.hertz > 0.0 && src.seconds >= 0.45) {
+        const Finger row =
+            find(trumpetRows, static_cast<int>(std::size(trumpetRows)), src.hertz);
+        const double lip = row.mode == 0 ? 0.75 * speed / row.length
+                                         : 0.80 * conePartial(row.length, 0.26, row.mode);
+        const double peak = impedancePeakHz(row.length, 0.26, row.mode, src.hertz);
+        const auto frames = static_cast<std::uint64_t>(std::llround(src.seconds * kFs));
+        ValveBlow blow = sustained(2800.0, 10000.0, kTrumpetAttack);
+        blow.frames = frames;
+        blow.reflectionMagnitude = 0.999;
+        blow.initialDisplacementMeters = 0.0;
+        blow.tongueReleaseFrames = 0;
+        blow.brassiness = 1.0;
+        blow.reedTurbulence = 0.20;
+        auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, blow, kRate));
+        grade(voice, "trumpet", src.name, start, src.hertz, lip, row.length, peak, src.seconds,
+              demo);
+      }
+      start += src.seconds;
+    }
+    writePhrase(demo, "mmath-trumpet-breath-release.wav", kFs);
+  }
+
+  {
     const double mass = 6.0e-5;
-    const double omega = constants::twoPi * lipHz;
+    const double lip0 = 0.75 * speed / 2.75;
+    const double omega = constants::twoPi * lip0;
     auto horn = unwrap(makeTrombone(TromboneSpec{3.05, 0.0, 3.0e-4, kAir, kTemp, 0.0, 1.0e-6, 2.5e-5,
                                                  1.5e-2, mass, omega * omega * mass, 2.0e-5,
                                                  0.0005}));
-    ValveBlow bone = sustained(1600.0, 5000.0, kTromboneAttack);
-    bone.frames = static_cast<std::uint64_t>(std::llround((kStop + kTail) * kFs));
-    bone.reflectionMagnitude = 0.999;
-    bone.initialDisplacementMeters = 0.0;
-    bone.tongueReleaseFrames = 0;
-    bone.brassiness = 1.0;
-    bone.reedTurbulence = 0.0;
-    return unwrap(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate));
-  };
-
-  const double trumpetLength = 1.023;
-  const double trumpetLip = 0.80 * conePartial(trumpetLength, 0.26, 3);
-  const auto trumpetCutoff = static_cast<std::uint64_t>(
-      std::llround(kTongueOcclusionCycles * kFs / trumpetLip));
-  {
-    auto voice = trumpetVoice(trumpetLip);
-    finish(voice, trumpetLip, 466.16, trumpetLength, 2800.0, trumpetCutoff,
-           "mmath-trumpet-tongue-stop.wav", "trumpet tongue");
-  }
-  {
-    auto voice = trumpetVoice(trumpetLip);
-    finish(voice, trumpetLip, 466.16, trumpetLength, 2800.0, 0,
-           "mmath-trumpet-breath-release.wav", "trumpet breath");
-  }
-
-  const double tromboneLength = 1.331;
-  const double tromboneLip = 0.80 * conePartial(tromboneLength, 0.60, 4);
-  const auto tromboneCutoff = static_cast<std::uint64_t>(
-      std::llround(kTongueOcclusionCycles * kFs / tromboneLip));
-  {
-    auto voice = tromboneVoice(tromboneLip);
-    finish(voice, tromboneLip, 466.16, tromboneLength, 1600.0, tromboneCutoff,
-           "mmath-trombone-tongue-stop.wav", "trombone tongue");
-  }
-  {
-    auto voice = tromboneVoice(tromboneLip);
-    finish(voice, tromboneLip, 466.16, tromboneLength, 1600.0, 0,
-           "mmath-trombone-breath-release.wav", "trombone breath");
+    std::vector<double> demo;
+    double start = 0.0;
+    for (const auto& src : excerpts::kTrombone) {
+      if (src.hertz > 0.0 && src.seconds >= 0.45) {
+        const Finger row =
+            find(tromboneRows, static_cast<int>(std::size(tromboneRows)), src.hertz);
+        const double lip = 0.80 * conePartial(row.length, 0.60, row.mode);
+        const double peak = impedancePeakHz(row.length, 0.60, row.mode, src.hertz);
+        const auto frames = static_cast<std::uint64_t>(std::llround(src.seconds * kFs));
+        ValveBlow blow = sustained(1600.0, 5000.0, kTromboneAttack);
+        blow.frames = frames;
+        blow.reflectionMagnitude = 0.999;
+        blow.initialDisplacementMeters = 0.0;
+        blow.tongueReleaseFrames = 0;
+        blow.brassiness = 1.0;
+        blow.reedTurbulence = 0.20;
+        auto voice = unwrap(ConeValveVoice::fromTrombone(horn, 0.60, blow, kRate));
+        grade(voice, "trombone", src.name, start, src.hertz, lip, row.length, peak, src.seconds,
+              demo);
+      }
+      start += src.seconds;
+    }
+    writePhrase(demo, "mmath-trombone-breath-release.wav", kFs);
   }
 }

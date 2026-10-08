@@ -126,29 +126,14 @@ class ConeValveVoice final : public IVoice {
       // radiated breath, with the lip period in place of the reed period.
       // A tongue holds the valve shut while mouth pressure rises, then
       // lets go. The release frame is the start of the acoustic attack.
-      // A tongue stop is the tongue coming back onto the mouthpiece: mouth
-      // pressure and the aperture fall together, on the excitation side.
-      // The radiated sample is not scaled. Once the ramp is over, the lip
-      // is on the closed stop and the bore rings at the loop's own loss.
-      // The release of an attack tongue clears that seal so the next note
-      // can start. A zero-length stop is a one-sample seal (breath release).
-      if (tongueFrames_ > 0 && frame_ == tongueFrames_) {
-        tongueStopBegin_ = 0;
-        tongueStopFrames_ = 0;
-      }
-      const bool stopArmed = tongueStopBegin_ > 0 && frame_ >= tongueStopBegin_;
-      const bool stopRamp = stopArmed && tongueStopFrames_ > 0 &&
-                            frame_ < tongueStopBegin_ + tongueStopFrames_;
-      double stopGate = 1.0;
-      if (stopRamp) {
-        stopGate = 1.0 - static_cast<double>(frame_ - tongueStopBegin_) /
-                             static_cast<double>(tongueStopFrames_);
-        mouth *= stopGate;
-      }
-      const bool stopSealed = stopArmed && !stopRamp;
-      const bool tongued =
-          stopSealed || ((tongueFrames_ > 0 && frame_ < tongueFrames_) && !stopRamp);
-      if (!open || tongued) {
+      // Stopping the breath (the stored pressure is zero, or the blow
+      // has ended) parks the lip on the closed stop. The bore and bell
+      // then ring at the loop's own loss. The radiated sample is not
+      // scaled. A tongue back on the mouthpiece is a later step and is
+      // not this seal.
+      const bool breathOff = lip_ && !(pressure_ > 0.0);
+      const bool tongued = tongueFrames_ > 0 && frame_ < tongueFrames_;
+      if (!open || tongued || breathOff) {
         if (lip_) {
           displacement_ = -restOpening_ / slitWidth_;
           velocity_ = 0.0;
@@ -171,14 +156,11 @@ class ConeValveVoice final : public IVoice {
         opening = restOpening_ + slitWidth_ * displacement_;
         if (opening < 0.0) opening = 0.0;
         if (opening > maximumOpening_) opening = maximumOpening_;
-        // During the tongue-stop ramp the aperture closes with the
-        // pressure gate. Flow is the Bernoulli term of that opening, so
-        // the cutoff is at the lip, not a gain on the radiated sample.
-        if (stopRamp) opening *= stopGate;
-        // A tongue holds the lip on the closed stop. The stop arithmetic
-        // can leave a roundoff slit, and the pressure search then fails
-        // against a bore that is already sounding.
-        if (tongued || !open) opening = 0.0;
+        // A tongue, a finished blow, or a breath pressure of zero holds
+        // the lip on the closed stop. The stop arithmetic can leave a
+        // roundoff slit, and the pressure search then fails against a
+        // bore that is already sounding.
+        if (tongued || !open || breathOff) opening = 0.0;
         // The closed stop is −rest/slit. Storing that displacement and
         // multiplying back by the slit leaves a roundoff opening, about
         // 1e−22 m². solvePressure then cannot bracket: the Bernoulli
@@ -313,8 +295,6 @@ class ConeValveVoice final : public IVoice {
     frame_ = 0;
     if (playingWallSaved_) wall_.pole = playingWallPole_;
     playingWallSaved_ = false;
-    tongueStopBegin_ = 0;
-    tongueStopFrames_ = 0;
   }
 
   [[nodiscard]] double fundamentalHz() const noexcept { return fundamentalHz_; }
@@ -378,7 +358,8 @@ class ConeValveVoice final : public IVoice {
   }
 
   // Mouth pressure after the attack. The raised cosine still uses this
-  // value as its full pressure.
+  // value as its full pressure. Zero stops the breath: a lip parks on
+  // the closed stop and the bore rings. The radiated sample is not scaled.
   bool setBlowingPressure(double pressurePa) {
     if (!std::isfinite(pressurePa) || pressurePa < 0.0) return false;
     pressure_ = pressurePa;
@@ -389,19 +370,11 @@ class ConeValveVoice final : public IVoice {
   // frame the reed or the lip stays on its closed stop. Zero clears it.
   void scheduleTongue(std::uint64_t releaseFrame) { tongueFrames_ = releaseFrame; }
 
-  // Tongue back on the mouthpiece, or a breath seal. beginFrame is the
-  // first frame of the cutoff. cutoffFrames is the linear fall of mouth
-  // pressure and aperture; zero seals on that frame. The bore is not
-  // faded. An attack tongue's release frame clears this seal.
-  void scheduleTongueStop(std::uint64_t beginFrame, std::uint64_t cutoffFrames) {
-    tongueStopBegin_ = beginFrame;
-    tongueStopFrames_ = cutoffFrames;
-  }
-
   // Fit Kirchhoff wall loss at frequencyHz for the free ring, keeping
   // the playing pole so restorePlayingWall can put it back. The delay
   // is not retuned here; the caller sets the sounding length again,
-  // which rebuilds the phase at the new pole.
+  // which rebuilds the phase at the new pole. This is the wall the bore
+  // uses once the breath has stopped. It is not a tongue.
   bool engageRingWall(double frequencyHz) {
     if (!playingWallSaved_) {
       playingWallPole_ = wall_.pole;
@@ -833,8 +806,6 @@ class ConeValveVoice final : public IVoice {
   std::uint64_t attackFrames_ = 0;
   std::uint64_t releaseFrames_ = 0;
   std::uint64_t tongueFrames_ = 0;
-  std::uint64_t tongueStopBegin_ = 0;
-  std::uint64_t tongueStopFrames_ = 0;
   double playingWallPole_ = 0.0;
   bool playingWallSaved_ = false;
   double reedTurbulence_ = 0.0;
