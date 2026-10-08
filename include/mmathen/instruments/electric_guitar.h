@@ -18,8 +18,10 @@
 // The pound-force is the defined avoirdupois pound times standard
 // gravity, not D'Addario's rounded "multiply by 4.45". Fender's
 // .009-.042 set is a different gauge and is not these six tensions.
-// No pickup inductance, turns, or magnet strength is printed, and no
-// pickup model is stored.
+// No pickup inductance, turns, or magnet strength is printed, and none
+// is stored here. A pluck of a tuned course is PluckedStringVoice: the
+// listen fraction is the caller's position comb, and CoilVelocity is
+// the string velocity at that node.
 
 #include <array>
 #include <cstddef>

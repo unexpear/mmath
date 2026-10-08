@@ -5,9 +5,12 @@
 // An instrument is done only when the physics that affects its sound
 // is stepped in time and that stepper is what the WAV contains. A
 // single-instant mouth, a modal formula, or an envelope is not enough.
-// rendersAudio is that bar. Piece 1 of the render path (render/voice.h)
-// can pull any IVoice into a WavSink. No instrument is an IVoice yet,
-// so every row below is false.
+// rendersAudio is that bar. render/voice.h pulls any IVoice into a
+// WavSink. PluckedStringVoice steps one plucked course (violin-family
+// pizzicato, harp, harpsichord, both guitars) through a lossy tuned
+// waveguide. That is not the whole instrument: the bow, the
+// soundboard, and bridge feedback are still outside the stepper, so
+// every row below stays false.
 //
 // The strings are the status, not stored physical constants.
 
@@ -30,42 +33,43 @@ struct InstrumentRenderStatus {
 // six drum heads, six cymbals. The piano bank is one instrument
 // because the five strings share one (absent) soundboard.
 inline constexpr InstrumentRenderStatus kInstrumentRenderStatus[] = {
-    {"violin", "Helmholtz and rigid-end stick-slip, not at audio rate",
-     "ideal string, not a stepped lossy waveguide",
+    {"violin", "pizzicato pluck steps; bow is not at audio rate",
+     "lossy tuned waveguide; stiffness is a caller argument",
      "open-loop modal sum, no bridge feedback",
      "compact monopole formula, not driven by the string", false,
-     "No voice. Pluck, bow, body, and radiation are not one stepped sound."},
-    {"viola", "Helmholtz and rigid-end stick-slip, not at audio rate",
-     "ideal string, not a stepped lossy waveguide",
+     "Pizzicato steps. Bow, bridge feedback, and radiation are absent."},
+    {"viola", "pizzicato pluck steps; bow is not at audio rate",
+     "lossy tuned waveguide; stiffness is a caller argument",
      "open-loop modal sum, no bridge feedback",
      "compact monopole formula, not driven by the string", false,
-     "No voice. Pluck, bow, body, and radiation are not one stepped sound."},
-    {"cello", "Helmholtz and rigid-end stick-slip, not at audio rate",
-     "ideal string, not a stepped lossy waveguide",
+     "Pizzicato steps. Bow, bridge feedback, and radiation are absent."},
+    {"cello", "pizzicato pluck steps; bow is not at audio rate",
+     "lossy tuned waveguide; stiffness is a caller argument",
      "open-loop modal sum, no bridge feedback",
      "compact monopole formula, not driven by the string", false,
-     "No voice. Pluck, bow, body, and radiation are not one stepped sound."},
-    {"double bass", "Helmholtz and rigid-end stick-slip, not at audio rate",
-     "ideal string, not a stepped lossy waveguide",
+     "Pizzicato steps. Bow, bridge feedback, and radiation are absent."},
+    {"double bass", "pizzicato pluck steps; bow is not at audio rate",
+     "lossy tuned waveguide; stiffness is a caller argument",
      "open-loop modal sum, no bridge feedback",
      "compact monopole formula, not driven by the string", false,
-     "No voice. Pluck, bow, body, and radiation are not one stepped sound."},
-    {"harp", "no time-stepped pluck",
-     "ideal open strings, not a stepped lossy waveguide",
+     "Pizzicato steps. Bow, bridge feedback, and radiation are absent."},
+    {"harp", "pluck position steps a waveguide",
+     "lossy tuned waveguide; stiffness is a caller argument",
      "no soundboard", "none", false,
-     "No voice. A plucked course does not yet step a waveguide."},
-    {"harpsichord", "no time-stepped pluck",
-     "published speaking lengths, not a stepped waveguide",
+     "The plucked course steps. Soundboard and radiation are absent."},
+    {"harpsichord", "pluck position steps a waveguide",
+     "lossy tuned waveguide; stiffness is a caller argument",
      "no soundboard", "none", false,
-     "No voice. A plucked course does not yet step a waveguide."},
-    {"classical guitar", "ideal-string pluck shape, not stepped",
-     "ideal string on 650 mm, not a lossy waveguide",
+     "The plucked course steps. Soundboard and radiation are absent."},
+    {"classical guitar", "pluck position steps a waveguide",
+     "lossy tuned waveguide on the 650 mm course",
      "no soundboard", "none", false,
-     "No voice. A plucked course does not yet step a waveguide."},
-    {"electric guitar", "ideal-string pluck shape, not stepped",
-     "ideal string on 25.5 in, not a lossy waveguide",
-     "no body filter", "no pickup", false,
-     "No voice. No coil and no position comb on a stepped string."},
+     "The plucked course steps. Soundboard and radiation are absent."},
+    {"electric guitar", "pluck position steps a waveguide",
+     "lossy tuned waveguide on the 25.5 in course",
+     "no body filter",
+     "pickup position comb and coil velocity; no inductance", false,
+     "String and pickup step. The body filter is absent."},
     {"piano", "hard-hammer and felt laws, one instant",
      "five stiff strings, not stepped against the hammer",
      "no soundboard", "none", false,

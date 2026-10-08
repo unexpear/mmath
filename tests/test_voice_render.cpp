@@ -1,8 +1,9 @@
 // Voice render path: a stateful stepper fills blocks, WavSink stores them.
 //
 // The waveguide voice is the stepper already in tuned_waveguide.h. Its
-// decay is the loop's loss filter, not an envelope. No instrument is
-// wired, so the status table is twenty-six rows and none of them render.
+// decay is the loop's loss filter, not an envelope. Plucked courses have
+// their own voice. This file's status check is that none of the
+// twenty-six render audio.
 
 #include <catch2/catch_test_macros.hpp>
 

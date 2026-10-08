@@ -42,22 +42,38 @@ sound. `render/voice.h` pulls blocks from an `IVoice` into any
 `IAudioSink`, including `WavSink`. Block size does not change the
 samples. `WaveguideVoice` is one such voice: a tuned waveguide, read
 at one rail node and then stepped. Its decay is the loop's loss
-filter. It is not an instrument, and it stores no instrument length.
+filter. It stores no instrument length.
 
-No instrument header is an `IVoice`. The table is the bar. `renders
-audio` means the whole instrument, not a formula that could be
-rendered later.
+`PluckedStringVoice` is an `IVoice` built from one course. The pluck
+is the caller's position and height on that course. The resonator is
+`designTunedLoop`: frequency-dependent loss and hinged stiffness are
+arguments, and neither a T60 nor an inharmonicity coefficient is
+stored. The listen fraction is one interior rail node, so a partial
+with a node there drops out of the sample. `CoilVelocity` is the
+transverse velocity at that node, \((u_n-u_{n-1})f_s\), which is the
+open-circuit law of a magnetic pickup (Julius O. Smith, *Physical
+Audio Signal Processing*, CCRMA,
+https://ccrma.stanford.edu/jos/pasp/). Turns, magnet, and inductance
+are not a gain. The same pluck is an `Fdtd1D` field; that grid's time
+step is the CFL step, and the WAV voice is the tuned loop.
+
+The courses that step are violin, viola, cello, and double-bass
+pizzicato, one harp string, one harpsichord speaking length, one
+classical-guitar string, and one electric-guitar string. The table's
+renders-audio column stays no. A soundboard, bridge feedback, and the
+bow are not in the stepper. The electric guitar's body filter is not
+in it either.
 
 | Instrument | Excitation | Resonator | Body | Radiation | Renders audio | Remaining gap |
 |---|---|---|---|---|---|---|
-| Violin | Helmholtz and rigid-end stick-slip, not at audio rate | Ideal string, not a stepped lossy waveguide | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | No voice. Pluck, bow, body, and radiation are not one stepped sound |
-| Viola | Helmholtz and rigid-end stick-slip, not at audio rate | Ideal string, not a stepped lossy waveguide | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | No voice. Pluck, bow, body, and radiation are not one stepped sound |
-| Cello | Helmholtz and rigid-end stick-slip, not at audio rate | Ideal string, not a stepped lossy waveguide | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | No voice. Pluck, bow, body, and radiation are not one stepped sound |
-| Double bass | Helmholtz and rigid-end stick-slip, not at audio rate | Ideal string, not a stepped lossy waveguide | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | No voice. Pluck, bow, body, and radiation are not one stepped sound |
-| Harp | No time-stepped pluck | Ideal open strings, not a stepped lossy waveguide | No soundboard | None | no | No voice. A plucked course does not yet step a waveguide |
-| Harpsichord | No time-stepped pluck | Published speaking lengths, not a stepped waveguide | No soundboard | None | no | No voice. A plucked course does not yet step a waveguide |
-| Classical guitar | Ideal-string pluck shape, not stepped | Ideal string on 650 mm, not a lossy waveguide | No soundboard | None | no | No voice. A plucked course does not yet step a waveguide |
-| Electric guitar | Ideal-string pluck shape, not stepped | Ideal string on 25.5 in, not a lossy waveguide | No body filter | No pickup | no | No voice. No coil and no position comb on a stepped string |
+| Violin | Pizzicato pluck steps; bow is not at audio rate | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Pizzicato steps. Bow, bridge feedback, and radiation are absent |
+| Viola | Pizzicato pluck steps; bow is not at audio rate | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Pizzicato steps. Bow, bridge feedback, and radiation are absent |
+| Cello | Pizzicato pluck steps; bow is not at audio rate | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Pizzicato steps. Bow, bridge feedback, and radiation are absent |
+| Double bass | Pizzicato pluck steps; bow is not at audio rate | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Pizzicato steps. Bow, bridge feedback, and radiation are absent |
+| Harp | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | No soundboard | None | no | The plucked course steps. Soundboard and radiation are absent |
+| Harpsichord | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | No soundboard | None | no | The plucked course steps. Soundboard and radiation are absent |
+| Classical guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 650 mm course | No soundboard | None | no | The plucked course steps. Soundboard and radiation are absent |
+| Electric guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 25.5 in course | No body filter | Pickup position comb and coil velocity; no inductance | no | String and pickup step. The body filter is absent |
 | Piano | Hard-hammer and felt laws, one instant | Five stiff strings, not stepped against the hammer | No soundboard | None | no | No voice. The hammer is not stepping a stiff string |
 | Clarinet | Reed mouth, one pressure sample | Open cylinder, not a delay line | None | No bell radiation | no | No voice. The reed is not stepping a bore |
 | Flute | Jet formulas, one pressure sample | Open-open cylinder, not a delay line | None | No embouchure or end radiation | no | No voice. The jet is not stepping a bore |
@@ -80,6 +96,15 @@ rendered later.
 The example `instrument_voice_demo` writes
 `/tmp/mmath-voice-waveguide.wav` from the waveguide voice. The test
 writes the same path and checks the file is not silent.
+`instrument_pluck_demo` writes one second of each wired course to
+`/tmp/mmath-pluck-violin.wav`, `/tmp/mmath-pluck-viola.wav`,
+`/tmp/mmath-pluck-cello.wav`, `/tmp/mmath-pluck-double-bass.wav`,
+`/tmp/mmath-pluck-harp.wav`, `/tmp/mmath-pluck-harpsichord.wav`,
+`/tmp/mmath-pluck-classical-guitar.wav`, and
+`/tmp/mmath-pluck-electric-guitar.wav`. The electric-guitar file is
+the coil velocity. The test writes the same paths, shorter, and
+checks pitch, decay, finiteness, and a non-silent PCM payload. The
+files are generated artifacts and are not committed.
 
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
@@ -105,7 +130,8 @@ interval.
 | `instruments/flute.h` | Open-open flute and an embouchure jet. Length, bore area, jet area, thickness, flue-to-edge distance, and the convection ratio are arguments |
 | `instruments/trumpet.h` | Lip-driven cylinder and a mouthpiece cup. Length, bore area, cup volume, and the lip parameters are arguments |
 | `instruments/trombone.h` | That lip and cup on a U-slide. Closed length and handslide travel are arguments. The air column is \(L_0+2x\) |
-| `instruments/render_status.h` | Per-instrument audible-physics bar. None render audio yet |
+| `instruments/render_status.h` | Per-instrument audible-physics bar. Plucked courses step; none render audio yet |
+| `instruments/plucked_string.h` | One course as a lossy tuned-waveguide voice, or the same pluck on `Fdtd1D`. Listen fraction and `CoilVelocity` are arguments. No stored T60, stiffness, or pickup location |
 | `render/voice.h` | Block-based `IVoice` into any sink. No envelope |
 | `render/waveguide_voice.h` | Tuned waveguide stepped at the sample rate. Not an instrument |
 | `instruments/saxophone.h` | Inward reed on a truncated cone. Length, apex distance, throat area, and the reed parameters are arguments |
@@ -346,8 +372,10 @@ the course only when \(T=\mu(2Lf)^2\) agrees with the printed pounds
 within 0.001 lb. The pound-force is \(0.45359237\times 9.80665\,\mathrm{N}\),
 not the catalog's rounded factor 4.45. The chart does not print hertz,
 so `frequencyPrinted` is false. Fender's .009–.042 gauge is a different
-set and is not used. No pickup constant is printed, and no pickup
-model is stored. A pluck is `ExcitationKind::Pluck`. `fingerStop`
+set and is not used. No pickup constant is printed, and no
+inductance is stored. `PluckedStringVoice` reads a caller listen
+fraction on a tuned course. `CoilVelocity` is the transverse velocity
+at that node. A pluck is `ExcitationKind::Pluck`. `fingerStop`
 keeps the open tension. The same density at 650 mm misses the EXL110
 window.
 

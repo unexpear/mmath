@@ -107,6 +107,7 @@ if(BUILD_TESTING)
     tests/test_signal.cpp
     tests/test_render.cpp
     tests/test_voice_render.cpp
+    tests/test_plucked_string.cpp
     tests/test_tuning.cpp
     tests/test_pitch.cpp
     tests/test_structures.cpp
@@ -220,6 +221,7 @@ if(BUILD_TESTING)
     tests/headers/th_physics_fdtd_box.cpp
     tests/headers/th_physics_fem1d.cpp
     tests/headers/th_physics_coupled_string.cpp
+    tests/headers/th_instruments_plucked_string.cpp
     tests/headers/th_instruments_instrument.cpp
     tests/headers/th_instruments_violin.cpp
     tests/headers/th_instruments_viola.cpp
@@ -354,6 +356,7 @@ if(MMATHEN_BUILD_EXAMPLES)
                   tempo_demo air_table stretch_demo modes_demo voice_demo
                   comma_demo dsp_demo wavetable_demo pm_demo
                   instrument_voice_demo
+                  instrument_pluck_demo
                    solver_demo loss_demo stiff_demo pitch_error_demo
                    hearing_demo objects_demo spectrum_demo)
     add_executable(${example} examples/${example}.cpp)
