@@ -1210,8 +1210,27 @@ void reportPhrase(const char* instrument, const std::vector<PhraseNote>& notes,
         fits && period.autocorrelation > 0.85 && rms > note.minRms && period.frequencyHz > 1.0;
     const double cents =
         spoke ? 1200.0 * std::log2(period.frequencyHz / note.targetHz) : 0.0;
-    const double yinCents =
+    double yinCents =
         yin.frequencyHz > 1.0 ? 1200.0 * std::log2(yin.frequencyHz / note.targetHz) : 0.0;
+    // The end of a vibrato note can sit in a trough. Graded notes are
+    // sampled from 0.45 s in, every 0.05 s, and the largest absolute
+    // YIN error is the one that has to clear the tolerance. The first
+    // 0.45 s is the attack: the trombone opening still locks a
+    // subharmonic there. Short notes keep the single end-of-window
+    // reading. A hop inside a 0.2 s slur is the transient, not the pitch.
+    const double duration = endSec - note.startSec;
+    if (note.require && fits && duration >= 0.45) {
+      // 0.45 s skips the opening transient. On the trombone the first
+      // 0.40 s still locks a subharmonic; the held pitch is after that.
+      const double scanFrom = std::max(windowBegin, note.startSec + 0.45);
+      for (double at = scanFrom; at <= windowEnd + 1.0e-9; at += 0.05) {
+        const Period frame = yinEstimate(samples, static_cast<std::size_t>(windowBegin * kFs),
+                                         static_cast<std::size_t>(at * kFs), kFs);
+        if (!(frame.frequencyHz > 1.0)) continue;
+        const double frameCents = 1200.0 * std::log2(frame.frequencyHz / note.targetHz);
+        if (std::fabs(frameCents) > std::fabs(yinCents)) yinCents = frameCents;
+      }
+    }
     const double peakHz =
         fits ? strongestPeakHz(samples, static_cast<std::size_t>(windowBegin * kFs),
                                static_cast<std::size_t>(windowEnd * kFs), kFs)
@@ -1241,6 +1260,13 @@ void reportPhrase(const char* instrument, const std::vector<PhraseNote>& notes,
     if (note.gradePeak && note.require && fits) {
       CHECK(peakHz > 1.0);
       CHECK(std::fabs(peakCents) < note.tolCents);
+    }
+    // Short notes are not graded for attack or for the narrow
+    // autocorrelation. Their YIN still has to sit inside ±50 cents.
+    // 50 cents is the acceptance bound for a note under 0.45 s.
+    if (!note.require && fits && note.targetHz > 0.0 && !note.rest) {
+      CHECK(yin.frequencyHz > 1.0);
+      CHECK(std::fabs(yinCents) < 50.0);
     }
   }
   std::cout << "\n" << instrument << " silent-or-unlocked " << silent << "\n";
@@ -1675,11 +1701,13 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
 // at 4000 Pa. The offset is this voice, not a published correction.
 //
 // Saxophone — truncated-cone length, apex fixed. Each concert pitch is
-// the length at which this reed's strongest spectral peak is that pitch
-// under 4200 Pa. The old scale factors lengthened G#4 onto a second-mode
-// tube and the autocorrelation then reported the octave below. Loop
-// corner 1500 Hz, Benade and Lutgen envelope 837 Hz, turbulence 0.55.
-// Vibrato is a length modulation, arguments 5.5 Hz and 12 cents.
+// the length at which this reed's YIN on the phrase is that pitch under
+// 4200 Pa. The old scale factors lengthened G#4 onto a second-mode tube
+// and the autocorrelation then reported the octave below. Loop corner
+// 1500 Hz, Benade and Lutgen envelope 837 Hz, turbulence 0.55. Vibrato
+// is a length modulation, arguments 5.5 Hz and 12 cents. Graded notes
+// (at least 0.45 s) stay inside ±25 cents, including the vibrato crest.
+// Shorter notes stay inside ±50 cents.
 //
 // Flute — bore length, jet delay, and blowing pressure together. The
 // corner is 1800 Hz, the same argument as the two-second note. 400 Hz
@@ -1709,8 +1737,10 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     note.rest = !(src.hertz > 0.0);
     note.tolCents = tol;
     note.minRms = minRms;
-    // Grade a note only when a window can sit inside it. Shorter notes
-    // are printed, including a DID NOT SPEAK, and do not fail the suite.
+    // Speech and the narrow autocorrelation are graded only when a
+    // window can sit inside the note. Shorter notes are still printed,
+    // including a DID NOT SPEAK. Their end-of-window YIN is checked
+    // separately, at ±50 cents.
     note.require = src.hertz > 0.0 && src.seconds >= 0.45;
     notes.push_back(note);
   };
@@ -1756,20 +1786,25 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
   }
 
   {
-    // Lengths where a steady 4200 Pa note on this reed puts its strongest
-    // peak on the concert pitch, measured on a tube built at 0.75 m and
-    // then shortened. C#4 has no first-mode length at this pressure: the
-    // tubes between about 0.42 m and 0.51 m lock the second mode, and
-    // 0.52 m is the nearest first-mode tube (about 256 Hz). A 2500 Pa
-    // note at 0.46 m does speak 277 Hz, and the return to 4200 Pa then
-    // locks the following D#4 and the graded G#3 an octave high, so the
-    // phrase keeps one pressure. E4's nearest first-mode length is 0.390 m
-    // (about 325 Hz); the next shorter tubes lock the octave.
+    // Tubes this reed plays at 4200 Pa, read by YIN on the rendered
+    // phrase. Not a published correction. The bore is built at the
+    // longest sounding length times 1.08 and then shortened.
+    // F#4 at 0.330 m holds about 8 cents sharp. The 12-cent vibrato
+    // then puts the crest near +19 cents, and that crest's CMNDF valley
+    // includes the 127-sample lag, 48000/127 Hz, +37 cents of 369.99 Hz.
+    // 0.3315 m centers the carrier: the crest is about +12 cents, the
+    // trough about −13, and the selected lag is no longer 127.
+    // C#4 at 0.52 m is first mode near 256 Hz, about −140 cents. 0.471 m
+    // is where this 0.4 s slur, arriving from D#4, speaks the first mode
+    // at 277 Hz. A note started from silence near 0.47 m can lock the
+    // octave; this slur does not, and the D#4 and G#3 after it stay on
+    // the first mode. E4 stays 0.390 m, about −28 cents, inside the
+    // short-note bound. The line keeps one pressure.
     auto saxLength = [&](double frequency) {
       struct Length { double hertz; double meters; };
       const Length table[] = {
-          {207.65, 0.670}, {277.18, 0.520}, {311.13, 0.410}, {329.63, 0.390},
-          {369.99, 0.330}, {415.30, 0.288}, {466.16, 0.2486}, {493.88, 0.230},
+          {207.65, 0.670}, {277.18, 0.471}, {311.13, 0.410}, {329.63, 0.390},
+          {369.99, 0.3315}, {415.30, 0.288}, {466.16, 0.2486}, {493.88, 0.230},
       };
       for (const Length& row : table)
         if (std::fabs(row.hertz - frequency) < 0.05) return row.meters;
@@ -1797,7 +1832,8 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     double held = longest;
     for (const auto& src : excerpts::kSaxophone) {
       const double length = src.hertz > 0.0 ? saxLength(src.hertz) : held;
-      push(notes, src, start, length, 0.0, 4200.0, 0.0, 35.0, 0.01);
+      const double tol = src.seconds >= 0.45 ? 25.0 : 50.0;
+      push(notes, src, start, length, 0.0, 4200.0, 0.0, tol, 0.01);
       notes.back().gradePeak = src.hertz > 0.0;
       if (src.hertz > 0.0) held = length;
       start += src.seconds;
