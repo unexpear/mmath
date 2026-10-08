@@ -97,34 +97,34 @@ double bass render audio through the bowed soundboard. The piano
 renders audio through the hammered soundboard. The bass-drum port and
 snare wires are not in those steppers.
 
-| Instrument | Excitation | Resonator | Body | Radiation | Renders audio | Remaining gap |
-|---|---|---|---|---|---|---|
-| Violin | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Bow closes on a modal soundboard; bridge force is the drive | Compact monopole of the bowed bridge acceleration | yes | Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored |
-| Viola | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Bow closes on a modal soundboard; bridge force is the drive | Compact monopole of the bowed bridge acceleration | yes | Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored |
-| Cello | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Bow closes on a modal soundboard; bridge force is the drive | Compact monopole of the bowed bridge acceleration | yes | Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored |
-| Double bass | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Bow closes on a modal soundboard; bridge force is the drive | Compact monopole of the bowed bridge acceleration | yes | Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored |
-| Harp | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
-| Harpsichord | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
-| Classical guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 650 mm course | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
-| Electric guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 25.5 in course | No body filter | Pickup position comb and coil velocity; no inductance | no | String and pickup step. The body filter is absent |
-| Piano | Felt hammer steps a stiff waveguide | Lossy stiff tuned waveguide; strike and stiffness are arguments | Hammer closes on a modal soundboard; bridge force is the drive | Compact monopole of the hammered bridge acceleration | yes | Mode frequency, Q, and mass are arguments. The other four courses are not coupled |
-| Clarinet | Inward reed steps a bore delay | Cylindrical delay; an open end replaces the constant magnitude | None | Levine-Schwinger open end; radius and end correction are arguments | yes | Tone holes and a register key are outside this bore |
-| Flute | Jet steps an open embouchure | Open-open cylindrical delay | None | Levine-Schwinger open end at the far end; the embouchure stays an ideal release | yes | Tone holes are outside this bore |
-| Trumpet | Outward lip steps a cone with the cup | Truncated cone; cup compliance \(C\,dp/dt = U_{\mathrm{lip}}-U_{\mathrm{bore}}\) | None | Levine-Schwinger open end on the cone | yes | Valves and a non-conical bell flare are outside this cone |
-| Trombone | Outward lip steps the slide length on a cone with the cup | Truncated cone at \(L = L_0 + 2x\); cup compliance is stepped | None | Levine-Schwinger open end on the cone | yes | An F attachment and a non-conical flare are outside this slide |
-| Saxophone | Inward reed steps the spherical-wave cone | Truncated-cone delay; the cylinder is not this stepper | None | Levine-Schwinger open end; bell radius is an argument | yes | Tone holes are outside this cone |
-| Bass drum | Felt mallet steps the batter head | Damped membrane modes; a port is not opened | Closed cavity, not a ported shell | Monopole of the batter volume acceleration | no | Two heads and a closed cavity radiate. The port is absent |
-| Rack tom 10 in | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | Head tension and Q are arguments. No port is in this shell |
-| Rack tom 12 in | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | Head tension and Q are arguments. No port is in this shell |
-| Floor tom | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | Head tension and Q are arguments. No port is in this shell |
-| Snare 5.5 in | Felt mallet steps the batter head | Damped membrane modes of both heads; snare wires absent | Closed cavity couples the heads | Monopole of the batter volume acceleration | no | Two heads, the cavity, and radiation step. Snare wires are absent |
-| Snare 6.5 in | Felt mallet steps the batter head | Damped membrane modes of both heads; snare wires absent | Closed cavity couples the heads | Monopole of the batter volume acceleration | no | Two heads, the cavity, and radiation step. Snare wires are absent |
-| Splash | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | Mallet and plate step. Nonlinearity and radiation are absent |
-| Hi-hat | Felt mallet steps one free plate | Damped Kirchhoff mode; plates uncoupled | None | None | no | Mallet and one plate step. The pair, nonlinearity, and radiation are absent |
-| Crash 16 in | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | Mallet and plate step. Nonlinearity and radiation are absent |
-| Crash 18 in | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | Mallet and plate step. Nonlinearity and radiation are absent |
-| China | Felt mallet steps a free plate | Damped Kirchhoff mode; flange not modeled | None | None | no | Mallet and plate step. The flange, nonlinearity, and radiation are absent |
-| Ride | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | Mallet and plate step. Nonlinearity and radiation are absent |
+| Instrument | Excitation | Resonator | Body | Radiation | Renders audio | Full instrument | Remaining gap |
+|---|---|---|---|---|---|---|---|
+| Violin | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Bow closes on a modal soundboard; bridge force is the drive | Compact monopole of the bowed bridge acceleration | yes | no | Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored |
+| Viola | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Bow closes on a modal soundboard; bridge force is the drive | Compact monopole of the bowed bridge acceleration | yes | no | Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored |
+| Cello | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Bow closes on a modal soundboard; bridge force is the drive | Compact monopole of the bowed bridge acceleration | yes | no | Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored |
+| Double bass | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Bow closes on a modal soundboard; bridge force is the drive | Compact monopole of the bowed bridge acceleration | yes | no | Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored |
+| Harp | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | no | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
+| Harpsichord | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | no | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
+| Classical guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 650 mm course | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | no | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
+| Electric guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 25.5 in course | No body filter | Pickup position comb and coil velocity; no inductance | no | no | String and pickup step. The body filter is absent |
+| Piano | Felt hammer steps a stiff waveguide | Lossy stiff tuned waveguide; strike and stiffness are arguments | Hammer closes on a modal soundboard; bridge force is the drive | Compact monopole of the hammered bridge acceleration | yes | no | Mode frequency, Q, and mass are arguments. The other four courses are not coupled |
+| Clarinet | Inward reed steps a bore delay | Cylindrical delay; an open end replaces the constant magnitude | None | Levine-Schwinger open end; radius and end correction are arguments | yes | no | Caller holes and a register key sit on the lattice. Viscous wall loss is outside this bore |
+| Flute | Jet steps an open embouchure | Open-open cylindrical delay | None | Levine-Schwinger open end at the far end; the embouchure stays an ideal release | yes | no | Caller tone holes sit on the lattice. Viscous wall loss is outside this bore |
+| Trumpet | Outward lip steps a cone with the cup | Truncated cone; cup compliance \(C\,dp/dt = U_{\mathrm{lip}}-U_{\mathrm{bore}}\) | None | Levine-Schwinger open end on the cone | yes | no | Engaged valve lengths are an argument. A non-conical bell flare is outside this cone |
+| Trombone | Outward lip steps the slide length on a cone with the cup | Truncated cone at \(L = L_0 + 2x\); cup compliance is stepped | None | Levine-Schwinger open end on the cone | yes | no | The F-attachment length is an argument. A non-conical flare is outside this slide |
+| Saxophone | Inward reed steps the spherical-wave cone | Truncated-cone delay; the cylinder is not this stepper | None | Levine-Schwinger open end; bell radius is an argument | yes | no | Caller tone holes sit on the stepped cone. Viscous wall loss is outside this bore |
+| Bass drum | Felt mallet steps the batter head | Damped membrane modes; a port is not opened | Closed cavity, not a ported shell | Monopole of the batter volume acceleration | no | no | Two heads and a closed cavity radiate. The port is absent |
+| Rack tom 10 in | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | no | Head tension and Q are arguments. No port is in this shell |
+| Rack tom 12 in | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | no | Head tension and Q are arguments. No port is in this shell |
+| Floor tom | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | no | Head tension and Q are arguments. No port is in this shell |
+| Snare 5.5 in | Felt mallet steps the batter head | Damped membrane modes of both heads; snare wires absent | Closed cavity couples the heads | Monopole of the batter volume acceleration | no | no | Two heads, the cavity, and radiation step. Snare wires are absent |
+| Snare 6.5 in | Felt mallet steps the batter head | Damped membrane modes of both heads; snare wires absent | Closed cavity couples the heads | Monopole of the batter volume acceleration | no | no | Two heads, the cavity, and radiation step. Snare wires are absent |
+| Splash | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | no | Mallet and plate step. Nonlinearity and radiation are absent |
+| Hi-hat | Felt mallet steps one free plate | Damped Kirchhoff mode; plates uncoupled | None | None | no | no | Mallet and one plate step. The pair, nonlinearity, and radiation are absent |
+| Crash 16 in | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | no | Mallet and plate step. Nonlinearity and radiation are absent |
+| Crash 18 in | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | no | Mallet and plate step. Nonlinearity and radiation are absent |
+| China | Felt mallet steps a free plate | Damped Kirchhoff mode; flange not modeled | None | None | no | no | Mallet and plate step. The flange, nonlinearity, and radiation are absent |
+| Ride | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | no | Mallet and plate step. Nonlinearity and radiation are absent |
 
 Required WAV files go to `wavOutputDirectory()`: `MMATH_WAV_DIR` when
 that variable is set and non-empty, otherwise the process temporary
@@ -189,15 +189,16 @@ interval.
 | `instruments/flute.h` | Open-open flute and an embouchure jet. Length, bore area, jet area, thickness, flue-to-edge distance, and the convection ratio are arguments |
 | `instruments/trumpet.h` | Lip-driven cylinder and a mouthpiece cup. Length, bore area, cup volume, and the lip parameters are arguments |
 | `instruments/trombone.h` | That lip and cup on a U-slide. Closed length and handslide travel are arguments. The air column is \(L_0+2x\) |
-| `instruments/render_status.h` | Per-instrument audible-physics bar. The four bowed strings, clarinet, flute, saxophone, trumpet, trombone, harp, harpsichord, classical guitar, piano, and the three toms render audio; the other ten do not |
+| `instruments/render_status.h` | Two columns: renders audio, and full instrument complete. Sixteen render audio. None are fully complete |
 | `instruments/cavity_drum.h` | Mallet, one or two heads, closed-cavity compliance, and a monopole. Shell depth is the volume. A port and snare wires are not stored |
 | `instruments/soundboard_voice.h` | Plucked course on a yielding modal soundboard. Bridge force drives the modes; their velocity is the end displacement. The sample is \(\rho A a(t-r/c)/(4\pi r)\). Frequency, Q, mass, area, and distance are arguments |
 | `physics/radiation.h` | Unflanged open-end load \((1/4)(ka)^2+jk\Delta\) and its delay-plus-curvature stepper. Radius and end correction are arguments |
-| `instruments/cone_valve.h` | Reed or lip on the spherical-wave cone, optional open end, and a positive cup compliance on the lip. Apex, bell radius, end correction, and cup volume are arguments. A zero cup leaves the junction unchanged |
+| `instruments/cone_valve.h` | Reed or lip on the spherical-wave cone, optional open end, cup compliance, and a caller extra length for valves or the F attachment. Zero extra length leaves the cone unchanged |
 | `instruments/plucked_string.h` | One course as a lossy tuned-waveguide voice, or the same pluck on `Fdtd1D`. Listen fraction and `CoilVelocity` are arguments. No stored T60, stiffness, or pickup location |
 | `instruments/bowed_string.h` | Stick-slip junction on the tuned loop, optionally closed on a modal soundboard. Without a body the sample is bow-point velocity and the bridge is rigid. With a body the sample is the compact monopole of the bridge acceleration. Frequency, Q, mass, area, and distance are arguments |
 | `instruments/struck_string.h` | Felt hammer against hinged stiff-string modes, and the same Hunt–Crossley force on a stiff tuned loop closed on a modal soundboard. The radiating sample is the compact monopole of the bridge acceleration. \(K\), \(p\), \(\lambda\), frequency, Q, mass, area, and distance are arguments |
 | `instruments/mallet_voice.h` | Felt mallet on one membrane mode or one free-plate mode. Quality factor is an argument. No air cavity, snare wires, or plate nonlinearity |
+| `instruments/bore_network.h` | Keefe, Lefebvre, and Dalmont tone-hole lengths, a lattice shared by clarinet, flute, and saxophone, and the sum of engaged brass slides. Hole radii and valve lengths are arguments. Viscous wall loss is not stepped |
 | `instruments/bore_valve.h` | Inward reed, outward lip, or flute jet on a cylindrical delay. Far-end magnitude is an argument, not a bell filter. The saxophone cone and the brass cup are not stepped |
 | `physics/oscillator.h` | Exact step of \(q''+2\sigma q'+\omega^{2}q=f\) with \(f\) held over one sample. Underdamped only |
 | `render/voice.h` | Block-based `IVoice` into any sink. No envelope |
@@ -1262,14 +1263,15 @@ hammer, a stiff waveguide, a modal soundboard, and monopole radiation.
 The bass-drum port and snare wires are still outside those steppers.
 Cymbal nonlinearity is not discretized: no cubic coefficient is stored.
 Images after the first from each hammer end are not in this layer. A
-viscous reed channel, clarinet tone holes, a bell correction, and a
-register key are not in this layer. A flute end correction, tone holes,
+viscous reed channel is not in this layer. Clarinet, flute, and
+saxophone holes are a lattice of caller radii; a register key is one
+open hole, and no fingering chart is stored. Viscous wall loss and
+hole interaction are not in that lattice. A flute end correction,
 embouchure-hole radiation, and the spatial growth of the jet are not in
-this layer. A trumpet bell flare and valves are not in this layer. A
-trombone bell flare, an F attachment, and a stored slide-position chart
-are not in this layer. A
-saxophone tone-hole lattice, a separate mouthpiece volume, a radiation
-load, and an end correction are not in this layer. The
+this layer. Trumpet valves and the trombone F attachment are an extra
+length on the cone; a non-conical flare and a stored slide chart are
+not. A saxophone mouthpiece volume beyond the apex distance is not in
+this layer. Full-instrument complete stays false for every row. The
 stick-slip capture still uses rigid ends. Snare wires, shell air, a bass-drum port, and a hi-hat clutch
 gap are not in the drum kit. A double-slip wolf cycle is not stepped. A
 measured classical-guitar mode table and a fret table are not in this layer. An

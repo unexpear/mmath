@@ -91,6 +91,7 @@ class FailingVoice final : public IVoice {
 TEST_CASE("sixteen instruments meet the audible-physics bar", "[voice]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
   CHECK(instrumentsThatRenderAudio() == 16);
+  CHECK(instrumentsFullyComplete() == 0);
   for (std::size_t i = 0; i < kInstrumentRenderStatusCount; ++i) {
     const char* name = kInstrumentRenderStatus[i].name;
     const bool renders = std::strcmp(name, "violin") == 0 ||
@@ -110,6 +111,7 @@ TEST_CASE("sixteen instruments meet the audible-physics bar", "[voice]") {
                          std::strcmp(name, "rack tom 12 in") == 0 ||
                          std::strcmp(name, "floor tom") == 0;
     CHECK(kInstrumentRenderStatus[i].rendersAudio == renders);
+    CHECK_FALSE(kInstrumentRenderStatus[i].fullInstrumentComplete);
     CHECK(name != nullptr);
     CHECK(kInstrumentRenderStatus[i].gap != nullptr);
   }

@@ -21,7 +21,10 @@
 // is stored. A positive cup compliance on the lip path is the lumped
 // volume in parallel with the throat: C dp/dt = U_lip − U_bore, with
 // C = V/(ρ c²) taken from the trumpet. A zero cup leaves the junction
-// unchanged. Cup volume is an argument.
+// unchanged. Cup volume is an argument. An extra length on the trumpet
+// or the trombone is tubing the caller adds to L: engaged valve slides,
+// or the trombone F attachment. Zero leaves this cone unchanged. No
+// piston chart is stored.
 
 #include <algorithm>
 #include <cmath>
@@ -49,21 +52,26 @@ class ConeValveVoice final : public IVoice {
                   saxophone.apexDistanceMeters, saxophone.throatAreaM2,
                   saxophone.soundSpeedMetersPerSecond,
                   saxophone.airDensityKgPerM3, saxophone.acousticImpedance,
-                  saxophone.fundamentalHz, blow, rate, false, Trumpet{});
+                  saxophone.fundamentalHz, blow, rate, false, Trumpet{}, 0.0);
   }
 
   // The lip on a cone of the trumpet's length. Apex distance, bell
   // radius, and end correction are the blow's arguments: apex is not
   // stored on the trumpet. A positive cup compliance is stepped.
+  // extraLengthMeters is the F attachment when it is engaged, and 0
+  // when it is not. The slide length is already L0 + 2x on the trombone.
   [[nodiscard]] static Result<ConeValveVoice, QuantityError> fromTrombone(
       const Trombone& trombone, double apexDistanceMeters, const ValveBlow& blow,
-      SampleRateHz rate) {
-    return fromTrumpet(trombone.bore, apexDistanceMeters, blow, rate);
+      SampleRateHz rate, double extraLengthMeters = 0.0) {
+    return fromTrumpet(trombone.bore, apexDistanceMeters, blow, rate,
+                       extraLengthMeters);
   }
 
+  // extraLengthMeters is the sum of the engaged valve slides. Zero is
+  // the open instrument.
   [[nodiscard]] static Result<ConeValveVoice, QuantityError> fromTrumpet(
       const Trumpet& trumpet, double apexDistanceMeters, const ValveBlow& blow,
-      SampleRateHz rate) {
+      SampleRateHz rate, double extraLengthMeters = 0.0) {
     using R = Result<ConeValveVoice, QuantityError>;
     if (!std::isfinite(apexDistanceMeters) || !(apexDistanceMeters > 0.0))
       return R::failure(QuantityError::InvalidArgument);
@@ -72,7 +80,7 @@ class ConeValveVoice final : public IVoice {
     return create(unused, inertia, trumpet.lengthMeters, apexDistanceMeters,
                   trumpet.crossSectionM2, trumpet.soundSpeedMetersPerSecond,
                   trumpet.airDensityKgPerM3, trumpet.acousticImpedance, 0.0, blow,
-                  rate, true, trumpet);
+                  rate, true, trumpet, extraLengthMeters);
   }
 
   [[nodiscard]] SampleRateHz sampleRate() const override { return rate_; }
@@ -188,7 +196,7 @@ class ConeValveVoice final : public IVoice {
       const ReedCharacteristic& reed, const ReedInertia& inertia, double length,
       double apex, double area, double speed, double density, double impedance,
       double coneHz, const ValveBlow& blow, SampleRateHz rate, bool lip,
-      const Trumpet& trumpet) {
+      const Trumpet& trumpet, double extraLength) {
     using R = Result<ConeValveVoice, QuantityError>;
     const double fs = rate.value();
     if (!std::isfinite(blow.pressurePa) || !(blow.pressurePa > 0.0) ||
@@ -200,9 +208,13 @@ class ConeValveVoice final : public IVoice {
         !(area > 0.0) || !std::isfinite(speed) || !(speed > 0.0) ||
         !std::isfinite(density) || !(density > 0.0) ||
         !std::isfinite(impedance) || !(impedance > 0.0) ||
-        !std::isfinite(blow.endCorrectionMeters) || blow.endCorrectionMeters < 0.0)
+        !std::isfinite(blow.endCorrectionMeters) || blow.endCorrectionMeters < 0.0 ||
+        !std::isfinite(extraLength) || extraLength < 0.0)
       return R::failure(QuantityError::InvalidArgument);
-    const double samples = fs * 2.0 * length / speed;
+    const double sounding = length + extraLength;
+    if (!std::isfinite(sounding) || !(sounding > 0.0))
+      return R::failure(QuantityError::RangeError);
+    const double samples = fs * 2.0 * sounding / speed;
     if (!std::isfinite(samples) ||
         samples > static_cast<double>(std::numeric_limits<int>::max() / 4))
       return R::failure(QuantityError::RangeError);
@@ -219,7 +231,8 @@ class ConeValveVoice final : public IVoice {
                                               blow.endCorrectionMeters, speed, rate);
       if (!filter.ok()) return R::failure(filter.error());
       openEnd = std::move(filter).value();
-      auto response = openEnd.response(coneHz > 0.0 ? coneHz : speed / (2.0 * length));
+      auto response =
+          openEnd.response(coneHz > 0.0 ? coneHz : speed / (2.0 * sounding));
       if (!response.ok()) return R::failure(response.error());
       const double magnitude =
           std::hypot(response.value().real, response.value().imag);
@@ -235,7 +248,7 @@ class ConeValveVoice final : public IVoice {
       const double thetaRight = constants::pi;
       double lo = thetaLeft;
       double hi = thetaRight;
-      const double ratio = apex / length;
+      const double ratio = apex / sounding;
       auto den = [&](double theta) {
         return std::sin(theta) + ratio * theta * std::cos(theta);
       };
@@ -247,7 +260,7 @@ class ConeValveVoice final : public IVoice {
         else
           lo = mid;
       }
-      hertz = (0.5 * (lo + hi)) * speed / (constants::twoPi * length);
+      hertz = (0.5 * (lo + hi)) * speed / (constants::twoPi * sounding);
     }
     if (!std::isfinite(hertz) || !(hertz > 0.0))
       return R::failure(QuantityError::RangeError);
