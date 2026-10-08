@@ -87,12 +87,16 @@ class FailingVoice final : public IVoice {
 };
 }  // namespace
 
-TEST_CASE("eleven instruments meet the audible-physics bar", "[voice]") {
+TEST_CASE("fifteen instruments meet the audible-physics bar", "[voice]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 11);
+  CHECK(instrumentsThatRenderAudio() == 15);
   for (std::size_t i = 0; i < kInstrumentRenderStatusCount; ++i) {
     const char* name = kInstrumentRenderStatus[i].name;
-    const bool renders = std::strcmp(name, "clarinet") == 0 ||
+    const bool renders = std::strcmp(name, "violin") == 0 ||
+                         std::strcmp(name, "viola") == 0 ||
+                         std::strcmp(name, "cello") == 0 ||
+                         std::strcmp(name, "double bass") == 0 ||
+                         std::strcmp(name, "clarinet") == 0 ||
                          std::strcmp(name, "flute") == 0 ||
                          std::strcmp(name, "saxophone") == 0 ||
                          std::strcmp(name, "trumpet") == 0 ||

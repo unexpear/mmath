@@ -62,8 +62,12 @@ pizzicato, one harp string, one harpsichord speaking length, one
 classical-guitar string, and one electric-guitar string. The same four
 bowed courses also step: `BowedStringVoice` is the Woodhouse stick-slip
 junction on that tuned loop. While the bow is down the sample is the
-bow-point velocity. After the caller lifts the bow the junction is
-transparent, so the ring is `loopPole`. A felt hammer steps the hinged
+bow-point velocity unless a body is attached. With a `BowBodyDrive` the
+bridge force \(Z(2v_+-v_{\mathrm{bridge}})\) drives the caller's modes,
+their velocity replaces the rigid reflection, and the sample is the
+compact monopole of the bridge acceleration. After the caller lifts the
+bow the junction is transparent, so the ring is `loopPole` loaded by
+that bridge. A felt hammer steps the hinged
 modes of one stiff string (`FeltHammerVoice`, Hunt–Crossley contact).
 A mallet steps one membrane mode or one free-plate mode. One valve
 (`BoreValveVoice`) steps an inward reed, an outward lip, or a flute jet
@@ -84,16 +88,17 @@ throat, \(C\,dp/dt = U_{\mathrm{lip}}-U_{\mathrm{bore}}\), with
 unchanged. `CavityDrumVoice`
 diagonalizes the closed-shell compliance \(p=\rho c^{2}\Delta V/V\) on
 the membrane modes and radiates the batter's outward volume
-acceleration. The three toms render audio. The bow, the felt hammer,
+acceleration. The three toms render audio. Violin, viola, cello, and
+double bass render audio through the bowed soundboard. The felt hammer,
 the bass-drum port, and snare wires are not in those
 steppers.
 
 | Instrument | Excitation | Resonator | Body | Radiation | Renders audio | Remaining gap |
 |---|---|---|---|---|---|---|
-| Violin | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Pizzicato can close on a modal soundboard; the bow cannot | Compact monopole of a plucked bridge; the bow does not drive it | no | Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge |
-| Viola | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Pizzicato can close on a modal soundboard; the bow cannot | Compact monopole of a plucked bridge; the bow does not drive it | no | Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge |
-| Cello | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Pizzicato can close on a modal soundboard; the bow cannot | Compact monopole of a plucked bridge; the bow does not drive it | no | Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge |
-| Double bass | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Pizzicato can close on a modal soundboard; the bow cannot | Compact monopole of a plucked bridge; the bow does not drive it | no | Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge |
+| Violin | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Bow closes on a modal soundboard; bridge force is the drive | Compact monopole of the bowed bridge acceleration | yes | Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored |
+| Viola | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Bow closes on a modal soundboard; bridge force is the drive | Compact monopole of the bowed bridge acceleration | yes | Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored |
+| Cello | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Bow closes on a modal soundboard; bridge force is the drive | Compact monopole of the bowed bridge acceleration | yes | Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored |
+| Double bass | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Bow closes on a modal soundboard; bridge force is the drive | Compact monopole of the bowed bridge acceleration | yes | Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored |
 | Harp | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
 | Harpsichord | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
 | Classical guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 650 mm course | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
@@ -147,7 +152,12 @@ way. The cavity-drum test writes
 `/opt/cursor/artifacts/mmath-snare-55-cavity.wav`, and
 `/opt/cursor/artifacts/mmath-snare-65-cavity.wav`. The cup test writes
 `/opt/cursor/artifacts/mmath-trumpet-cup.wav` and
-`/opt/cursor/artifacts/mmath-trombone-cup.wav`.
+`/opt/cursor/artifacts/mmath-trombone-cup.wav`. The bowed soundboard
+writes `/opt/cursor/artifacts/mmath-violin-bow-body.wav`,
+`/opt/cursor/artifacts/mmath-violin-bow-body-light.wav`,
+`/opt/cursor/artifacts/mmath-viola-bow-body.wav`,
+`/opt/cursor/artifacts/mmath-cello-bow-body.wav`, and
+`/opt/cursor/artifacts/mmath-double-bass-bow-body.wav`.
 
 ## Defaults
 
@@ -177,13 +187,13 @@ interval.
 | `instruments/flute.h` | Open-open flute and an embouchure jet. Length, bore area, jet area, thickness, flue-to-edge distance, and the convection ratio are arguments |
 | `instruments/trumpet.h` | Lip-driven cylinder and a mouthpiece cup. Length, bore area, cup volume, and the lip parameters are arguments |
 | `instruments/trombone.h` | That lip and cup on a U-slide. Closed length and handslide travel are arguments. The air column is \(L_0+2x\) |
-| `instruments/render_status.h` | Per-instrument audible-physics bar. Clarinet, flute, saxophone, trumpet, trombone, harp, harpsichord, classical guitar, and the three toms render audio; the other fifteen do not |
+| `instruments/render_status.h` | Per-instrument audible-physics bar. The four bowed strings, clarinet, flute, saxophone, trumpet, trombone, harp, harpsichord, classical guitar, and the three toms render audio; the other eleven do not |
 | `instruments/cavity_drum.h` | Mallet, one or two heads, closed-cavity compliance, and a monopole. Shell depth is the volume. A port and snare wires are not stored |
 | `instruments/soundboard_voice.h` | Plucked course on a yielding modal soundboard. Bridge force drives the modes; their velocity is the end displacement. The sample is \(\rho A a(t-r/c)/(4\pi r)\). Frequency, Q, mass, area, and distance are arguments |
 | `physics/radiation.h` | Unflanged open-end load \((1/4)(ka)^2+jk\Delta\) and its delay-plus-curvature stepper. Radius and end correction are arguments |
 | `instruments/cone_valve.h` | Reed or lip on the spherical-wave cone, optional open end, and a positive cup compliance on the lip. Apex, bell radius, end correction, and cup volume are arguments. A zero cup leaves the junction unchanged |
 | `instruments/plucked_string.h` | One course as a lossy tuned-waveguide voice, or the same pluck on `Fdtd1D`. Listen fraction and `CoilVelocity` are arguments. No stored T60, stiffness, or pickup location |
-| `instruments/bowed_string.h` | Stick-slip junction on the tuned loop. The bow-down duration is an argument. After the lift the ring is `loopPole`. No soundboard |
+| `instruments/bowed_string.h` | Stick-slip junction on the tuned loop, optionally closed on a modal soundboard. Without a body the sample is bow-point velocity and the bridge is rigid. With a body the sample is the compact monopole of the bridge acceleration. Frequency, Q, mass, area, and distance are arguments |
 | `instruments/struck_string.h` | Felt hammer against hinged stiff-string modes. Hunt–Crossley \(F=K\xi^{p}(1+\lambda\xi')\). \(K\), \(p\), \(\lambda\), and the mode count are arguments |
 | `instruments/mallet_voice.h` | Felt mallet on one membrane mode or one free-plate mode. Quality factor is an argument. No air cavity, snare wires, or plate nonlinearity |
 | `instruments/bore_valve.h` | Inward reed, outward lip, or flute jet on a cylindrical delay. Far-end magnitude is an argument, not a bell filter. The saxophone cone and the brass cup are not stepped |
@@ -1244,7 +1254,8 @@ and bell radiation. Harp, harpsichord, and classical guitar close a
 pluck, a waveguide, a modal soundboard, and monopole radiation. The
 three toms close a mallet, both heads, a closed cavity, and monopole
 radiation. Trumpet and trombone close the lip, the cup, the cone, and
-the open end. The bow, the felt hammer, the bass-drum
+the open end. The four bowed strings close the bow, the waveguide, a
+modal soundboard, and monopole radiation. The felt hammer, the bass-drum
 port, and snare wires are still outside those steppers.
 Cymbal nonlinearity is not discretized: no cubic coefficient is stored.
 Images after the first from each hammer end are not in this layer. A

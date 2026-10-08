@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -186,9 +187,11 @@ TEST_CASE("a constant-force oscillator steps its own decay", "[contact]") {
 
 TEST_CASE("bow, hammer, and mallet still leave the audible bar unmet", "[contact]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 11);
+  CHECK(instrumentsThatRenderAudio() == 15);
   CHECK(std::strstr(statusNamed("violin")->resonator, "waveguide") != nullptr);
   CHECK(std::strstr(statusNamed("violin")->excitation, "bow") != nullptr);
+  CHECK(statusNamed("violin")->rendersAudio);
+  CHECK(std::strstr(statusNamed("violin")->gap, "wolf") != nullptr);
   CHECK_FALSE(statusNamed("piano")->rendersAudio);
   CHECK(std::strstr(statusNamed("piano")->gap, "hammer") != nullptr);
   CHECK(std::strstr(statusNamed("clarinet")->gap, "bore") != nullptr);
@@ -277,6 +280,107 @@ TEST_CASE("a bow on a lossy waveguide has the loop pitch and decay", "[contact]"
   CHECK(BowedStringVoice::create(course, BowStroke{0.0, speed, 0.1, {muS, muD}},
                                  loss, 0.0, 4, 0, kRate, 10)
             .error() == QuantityError::InvalidArgument);
+}
+
+TEST_CASE("a bowed bridge radiates through the soundboard", "[contact]") {
+  const StringCourse course = unwrap(violin()).courses[2];
+  const double frequency = course.tuning.frequency.value();
+  const double mu = course.material.linearDensity.value();
+  const double tension = course.tension.value();
+  const double impedance = mu * std::sqrt(tension / mu);
+  const double beta = 0.125;
+  const double speed = 0.2;
+  const double muS = 0.8;
+  const double muD = 0.3;
+  const double maximum = 2.0 * impedance * speed / (beta * (muS - muD));
+  const BowStroke stroke{beta, speed, 0.15 * maximum, BowFriction{muS, muD}};
+  const LossModel loss = courseLoss(course, 2.0, 0.25);
+  const BodyModeSpec heavyMode{frequency, 200.0, 20.0};
+  const BowBodyDrive heavy{std::span<const BodyModeSpec>(&heavyMode, 1), 0.02, 1.0,
+                           kAir, kTemp};
+  auto voice = unwrap(BowedStringVoice::create(course, stroke, loss, 0.0, 4, 0, kRate,
+                                              12000, &heavy));
+  CHECK(voice.radiating());
+  CHECK(std::fabs(voice.fundamentalHz() - frequency) < 0.05);
+  const auto samples = renderOf(voice, 49152);
+  CHECK(peakOf(samples, 16000, 24000) > 1.0e-5);
+  CHECK(std::fabs(pitchNear(samples, 24576, 400.0, 480.0) - voice.fundamentalHz()) < 1.0);
+  const double early = amplitudeNear(samples, 32768, 400.0, 480.0);
+  const double late = amplitudeNear(samples, 40960, 400.0, 480.0);
+  REQUIRE(early > 0.0);
+  const double expected = std::exp(-voice.fundamentalDecay() * (8192.0 / kFs));
+  CHECK(std::fabs(late / early - expected) / expected < 0.05);
+  writeListening(samples, "/opt/cursor/artifacts/mmath-violin-bow-body.wav");
+
+  voice.reset();
+  std::vector<double> once(512);
+  std::vector<double> blocked(512);
+  REQUIRE(voice.renderBlock(once.data(), FrameCount{512}).ok());
+  voice.reset();
+  for (std::size_t i = 0; i < blocked.size(); i += 128) {
+    REQUIRE(voice.renderBlock(blocked.data() + i, FrameCount{128}).ok());
+  }
+  for (std::size_t i = 0; i < once.size(); ++i)
+    CHECK(once[i] == blocked[i]);
+
+  const BodyModeSpec lightMode{frequency, 40.0, 0.5};
+  const BowBodyDrive light{std::span<const BodyModeSpec>(&lightMode, 1), 0.02, 1.0, kAir,
+                           kTemp};
+  const BodyModeSpec heavySameQ{frequency, 40.0, 20.0};
+  const BowBodyDrive heavyDrive{std::span<const BodyModeSpec>(&heavySameQ, 1), 0.02, 1.0,
+                                kAir, kTemp};
+  auto lightVoice =
+      unwrap(BowedStringVoice::create(course, stroke, loss, 0.0, 4, 0, kRate, 12000, &light));
+  auto heavyVoice = unwrap(
+      BowedStringVoice::create(course, stroke, loss, 0.0, 4, 0, kRate, 12000, &heavyDrive));
+  const auto lightSamples = renderOf(lightVoice, 32768);
+  const auto heavySamples = renderOf(heavyVoice, 32768);
+  const double lightEarly = amplitudeNear(lightSamples, 16384, 400.0, 480.0);
+  const double lightLate = amplitudeNear(lightSamples, 24576, 400.0, 480.0);
+  const double heavyEarly = amplitudeNear(heavySamples, 16384, 400.0, 480.0);
+  const double heavyLate = amplitudeNear(heavySamples, 24576, 400.0, 480.0);
+  CHECK(lightLate / lightEarly < 0.40);
+  CHECK(heavyLate / heavyEarly > 0.45);
+  CHECK(peakOf(lightSamples, 0, 32768) > 5.0 * peakOf(heavySamples, 0, 32768));
+  writeListening(lightSamples, "/opt/cursor/artifacts/mmath-violin-bow-body-light.wav");
+
+  const char* names[] = {"viola", "cello", "double bass"};
+  const StringCourse others[] = {unwrap(viola()).courses[2], unwrap(cello()).courses[3],
+                                 unwrap(doubleBass()).courses[3]};
+  const char* paths[] = {"/opt/cursor/artifacts/mmath-viola-bow-body.wav",
+                         "/opt/cursor/artifacts/mmath-cello-bow-body.wav",
+                         "/opt/cursor/artifacts/mmath-double-bass-bow-body.wav"};
+  for (int i = 0; i < 3; ++i) {
+    const double otherF = others[i].tuning.frequency.value();
+    const BodyModeSpec mode{otherF, 200.0, 20.0};
+    const BowBodyDrive drive{std::span<const BodyModeSpec>(&mode, 1), 0.02, 1.0, kAir, kTemp};
+    const double otherMu = others[i].material.linearDensity.value();
+    const double otherT = others[i].tension.value();
+    const double otherZ = otherMu * std::sqrt(otherT / otherMu);
+    const BowStroke otherStroke{beta, speed, 0.15 * (2.0 * otherZ * speed / (beta * (muS - muD))),
+                                BowFriction{muS, muD}};
+    auto other = unwrap(BowedStringVoice::create(others[i], otherStroke,
+                                                 courseLoss(others[i], 2.0, 0.25), 0.0, 4, 0,
+                                                 kRate, 12000, &drive));
+    const auto rendered = renderOf(other, 32768);
+    CHECK(peakOf(rendered, 16000, 28000) > 1.0e-5);
+    CHECK(std::fabs(pitchNear(rendered, 24576, otherF - 40.0, otherF + 40.0) -
+                    other.fundamentalHz()) < 1.5);
+    CHECK(statusNamed(names[i])->rendersAudio);
+    writeListening(rendered, paths[i]);
+  }
+
+  const BowBodyDrive empty{std::span<const BodyModeSpec>(), 0.02, 1.0, kAir, kTemp};
+  CHECK(BowedStringVoice::create(course, stroke, loss, 0.0, 4, 0, kRate, 100, &empty).error() ==
+        QuantityError::InvalidArgument);
+  const BowBodyDrive negative{std::span<const BodyModeSpec>(&heavyMode, 1), -0.02, 1.0, kAir,
+                             kTemp};
+  CHECK(BowedStringVoice::create(course, stroke, loss, 0.0, 4, 0, kRate, 100, &negative).error() ==
+        QuantityError::InvalidArgument);
+  const BodyModeSpec overdamped{frequency, 0.4, 20.0};
+  const BowBodyDrive soft{std::span<const BodyModeSpec>(&overdamped, 1), 0.02, 1.0, kAir, kTemp};
+  CHECK(BowedStringVoice::create(course, stroke, loss, 0.0, 4, 0, kRate, 100, &soft).error() ==
+        QuantityError::DomainError);
 }
 
 TEST_CASE("a felt hammer rings the stiff string after contact", "[contact]") {

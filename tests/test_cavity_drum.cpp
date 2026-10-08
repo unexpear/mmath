@@ -253,7 +253,7 @@ TEST_CASE("toms radiate through two heads and a cavity", "[cavity]") {
     REQUIRE(status != nullptr);
     CHECK(status->rendersAudio == row.renders);
   }
-  CHECK(instrumentsThatRenderAudio() == 11);
+  CHECK(instrumentsThatRenderAudio() == 15);
   const InstrumentRenderStatus* bass = nullptr;
   for (std::size_t i = 0; i < kInstrumentRenderStatusCount; ++i) {
     if (std::strcmp(kInstrumentRenderStatus[i].name, "bass drum") == 0)

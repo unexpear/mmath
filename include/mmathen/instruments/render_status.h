@@ -10,12 +10,13 @@
 // and a bore valve each step. Clarinet, flute, and saxophone step
 // excitation, bore, and bell radiation in one voice. Trumpet and
 // trombone step the lip, the cup compliance, the cone, and the open
-// end in one voice. Harp, harpsichord, and classical guitar step a
-// pluck, a lossy waveguide, a yielding modal soundboard, and a
-// compact monopole in one voice. The three toms step a mallet, both
-// heads, a closed cavity, and a monopole. The bow, the felt hammer,
-// the bass-drum port, and snare wires stay outside, so those rows
-// stay false.
+// end in one voice. Violin, viola, cello, and double bass step the
+// bow, the lossy waveguide, a yielding modal soundboard, and a
+// compact monopole in one voice. Harp, harpsichord, and classical
+// guitar step a pluck through that same soundboard. The three toms
+// step a mallet, both heads, a closed cavity, and a monopole. The
+// felt hammer, the bass-drum port, and snare wires stay outside, so
+// those rows stay false.
 //
 // The strings are the status, not stored physical constants.
 
@@ -40,24 +41,24 @@ struct InstrumentRenderStatus {
 inline constexpr InstrumentRenderStatus kInstrumentRenderStatus[] = {
     {"violin", "bow friction and pizzicato both step",
      "lossy tuned waveguide; stiffness is a caller argument",
-     "pizzicato can close on a modal soundboard; the bow cannot",
-     "compact monopole of a plucked bridge; the bow does not drive it", false,
-     "Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge."},
+     "bow closes on a modal soundboard; bridge force is the drive",
+     "compact monopole of the bowed bridge acceleration", true,
+     "Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored."},
     {"viola", "bow friction and pizzicato both step",
      "lossy tuned waveguide; stiffness is a caller argument",
-     "pizzicato can close on a modal soundboard; the bow cannot",
-     "compact monopole of a plucked bridge; the bow does not drive it", false,
-     "Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge."},
+     "bow closes on a modal soundboard; bridge force is the drive",
+     "compact monopole of the bowed bridge acceleration", true,
+     "Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored."},
     {"cello", "bow friction and pizzicato both step",
      "lossy tuned waveguide; stiffness is a caller argument",
-     "pizzicato can close on a modal soundboard; the bow cannot",
-     "compact monopole of a plucked bridge; the bow does not drive it", false,
-     "Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge."},
+     "bow closes on a modal soundboard; bridge force is the drive",
+     "compact monopole of the bowed bridge acceleration", true,
+     "Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored."},
     {"double bass", "bow friction and pizzicato both step",
      "lossy tuned waveguide; stiffness is a caller argument",
-     "pizzicato can close on a modal soundboard; the bow cannot",
-     "compact monopole of a plucked bridge; the bow does not drive it", false,
-     "Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge."},
+     "bow closes on a modal soundboard; bridge force is the drive",
+     "compact monopole of the bowed bridge acceleration", true,
+     "Mode frequency, Q, and mass are arguments. A wolf note and A0 are not stored."},
     {"harp", "pluck position steps a waveguide",
      "lossy tuned waveguide; stiffness is a caller argument",
      "modal soundboard driven by bridge force, with feedback",

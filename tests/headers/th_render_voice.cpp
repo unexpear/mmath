@@ -11,7 +11,7 @@
 
 TEST_CASE("render/voice.h is self-contained", "[headers]") {
   CHECK(mmathen::kInstrumentRenderStatusCount == 26);
-  CHECK(mmathen::instrumentsThatRenderAudio() == 11);
+  CHECK(mmathen::instrumentsThatRenderAudio() == 15);
   auto system = mmathen::idealString(mmathen::DistanceMeters{0.5},
                                      mmathen::TensionNewtons{100.0},
                                      mmathen::LinearDensityKgPerM{0.001});

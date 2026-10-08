@@ -195,15 +195,17 @@ StringCourse electricCourse() {
 
 TEST_CASE("three plucked soundboards meet the audible bar", "[pluck]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 11);
-  const char* rigidBridge[] = {"violin", "viola", "cello", "double bass",
-                               "electric guitar"};
-  for (const char* name : rigidBridge) {
+  CHECK(instrumentsThatRenderAudio() == 15);
+  for (const char* name : {"violin", "viola", "cello", "double bass"}) {
     const auto* row = statusNamed(name);
     REQUIRE(row != nullptr);
-    CHECK_FALSE(row->rendersAudio);
+    CHECK(row->rendersAudio);
     CHECK(std::strstr(row->resonator, "waveguide") != nullptr);
   }
+  const auto* electricBridge = statusNamed("electric guitar");
+  REQUIRE(electricBridge != nullptr);
+  CHECK_FALSE(electricBridge->rendersAudio);
+  CHECK(std::strstr(electricBridge->resonator, "waveguide") != nullptr);
   for (const char* name : {"harp", "harpsichord", "classical guitar"}) {
     const auto* row = statusNamed(name);
     REQUIRE(row != nullptr);

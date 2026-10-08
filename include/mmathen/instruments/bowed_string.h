@@ -17,32 +17,56 @@
 // β is the bow's distance from the bridge. The delays are the nearest
 // positive split of 2M, so the realized fraction can differ from the
 // request by less than one sample. Schelleng's window is not enforced;
-// captureStickSlip does not enforce it either. A soundboard is not in
-// the loop.
+// captureStickSlip does not enforce it either.
+//
+// Pass a BowBodyDrive to close the bridge on a modal soundboard. The
+// bridge force Z (2 v+ − v_bridge) drives the modes, and their velocity
+// replaces the rigid −1. The sample is then the compact monopole of
+// the bridge acceleration. With no BowBodyDrive the sample stays the
+// bow-point velocity and the bridge stays rigid.
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <span>
+#include <utility>
 #include <vector>
 
+#include "../math/constants.h"
+#include "../physics/impedance.h"
+#include "../physics/medium.h"
+#include "../physics/oscillator.h"
 #include "../physics/tuned_waveguide.h"
 #include "../render/voice.h"
+#include "body.h"
 #include "bow.h"
 #include "plucked_string.h"
 
 namespace mmathen {
 
+// Caller modes, area, distance, and air. Nothing here is a stored
+// violin admittance or an A0.
+struct BowBodyDrive {
+  std::span<const BodyModeSpec> modes;
+  double radiatingAreaM2 = 0.0;
+  double distanceMeters = 0.0;
+  double airPressurePa = 0.0;
+  double temperatureKelvin = 0.0;
+};
+
 class BowedStringVoice final : public IVoice {
  public:
   // sustainFrames is how long the bow stays down. Zero lifts it before
   // the first sample. fitPartials and dispersionStages follow
-  // designTunedLoop. κ = 0 requires zero dispersion stages.
+  // designTunedLoop. κ = 0 requires zero dispersion stages. body is
+  // optional; null keeps the rigid bridge and the velocity sample.
   [[nodiscard]] static Result<BowedStringVoice, QuantityError> create(
       const StringCourse& course, const BowStroke& stroke, LossModel loss,
       double stiffnessKappa, int fitPartials, int dispersionStages,
-      SampleRateHz rate, std::uint64_t sustainFrames) {
+      SampleRateHz rate, std::uint64_t sustainFrames,
+      const BowBodyDrive* body = nullptr) {
     using R = Result<BowedStringVoice, QuantityError>;
     const double fs = rate.value();
     const double beta = stroke.bridgeFraction;
@@ -83,9 +107,14 @@ class BowedStringVoice final : public IVoice {
       return R::failure(QuantityError::RangeError);
     auto pole = loopPole(filters, rate, 1);
     if (!pole.ok()) return R::failure(pole.error());
-    return R::success(BowedStringVoice{
-        filters, rate, stroke, impedance, bridge, nut, sustainFrames,
-        pole.value().frequency.value(), pole.value().decayRate});
+    BowedStringVoice voice{filters, rate, stroke, impedance, bridge, nut,
+                           sustainFrames, pole.value().frequency.value(),
+                           pole.value().decayRate};
+    if (body != nullptr) {
+      auto attached = voice.attachBody(*body);
+      if (!attached.ok()) return R::failure(attached.error());
+    }
+    return R::success(std::move(voice));
   }
 
   [[nodiscard]] SampleRateHz sampleRate() const override { return rate_; }
@@ -97,12 +126,14 @@ class BowedStringVoice final : public IVoice {
     if (count == 0) return R::success(n);
     if (out == nullptr) return R::failure(QuantityError::InvalidArgument);
     const double twoZ = 2.0 * impedance_;
+    const double fs = rate_.value();
     for (std::uint64_t i = 0; i < count; ++i) {
       const double delayedBridge = bridge_[bridgePos_];
       const double delayedNut = nut_[nutPos_];
       const double filtered = applyFilter(delayedBridge);
       if (!std::isfinite(filtered)) return R::failure(QuantityError::RangeError);
-      const double incomingBridge = -filtered;
+      const double incomingBridge =
+          radiating_ ? bridgeVelocity_ - filtered : -filtered;
       const double incomingNut = -delayedNut;
       const double history = incomingBridge + incomingNut;
       double outgoingBridge = 0.0;
@@ -130,7 +161,29 @@ class BowedStringVoice final : public IVoice {
       nut_[nutPos_] = outgoingNut;
       bridgePos_ = (bridgePos_ + 1) % bridge_.size();
       nutPos_ = (nutPos_ + 1) % nut_.size();
-      out[i] = velocity;
+      if (radiating_) {
+        const double force = impedance_ * (2.0 * filtered - bridgeVelocity_);
+        if (!std::isfinite(force)) return R::failure(QuantityError::RangeError);
+        const double dt = 1.0 / fs;
+        double bridgeVelocity = 0.0;
+        for (BodyMode& mode : modes_) {
+          auto stepped = stepConstantForceOscillator(
+              mode.state, mode.omega, mode.sigma, force / mode.mass, dt);
+          if (!stepped.ok()) return R::failure(stepped.error());
+          mode.state = stepped.value();
+          bridgeVelocity += mode.state.velocity;
+        }
+        if (!std::isfinite(bridgeVelocity))
+          return R::failure(QuantityError::RangeError);
+        const double acceleration = (bridgeVelocity - bridgeVelocity_) * fs;
+        bridgeVelocity_ = bridgeVelocity;
+        const double delayed = radiation_[radiationPos_];
+        radiation_[radiationPos_] = acceleration;
+        radiationPos_ = (radiationPos_ + 1) % radiation_.size();
+        out[i] = scale_ * delayed;
+      } else {
+        out[i] = velocity;
+      }
       ++frame_;
     }
     return R::success(n);
@@ -146,6 +199,10 @@ class BowedStringVoice final : public IVoice {
     std::fill(dsY_.begin(), dsY_.end(), 0.0);
     wasStuck_ = true;
     frame_ = 0;
+    bridgeVelocity_ = 0.0;
+    for (BodyMode& mode : modes_) mode.state = {};
+    std::fill(radiation_.begin(), radiation_.end(), 0.0);
+    radiationPos_ = 0;
   }
 
   [[nodiscard]] double fundamentalHz() const noexcept { return fundamentalHz_; }
@@ -164,8 +221,65 @@ class BowedStringVoice final : public IVoice {
     return static_cast<int>(nut_.size());
   }
   [[nodiscard]] double impedance() const noexcept { return impedance_; }
+  [[nodiscard]] bool radiating() const noexcept { return radiating_; }
 
  private:
+  struct BodyMode {
+    double omega = 0.0;
+    double sigma = 0.0;
+    double mass = 0.0;
+    OscillatorState state;
+  };
+
+  // Modal mass, Q, area, distance, and air are the caller's. A heavy
+  // mass leaves the bridge nearly rigid. The delay is r/c, at least one
+  // sample. Q must keep the mode underdamped.
+  [[nodiscard]] Result<int, QuantityError> attachBody(const BowBodyDrive& body) {
+    using R = Result<int, QuantityError>;
+    const double fs = rate_.value();
+    if (body.modes.empty() || !std::isfinite(body.radiatingAreaM2) ||
+        !(body.radiatingAreaM2 > 0.0) || !std::isfinite(body.distanceMeters) ||
+        !(body.distanceMeters > 0.0) || !std::isfinite(body.airPressurePa) ||
+        !(body.airPressurePa > 0.0))
+      return R::failure(QuantityError::InvalidArgument);
+    std::vector<BodyMode> built;
+    built.reserve(body.modes.size());
+    for (const BodyModeSpec& spec : body.modes) {
+      auto resonator = makeBodyResonator(spec);
+      if (!resonator.ok()) return R::failure(resonator.error());
+      const double omega = resonator.value().omega0;
+      const double sigma = omega / (2.0 * resonator.value().qualityFactor);
+      if (!(sigma < omega)) return R::failure(QuantityError::DomainError);
+      built.push_back(BodyMode{omega, sigma, resonator.value().modalMassKg, {}});
+    }
+    auto air = makeAir(TemperatureKelvin{body.temperatureKelvin});
+    if (!air.ok()) return R::failure(air.error());
+    auto speed = speedOfSound(air.value());
+    if (!speed.ok()) return R::failure(speed.error());
+    auto rho = airDensity(PressurePascals{body.airPressurePa},
+                          TemperatureKelvin{body.temperatureKelvin});
+    if (!rho.ok()) return R::failure(rho.error());
+    const double travel = body.distanceMeters / speed.value().value();
+    if (!std::isfinite(travel) || travel < 0.0)
+      return R::failure(QuantityError::RangeError);
+    const double samples = fs * travel;
+    if (samples > static_cast<double>(std::numeric_limits<int>::max() / 4))
+      return R::failure(QuantityError::RangeError);
+    int delay = static_cast<int>(std::llround(samples));
+    if (delay < 1) delay = 1;
+    const double scale = rho.value().value() * body.radiatingAreaM2 /
+                         (4.0 * constants::pi * body.distanceMeters);
+    if (!std::isfinite(scale) || !(scale > 0.0))
+      return R::failure(QuantityError::RangeError);
+    modes_ = std::move(built);
+    scale_ = scale;
+    radiation_.assign(static_cast<std::size_t>(delay), 0.0);
+    radiationPos_ = 0;
+    bridgeVelocity_ = 0.0;
+    radiating_ = true;
+    return R::success(delay);
+  }
+
   BowedStringVoice(LoopFilters filters, SampleRateHz rate, BowStroke stroke,
                    double impedance, int bridge, int nut,
                    std::uint64_t sustainFrames, double fundamentalHz,
@@ -224,6 +338,12 @@ class BowedStringVoice final : public IVoice {
   std::vector<double> dsY_;
   bool wasStuck_ = true;
   std::uint64_t frame_ = 0;
+  bool radiating_ = false;
+  double scale_ = 0.0;
+  double bridgeVelocity_ = 0.0;
+  std::vector<BodyMode> modes_;
+  std::vector<double> radiation_;
+  std::size_t radiationPos_ = 0;
 };
 
 }  // namespace mmathen
