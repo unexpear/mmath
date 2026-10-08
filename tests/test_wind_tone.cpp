@@ -111,9 +111,11 @@ constexpr std::uint64_t kFrames = 96000;
 //
 // Brass mouth pressure — Bertsch and Hoole, ISMA 2014: tongue-tip
 // movement at the start of an attack about 40–128 ms, and about 40–64 ms
-// for faster single tonguing. Trumpet 40 ms and trombone 45 ms are that
-// fast tongue. tongueReleaseFrames is the moment the tongue lets the
-// lip go; the mouth-pressure ramp is separate.
+// for faster single tonguing. Trumpet 40 ms is the fast end. Trombone
+// 128 ms is the long end, used as the pressure rise with the lip free:
+// a tongue slap at full pressure put the finished series on in one
+// cycle. tongueReleaseFrames is the moment the tongue lets the lip go;
+// the mouth-pressure ramp is separate. Zero leaves the lip free.
 // The sound that follows is compared with Luce and Clark, JASA 42,
 // 1232–1243 (1967): trumpet fundamental transient about 10 ms; trombone
 // fundamental about seven cycles, higher partials tending toward 70 ms
@@ -123,9 +125,15 @@ constexpr std::uint64_t kClarinetAttack = 19200;   // 0.40 s
 constexpr std::uint64_t kSaxophoneAttack = 19200;  // 0.40 s
 constexpr std::uint64_t kFluteAttack = 960;        // 20 ms
 constexpr std::uint64_t kTrumpetAttack = 1920;     // 40 ms
-constexpr std::uint64_t kTrumpetTongue = 1200;     // 25 ms
-constexpr std::uint64_t kTromboneAttack = 2160;    // 45 ms
-constexpr std::uint64_t kTromboneTongue = 576;     // 12 ms
+// The opening lip is free while mouth pressure rises. A tongue slap
+// at full pressure put the finished series on in one cycle. Later
+// notes still use the 40 ms Bertsch closure in renderPhrase.
+constexpr std::uint64_t kTrumpetTongue = 0;
+// Long end of Bertsch and Hoole's 40–128 ms tongue-tip movement, used
+// here as the pressure rise. The lip is free, so the buzz grows with
+// that rise instead of starting as a slap.
+constexpr std::uint64_t kTromboneAttack = 6144;    // 128 ms
+constexpr std::uint64_t kTromboneTongue = 0;
 
 std::vector<double> renderOf(IVoice& voice, std::uint64_t frames) {
   std::vector<double> samples(static_cast<std::size_t>(frames));
@@ -644,6 +652,43 @@ double growthDbPerSec(const std::vector<double>& x, double fundamentalHz, double
   }
   if (!(enter >= 0.0) || !(leave > enter)) return 0.0;
   return 22.0 / (leave - enter);
+}
+
+// Milliseconds by which broadband residual leads the fundamental's
+// arrival at 20 dB under the 1.6 s amplitude. Residual energy is the
+// window energy left after the fundamental sine is removed. 25 ms is
+// an acceptance argument, not a measured constant from Li or Fletcher.
+// A negative value means the fundamental was already that loud in the
+// first window that had any residual.
+double residualLeadMs(const std::vector<double>& x, double fundamentalHz, double rate) {
+  const int window = 1024;
+  const int hop = 240;
+  const auto steadyAt = static_cast<std::size_t>(1.6 * rate);
+  const double steady = goertzel(x, steadyAt, 8192, fundamentalHz, rate) / 8192.0;
+  const double steadyDb = 20.0 * std::log10(steady + 1.0e-30);
+  double tFund = -1.0;
+  double tRes = -1.0;
+  const int limit = static_cast<int>(0.80 * rate);
+  for (int start = 0; start + window < limit; start += hop) {
+    const auto origin = static_cast<std::size_t>(start);
+    const double g = goertzel(x, origin, window, fundamentalHz, rate);
+    const double db = 20.0 * std::log10(g / static_cast<double>(window) + 1.0e-30);
+    const double peak = 2.0 * g / static_cast<double>(window);
+    double energy = 0.0;
+    for (int i = 0; i < window; ++i) {
+      const double s = x[origin + static_cast<std::size_t>(i)];
+      energy += s * s;
+    }
+    double residual = energy - 0.5 * peak * peak * static_cast<double>(window);
+    if (residual < 0.0) residual = 0.0;
+    const double resRms = std::sqrt(residual / static_cast<double>(window));
+    const double fundRms = peak / std::sqrt(2.0);
+    const double time = (static_cast<double>(start) + 0.5 * window) / rate;
+    if (tFund < 0.0 && db >= steadyDb - 20.0) tFund = time;
+    if (tRes < 0.0 && resRms > fundRms && resRms > 1.0e-5) tRes = time;
+  }
+  if (!(tFund >= 0.0) || !(tRes >= 0.0)) return -1.0e9;
+  return 1000.0 * (tFund - tRes);
 }
 
 // Power fractions of a Hann-windowed steady FFT. high is above 0.4 fs,
@@ -1237,10 +1282,14 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   std::cout << "clarinet fundamental growth " << growth
             << " dB/s (Li, Almeida, Smith, and Wolfe, JASA 139, 2016: "
                "tens to hundreds on a soft note, about 1000 on an accent)\n";
-  // The Adagio pressure rise is the soft end of that paper, not an
-  // accent and not a tone that is already periodic at full spectrum.
-  CHECK(growth > 40.0);
-  CHECK(growth < 1200.0);
+  // Soft notes: Li et al. put r in the tens to hundreds of dB/s.
+  // The acceptance window is 50–500. 25 ms of residual lead is an
+  // acceptance argument.
+  const double clarinetLead = residualLeadMs(clarinetSamples, clarinetPeriod.frequencyHz, kFs);
+  std::cout << "clarinet residual lead " << clarinetLead << " ms\n";
+  CHECK(growth > 50.0);
+  CHECK(growth < 500.0);
+  CHECK(clarinetLead >= 25.0);
   {
     // 80–180 ms is still the reed-gap noise. A finished tone here is
     // the theremin attack. Lag is the steady period.
@@ -1330,6 +1379,14 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   checkTone(
       Tone{"saxophone", saxophone.fundamentalHz, Spectrum::Saxophone, saxSamples},
       kFs);
+  const Period saxPeriod = periodNear(saxSamples, 70000, saxophone.fundamentalHz, kFs);
+  const double saxGrowth = growthDbPerSec(saxSamples, saxPeriod.frequencyHz, kFs);
+  const double saxLead = residualLeadMs(saxSamples, saxPeriod.frequencyHz, kFs);
+  std::cout << "saxophone fundamental growth " << saxGrowth
+            << " dB/s  residual lead " << saxLead << " ms\n";
+  CHECK(saxGrowth > 50.0);
+  CHECK(saxGrowth < 500.0);
+  CHECK(saxLead >= 25.0);
   const double saxLufs = writeListening(saxSamples, "mmath-saxophone.wav", kFs);
   {
     // The two-second note is the low register. The bar below is the
@@ -1360,7 +1417,10 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // unsourced fraction as the saxophone, on the round-trip envelope.
   ValveBlow jet = sustained(overpressure, 1800.0, kFluteAttack);
   jet.reflectionMagnitude = 0.985;
-  jet.initialDisplacementMeters = 0.50 * thickness;
+  // The standing wave grows from the jet noise. A half-thickness
+  // initial deflection was already a periodic jet, and the pressure
+  // ramp then faded that tone in.
+  jet.initialDisplacementMeters = 0.0;
   jet.jetAimMeters = 0.40 * thickness;
   jet.jetNoiseMeters = 0.035 * thickness;
   jet.reedTurbulence = 0.40;
@@ -1373,6 +1433,14 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   CHECK(std::fabs(jetVoice.fundamentalHz() - pipe) < 8.0);
   CHECK(pipe > 250.0);
   CHECK(pipe < 600.0);
+  const Period flutePeriod = periodNear(jetSamples, 70000, jetVoice.fundamentalHz(), kFs);
+  const double fluteGrowth = growthDbPerSec(jetSamples, flutePeriod.frequencyHz, kFs);
+  const double fluteLead = residualLeadMs(jetSamples, flutePeriod.frequencyHz, kFs);
+  std::cout << "flute fundamental growth " << fluteGrowth
+            << " dB/s  residual lead " << fluteLead
+            << " ms (Fletcher, Acustica 34, 1976; Coltman: jet noise "
+               "before the standing wave)\n";
+  CHECK(fluteLead >= 25.0);
   const double fluteLufs = writeListening(jetSamples, "mmath-flute.wav", kFs);
 
   // Length is an argument chosen so the cone's second root sits near
@@ -1390,13 +1458,16 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // Apex 0.26 m is an argument. A shorter apex leaves the lip growing for
   // about 0.4 s; this distance reaches a steady second-register tone on
   // the Luce and Clark timescale while the harmonic series stays bright.
-  // Tongue release at 25 ms, while the 40 ms Bertsch ramp is still
-  // rising. The lip then reaches Luce and Clark's ~50 ms window.
+  // The lip is free during the 40 ms rise. A tongue slap at full
+  // pressure put the finished series on in one cycle.
   ValveBlow lip = sustained(2800.0, 10000.0, kTrumpetAttack);
   lip.reflectionMagnitude = 0.999;
   lip.initialDisplacementMeters = 0.0;
   lip.tongueReleaseFrames = kTrumpetTongue;
   lip.brassiness = 1.0;
+  // Fraction of the lip jet. Fletcher and Rossing, chap. 13, call the
+  // flow turbulent and print no ratio. 0.20 is an argument.
+  lip.reedTurbulence = 0.20;
   auto lipVoice =
       unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
   CHECK(lipVoice.fundamentalHz() > 80.0);
@@ -1407,6 +1478,14 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   const Period trumpetPeriod = periodNear(lipSamples, 70000, trumpetNote, kFs);
   CHECK(trumpetPeriod.frequencyHz > 1.8 * lipVoice.fundamentalHz());
   CHECK(trumpetPeriod.frequencyHz < 2.4 * lipVoice.fundamentalHz());
+  const double trumpetGrowth =
+      growthDbPerSec(lipSamples, trumpetPeriod.frequencyHz, kFs);
+  const double trumpetLead =
+      residualLeadMs(lipSamples, trumpetPeriod.frequencyHz, kFs);
+  std::cout << "trumpet fundamental growth " << trumpetGrowth
+            << " dB/s  residual lead " << trumpetLead
+            << " ms (Fletcher and Rossing, chap. 13: lip buzz into the bore)\n";
+  CHECK(trumpetLead >= 25.0);
   const double trumpetLufs =
       writeListening(lipSamples, "mmath-trumpet.wav", kFs);
 
@@ -1436,13 +1515,14 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   CHECK(std::fabs(trombone.bore.lengthMeters - tromboneLength) < 1.0e-12);
   // Apex 0.60 m is an argument, for the same reason as the trumpet: the
   // lip reaches the second register in a human attack instead of ~0.5 s.
-  // Tongue release at 12 ms. A later release overshoots by several
-  // decibels and the 1 dB hold waits that ring out.
+  // The lip is free during the 128 ms rise. A snap to the rest opening
+  // crossed −20 dB inside the first audible hop.
   ValveBlow bone = sustained(1600.0, 5000.0, kTromboneAttack);
   bone.reflectionMagnitude = 0.999;
   bone.initialDisplacementMeters = 0.0;
   bone.tongueReleaseFrames = kTromboneTongue;
   bone.brassiness = 1.0;
+  bone.reedTurbulence = 0.20;
   auto boneVoice =
       unwrap(ConeValveVoice::fromTrombone(trombone, 0.60, bone, kRate));
   CHECK(boneVoice.fundamentalHz() > 40.0);
@@ -1455,6 +1535,14 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
       periodNear(boneSamples, 70000, tromboneNote, kFs);
   CHECK(trombonePeriod.frequencyHz > 1.8 * boneVoice.fundamentalHz());
   CHECK(trombonePeriod.frequencyHz < 2.4 * boneVoice.fundamentalHz());
+  const double tromboneGrowth =
+      growthDbPerSec(boneSamples, trombonePeriod.frequencyHz, kFs);
+  const double tromboneLead =
+      residualLeadMs(boneSamples, trombonePeriod.frequencyHz, kFs);
+  std::cout << "trombone fundamental growth " << tromboneGrowth
+            << " dB/s  residual lead " << tromboneLead
+            << " ms (same lip-buzz growth as the trumpet)\n";
+  CHECK(tromboneLead >= 25.0);
   const double tromboneLufs =
       writeListening(boneSamples, "mmath-trombone.wav", kFs);
 
@@ -1513,10 +1601,13 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // Terrien's 10–30 ms is the significant rise, not this hold.
   CHECK(fluteMs > 20.0);
   CHECK(fluteMs < 420.0);
-  CHECK(trumpetMs > 30.0);
-  CHECK(trumpetMs < 90.0);
-  CHECK(tromboneMs > 70.0);
-  CHECK(tromboneMs < 180.0);
+  // The 1 dB hold is later than the pressure rise. Trumpet measured
+  // 100 ms on a 40 ms rise with the lip free; the old 25 ms snap held
+  // near 60 ms. Trombone measured 225 ms on the 128 ms rise.
+  CHECK(trumpetMs > 50.0);
+  CHECK(trumpetMs < 180.0);
+  CHECK(tromboneMs > 140.0);
+  CHECK(tromboneMs < 400.0);
 
   const double playbackLufs[] = {clarinetLufs, saxLufs, fluteLufs, trumpetLufs,
                                  tromboneLufs};
@@ -1717,7 +1808,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     ValveBlow jet = sustained(pressureFor(lowest) * 0.50, 1800.0, kFluteAttack);
     jet.frames = frames;
     jet.reflectionMagnitude = 0.985;
-    jet.initialDisplacementMeters = 0.50 * thickness;
+    jet.initialDisplacementMeters = 0.0;
     jet.jetAimMeters = 0.40 * thickness;
     jet.jetNoiseMeters = 0.035 * thickness;
     jet.reedTurbulence = 0.40;
@@ -1784,6 +1875,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     lip.initialDisplacementMeters = 0.0;
     lip.tongueReleaseFrames = kTrumpetTongue;
     lip.brassiness = 1.0;
+    lip.reedTurbulence = 0.20;
     auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
     std::vector<PhraseNote> notes;
     double start = 0.0;
@@ -1833,6 +1925,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     bone.initialDisplacementMeters = 0.0;
     bone.tongueReleaseFrames = kTromboneTongue;
     bone.brassiness = 1.0;
+    bone.reedTurbulence = 0.20;
     auto voice = unwrap(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate));
     std::vector<PhraseNote> notes;
     double start = 0.0;

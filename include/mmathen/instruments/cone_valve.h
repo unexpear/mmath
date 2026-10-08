@@ -122,7 +122,8 @@ class ConeValveVoice final : public IVoice {
       // A disturbance of this blowing pressure is cancelled by the pressure
       // search, so it does not radiate, and on the shorter tubes it is
       // enough to lock the second mode. The fraction is applied to the
-      // radiated pressure below, after the loop. A lip is not this channel.
+      // radiated pressure below, after the loop. A lip uses the same
+      // radiated breath, with the lip period in place of the reed period.
       // A tongue holds the valve shut while mouth pressure rises, then
       // lets go. The release frame is the start of the acoustic attack.
       const bool tongued = tongueFrames_ > 0 && frame_ < tongueFrames_;
@@ -135,7 +136,11 @@ class ConeValveVoice final : public IVoice {
           velocity_ = 0.0;
         }
       } else if (tongueFrames_ > 0 && frame_ == tongueFrames_) {
-        displacement_ = initialDisplacement_;
+        // A reed leaves the lay at the caller's initial displacement.
+        // A lip stays on the closed stop; blowing pressure accelerates
+        // it. Placing the lip at its rest opening would start the note
+        // already open.
+        if (!lip_) displacement_ = initialDisplacement_;
         velocity_ = 0.0;
       }
       const double known = 2.0 * incoming - integrator_ - beta * previousPressure_;
@@ -149,6 +154,14 @@ class ConeValveVoice final : public IVoice {
         // can leave a roundoff slit, and the pressure search then fails
         // against a bore that is already sounding.
         if (tongued || !open) opening = 0.0;
+        // The closed stop is −rest/slit. Storing that displacement and
+        // multiplying back by the slit leaves a roundoff opening, about
+        // 1e−22 m². solvePressure then cannot bracket: the Bernoulli
+        // term is femtopascals, the residual at the sealed guess does
+        // not change sign, and a sounding bore aborts the note. A buzz
+        // is a finite fraction of the rest opening, so this cut is
+        // roundoff, not a lip area.
+        if (restOpening_ > 0.0 && opening < restOpening_ * 1.0e-6) opening = 0.0;
       } else if (open && mouth > 0.0) {
         auto area = reedAreaAtDisplacement(reed_, inertia_, displacement_);
         if (!area.ok()) return R::failure(area.error());
@@ -158,13 +171,25 @@ class ConeValveVoice final : public IVoice {
       if (!solved.ok()) return R::failure(solved.error());
       pressure = solved.value();
       apertureFlow_ = 0.0;
-      if (!lip_ && open && mouth > 0.0 && !tongued && opening > 0.0)
+      if (open && mouth > 0.0 && !tongued && opening > 0.0)
         apertureFlow_ = std::fabs(bernoulli(opening, mouth - pressure));
       double outgoing = pressure - incoming;
-      if (apertureFlow_ > 0.0)
+      if (apertureFlow_ > 0.0) {
+        // Reed: f_res. Lip: the caller's lip resonance. Both seed the
+        // bore with a slice of the aperture flow. Fletcher and Rossing,
+        // chap. 13, call that jet turbulent and print no ratio.
+        double seedHz = inertia_.resonanceHz;
+        if (lip_) {
+          if (trumpet_.lipMassKg > 0.0 && trumpet_.lipStiffnessNewtonsPerMeter > 0.0) {
+            seedHz = std::sqrt(trumpet_.lipStiffnessNewtonsPerMeter / trumpet_.lipMassKg) /
+                     constants::twoPi;
+          } else {
+            seedHz = 0.0;
+          }
+        }
         outgoing += valve_detail::reedGapSeedPressure(
-            noise_, breathState_, apertureFlow_, reedTurbulence_, impedance_,
-            inertia_.resonanceHz, dt);
+            noise_, breathState_, apertureFlow_, reedTurbulence_, impedance_, seedHz, dt);
+      }
       if (!std::isfinite(pressure) || !std::isfinite(outgoing))
         return R::failure(QuantityError::RangeError);
       integrator_ += beta * (pressure + previousPressure_);
@@ -211,16 +236,22 @@ class ConeValveVoice final : public IVoice {
       // was supplied. The monopole above is still the bell flow; this
       // transfer is the measured saxophone spectrum of a beating reed.
       if (break_.active()) radiated = break_.step(radiated);
-      // Reed-gap jet, after the loop. The same mouth as the clarinet.
-      // A lip has no reed channel. See reedApertureBreath.
-      if (!lip_ && reedTurbulence_ > 0.0 && open && mouth > 0.0 && !tongued) {
+      // Reed-gap or lip jet, after the loop. The same mouth as the
+      // clarinet. See reedApertureBreath.
+      if (reedTurbulence_ > 0.0 && open && mouth > 0.0 && !tongued) {
         const double trip =
             line_.empty() ? 1.0 : static_cast<double>(line_.size());
-        const double reedPeriod =
-            inertia_.resonanceHz > 0.0 ? 1.0 / inertia_.resonanceHz : 0.0;
+        double period = 0.0;
+        if (!lip_ && inertia_.resonanceHz > 0.0) period = 1.0 / inertia_.resonanceHz;
+        if (lip_ && trumpet_.lipMassKg > 0.0 &&
+            trumpet_.lipStiffnessNewtonsPerMeter > 0.0) {
+          const double omega =
+              std::sqrt(trumpet_.lipStiffnessNewtonsPerMeter / trumpet_.lipMassKg);
+          if (omega > 0.0) period = constants::twoPi / omega;
+        }
         radiated += valve_detail::reedApertureBreath(
             flowMean_, breathEnv_, noise_, breathState_, apertureFlow_, radiated,
-            reedTurbulence_, density_, listener_, trip, rate_.value(), reedPeriod);
+            reedTurbulence_, density_, listener_, trip, rate_.value(), period);
       }
       out[i] = radiated;
       if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);

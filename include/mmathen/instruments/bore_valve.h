@@ -78,9 +78,11 @@ enum class ValveLaw { InwardReed, OutwardLip, Jet };
 // radiusMeters and endCorrectionMeters are the unflanged-pipe load.
 // Both are arguments. A non-positive radius means the far end stays the
 // constant magnitude above.
-// attackFrames and releaseFrames ramp the blowing pressure with a raised
-// cosine. listenerDistanceMeters is the free-field distance of the
-// radiated sample. jetAimMeters shifts the flute jet off the edge center;
+// attackFrames ramps the blowing pressure through attackPressureFraction:
+// a quick rise to the threshold region, a creep across it, then the
+// rest of the published duration. releaseFrames stays a raised cosine.
+// listenerDistanceMeters is the free-field distance of the radiated
+// sample. jetAimMeters shifts the flute jet off the edge center;
 // zero is centered. reflectionCutoffHz is the low-pass reflection
 // corner. Zero leaves the constant far-end magnitude and does not apply
 // wall loss, so an ideal bore keeps its pitch and its |R|. A positive
@@ -90,8 +92,10 @@ enum class ValveLaw { InwardReed, OutwardLip, Jet };
 // on the radiated pressure, separate from the loop cutoff. Zero keeps
 // the previous rule: a positive reflection cutoff supplies that corner.
 // tongueReleaseFrames keeps a reed or a lip on its closed stop until
-// that frame, then places it at initialDisplacementMeters. Zero leaves
-// the valve free from the first sample. Mouth pressure ramps on its own.
+// that frame. A reed is then placed at initialDisplacementMeters. A lip
+// stays shut and the blowing pressure accelerates it: snapping a lip to
+// its rest opening is an already-open valve. Zero leaves the valve free
+// from the first sample. Mouth pressure ramps on its own.
 // reedTurbulence is the fraction of the reed-gap jet, or of a flue
 // jet, added as a zero-mean disturbance. On a reed, one sample of
 // that fraction of the mean aperture flow, over the reed period, is
@@ -112,11 +116,16 @@ enum class ValveLaw { InwardReed, OutwardLip, Jet };
 // of the blowing pressure is cancelled by the pressure search, and
 // on the shorter saxophone tubes that pressure locks the second
 // mode, so the seed is a slice of the aperture flow and not that
-// pressure. A lip has no reed channel and skips it. Fletcher and
-// Rossing (The Physics of Musical Instruments, 2nd ed., chap. 13)
-// treat the reed channel as turbulent. Neither source prints a
-// noise-to-harmonic ratio, so the fraction is an argument. Zero is
-// the deterministic valve.
+// pressure. A lip uses the same seed and the same radiated breath,
+// with the lip period 2π√(m/k) in place of the reed period: Fletcher
+// and Rossing (chap. 13) treat the lip jet as turbulent as well.
+// A flue jet does not add that pressure slice. On this pipe it pulls
+// the fifth partial under −40 dB. The bore seed is the turbulent
+// centerline offset, jetNoiseMeters. The radiated monopole uses the
+// mixing-layer transit h/U until the standing wave is louder than
+// that jet (Fletcher, Acustica 34, 1976; Coltman). Neither source
+// prints a noise-to-harmonic ratio, so the fraction is an argument.
+// Zero is the deterministic valve.
 // brassiness is the fraction of the cylindrical Burgers advance
 // applied to the traveling wave as it reaches the bell. β = (γ+1)/2
 // and δt = β p L / (ρ c³). Hirschberg, Gilbert, Msallam, and Wijnands
@@ -155,9 +164,43 @@ struct ValveBlow {
 
 namespace valve_detail {
 
-// Raised cosine, 0 at the start of the attack and at the end of the
-// release. A zero attack or release is a step. Past blowFrames the
-// player has stopped.
+// Fraction of the full pressure during an attack, x in [0, 1].
+//
+// A single raised cosine is steepest at half pressure. These demo
+// embouchures start to oscillate near that middle, so the cosine
+// crosses threshold at its greatest slope and the fundamental then
+// jumps (clarinet ~880 dB/s). Bergeot et al. (arXiv:1510.04793) show that
+// a fast blowing-pressure rise delays the bifurcation and the amplitude
+// then jumps; a gradual rise lets the
+// oscillation grow while the pressure is still near threshold. Li,
+// Almeida, Smith, and Wolfe (JASA 139, 2016) measured that near-threshold
+// growth at tens to hundreds of dB/s on a soft note. The time and
+// pressure fractions are arguments: those papers do not print this
+// waveform. The slow segment is the middle of the published attack
+// duration, not a longer attack.
+[[nodiscard]] inline double attackPressureFraction(double x) {
+  auto cosine = [](double u) { return 0.5 * (1.0 - std::cos(constants::pi * u)); };
+  // Reach the region just under threshold quickly, creep through the
+  // pressures where these reeds actually grow, then settle. A cosine on
+  // the creep would be steepest in the middle of that band.
+  constexpr double kTimeLo = 0.18;
+  constexpr double kTimeHi = 0.72;
+  constexpr double kPressureLo = 0.50;
+  constexpr double kPressureHi = 0.78;
+  if (x <= 0.0) return 0.0;
+  if (x >= 1.0) return 1.0;
+  if (x < kTimeLo) return kPressureLo * cosine(x / kTimeLo);
+  if (x < kTimeHi) {
+    const double u = (x - kTimeLo) / (kTimeHi - kTimeLo);
+    return kPressureLo + (kPressureHi - kPressureLo) * u;
+  }
+  const double u = (x - kTimeHi) / (1.0 - kTimeHi);
+  return kPressureHi + (1.0 - kPressureHi) * cosine(u);
+}
+
+// Attack uses attackPressureFraction. Release stays a raised cosine, 0
+// at the end of the blow. A zero attack or release is a step. Past
+// blowFrames the player has stopped.
 [[nodiscard]] inline double blowingPressure(double full, std::uint64_t blowFrames,
                                             std::uint64_t attackFrames,
                                             std::uint64_t releaseFrames,
@@ -166,7 +209,7 @@ namespace valve_detail {
   if (attackFrames > 0 && frame < attackFrames) {
     const double x =
         static_cast<double>(frame) / static_cast<double>(attackFrames);
-    return full * 0.5 * (1.0 - std::cos(constants::pi * x));
+    return full * attackPressureFraction(x);
   }
   if (releaseFrames > 0 && blowFrames > releaseFrames &&
       frame + releaseFrames >= blowFrames) {
@@ -595,9 +638,8 @@ class BoreValveVoice final : public IVoice {
       const double bellFlow = (incident - incoming) / impedance_;
       double radiated = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
                                                  radiationState_, radiationCorner_, dt);
-      // After the loop, so the limit cycle is unchanged. A reed uses
-      // the aperture jet (reedApertureBreath). A jet keeps the
-      // round-trip envelope of the radiated pressure. See
+      // After the loop, so the limit cycle is unchanged. Reed, lip, and
+      // jet all use the aperture jet (reedApertureBreath). See
       // ValveBlow::reedTurbulence.
       const bool open = frame_ < blowFrames_;
       const bool tongued = tongueFrames_ > 0 && frame_ < tongueFrames_;
@@ -612,13 +654,27 @@ class BoreValveVoice final : public IVoice {
             flowMean_, breathEnv_, noise_, breathState_, apertureFlow_, radiated,
             reedTurbulence_, density_, listener_, trip, rate_.value(), reedPeriod);
       } else if (reedTurbulence_ > 0.0 && law_ == ValveLaw::Jet && open && mouth > 0.0) {
+        // Fletcher, Acustica 34 (1976), and Coltman: the jet and the
+        // edge-tone noise are present before the pipe locks. The
+        // correlation time is the mixing-layer transit h/U, not the
+        // round-trip envelope of a tone that does not exist yet.
+        // Once the standing wave is louder than that jet, the fraction
+        // scales the round-trip envelope, as on the reed.
         const double trip =
             line_.empty() ? 1.0 : static_cast<double>(line_.size());
-        const double leak = 1.0 - std::exp(-1.0 / trip);
-        breathEnv_ += leak * (radiated * radiated - breathEnv_);
-        if (breathEnv_ < 0.0) breathEnv_ = 0.0;
-        const double scale = std::sqrt(breathEnv_);
-        radiated += reedTurbulence_ * scale * valve_detail::breathSample(noise_, breathState_);
+        const double jetPeriod =
+            (jetSpeed_ > 0.0 && jetThickness_ > 0.0) ? jetThickness_ / jetSpeed_ : 0.0;
+        radiated += valve_detail::reedApertureBreath(
+            flowMean_, breathEnv_, noise_, breathState_, apertureFlow_, radiated,
+            reedTurbulence_, density_, listener_, trip, rate_.value(), jetPeriod);
+      } else if (reedTurbulence_ > 0.0 && law_ == ValveLaw::OutwardLip && open && mouth > 0.0 &&
+                 !tongued) {
+        const double trip =
+            line_.empty() ? 1.0 : static_cast<double>(line_.size());
+        const double lipPeriod = lipPeriodSeconds();
+        radiated += valve_detail::reedApertureBreath(
+            flowMean_, breathEnv_, noise_, breathState_, apertureFlow_, radiated,
+            reedTurbulence_, density_, listener_, trip, rate_.value(), lipPeriod);
       }
       out[i] = radiated;
       if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);
@@ -972,6 +1028,17 @@ class BoreValveVoice final : public IVoice {
     return R::success(0.5 * (lo + hi));
   }
 
+  // Lip period from the caller's mass and stiffness. Zero when this
+  // voice is not a lip.
+  [[nodiscard]] double lipPeriodSeconds() const {
+    if (!(trumpet_.lipMassKg > 0.0) || !(trumpet_.lipStiffnessNewtonsPerMeter > 0.0))
+      return 0.0;
+    const double omega =
+        std::sqrt(trumpet_.lipStiffnessNewtonsPerMeter / trumpet_.lipMassKg);
+    if (!(omega > 0.0)) return 0.0;
+    return constants::twoPi / omega;
+  }
+
   [[nodiscard]] double bernoulli(double opening, double deltaP) const {
     if (!(opening > 0.0) || deltaP == 0.0) return 0.0;
     const double speed = std::sqrt(2.0 * std::fabs(deltaP) / density_);
@@ -1034,7 +1101,8 @@ class BoreValveVoice final : public IVoice {
       displacement_ = -restOpening_ / slitWidth_;
       velocity_ = 0.0;
     } else if (tongueFrames_ > 0 && frame_ == tongueFrames_) {
-      displacement_ = initialDisplacement_;
+      // Stay on the closed stop. The pressure accelerates the lip;
+      // the rest opening is not where a tongue lets go.
       velocity_ = 0.0;
     }
     double opening = restOpening_ + slitWidth_ * displacement_;
@@ -1043,11 +1111,26 @@ class BoreValveVoice final : public IVoice {
     // Same closed stop as the cone: a tongue is a shut lip, not a
     // roundoff slit. See ConeValveVoice.
     if (tongued || !open) opening = 0.0;
+    // Same roundoff slit as ConeValveVoice: the closed stop does not
+    // multiply back to zero, and the pressure search then fails.
+    if (restOpening_ > 0.0 && opening < restOpening_ * 1.0e-6) opening = 0.0;
     const double target = mouth - 2.0 * incoming;
     auto delta = solveDelta(opening, target);
     if (!delta.ok()) return R::failure(delta.error());
     const double pressure = mouth - delta.value();
     outgoing = pressure - incoming;
+    apertureFlow_ = 0.0;
+    if (open && mouth > 0.0 && !tongued && opening > 0.0)
+      apertureFlow_ = std::fabs(bernoulli(opening, delta.value()));
+    if (apertureFlow_ > 0.0) {
+      // Fletcher and Rossing, chap. 13: the lip jet is turbulent. The
+      // correlation frequency is the lip's own resonance, from the
+      // caller's mass and stiffness, the same role f_res plays for a
+      // reed. The fraction is an argument; that chapter prints no ratio.
+      const double lipHz = lipPeriodSeconds() > 0.0 ? 1.0 / lipPeriodSeconds() : 0.0;
+      outgoing += valve_detail::reedGapSeedPressure(
+          noise_, breathState_, apertureFlow_, reedTurbulence_, impedance_, lipHz, dt);
+    }
     if (!std::isfinite(outgoing) || !std::isfinite(pressure))
       return R::failure(QuantityError::RangeError);
     if (open && mouth > 0.0 && !tongued) {
@@ -1065,7 +1148,6 @@ class BoreValveVoice final : public IVoice {
   [[nodiscard]] Result<bool, QuantityError> stepJet(double incoming, double& outgoing,
                                                     double dt) {
     using R = Result<bool, QuantityError>;
-    (void)dt;
     const bool open = frame_ < blowFrames_;
     const double mouth = mouthNow();
     double jetFlow = 0.0;
@@ -1095,6 +1177,21 @@ class BoreValveVoice final : public IVoice {
     const double eta0 = std::tanh(jetAim_ / thickness);
     const double acoustic = jetFlow * 2.0 * (eta - eta0);
     outgoing = -incoming + impedance_ * acoustic;
+    apertureFlow_ = open && mouth > 0.0 ? std::fabs(jetFlow) : 0.0;
+    jetSpeed_ = 0.0;
+    if (open && mouth > 0.0) {
+      auto speed = fluteJetSpeed(jetFlute(), mouth);
+      if (!speed.ok()) return R::failure(speed.error());
+      jetSpeed_ = speed.value();
+    }
+    // The turbulent centerline offset above is what seeds the bore.
+    // Fletcher, Acustica 34 (1976), and Coltman: edge-tone noise is
+    // present before the pipe locks. A pressure slice of the whole
+    // jet, at U/h or at the convection rate U/W, pulls the fifth
+    // partial of this note under −40 dB, so that slice is not added.
+    // The audible breath before lock-in is the radiated monopole,
+    // correlation h/U, in the jet branch of renderBlock.
+    (void)dt;
     const double boreFlow = (outgoing - incoming) / impedance_;
     if (!std::isfinite(outgoing) || !std::isfinite(boreFlow))
       return R::failure(QuantityError::RangeError);
@@ -1155,6 +1252,7 @@ class BoreValveVoice final : public IVoice {
   std::uint64_t tongueFrames_ = 0;
   double jetAim_ = 0.0;
   double jetNoise_ = 0.0;
+  double jetSpeed_ = 0.0;
   double reedTurbulence_ = 0.0;
   valve_detail::TripLoss wall_{};
   valve_detail::TripLoss cutoff_{};
