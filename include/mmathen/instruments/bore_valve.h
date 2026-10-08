@@ -166,6 +166,21 @@ struct ValveBlow {
   // keeps that default. The frequency is the caller's mode, not a
   // stored bandwidth.
   double wallMatchHz = 0.0;
+  // Cylinder radius for Kirchhoff's ring, when the caller has one.
+  // Zero uses the bore area. A cited slide bore can differ from the
+  // cone area the lengths were tuned on.
+  double wallRadiusMeters = 0.0;
+  // Bessel flare carried by the bore, a(x) = b (x + x0)^{−γ} with x
+  // measured from the mouth. A positive length replaces a straight-pipe
+  // Levine–Schwinger termination at radiusMeters with the input
+  // reflectance of that horn. radiusMeters is still the mouth at which
+  // Levine–Schwinger ends the horn. Zero leaves a straight pipe of
+  // radiusMeters when that radius is positive. The four numbers are
+  // the caller's profile. No bell curve is stored.
+  double bellLengthMeters = 0.0;
+  double bellFlare = 0.0;
+  double bellCoefficient = 0.0;
+  double bellMouthOffsetMeters = 0.0;
 };
 
 namespace valve_detail {
@@ -259,7 +274,12 @@ namespace valve_detail {
       blow.reedTurbulence > 1.0 || !std::isfinite(blow.brassiness) ||
       blow.brassiness < 0.0 || blow.brassiness > 1.0 ||
       !std::isfinite(blow.spectrumBreakHz) || blow.spectrumBreakHz < 0.0 ||
-      !std::isfinite(blow.wallMatchHz) || blow.wallMatchHz < 0.0)
+      !std::isfinite(blow.wallMatchHz) || blow.wallMatchHz < 0.0 ||
+      !std::isfinite(blow.wallRadiusMeters) || blow.wallRadiusMeters < 0.0 ||
+      !std::isfinite(blow.bellLengthMeters) || blow.bellLengthMeters < 0.0 ||
+      !std::isfinite(blow.bellFlare) || blow.bellFlare < 0.0 ||
+      !std::isfinite(blow.bellCoefficient) || blow.bellCoefficient < 0.0 ||
+      !std::isfinite(blow.bellMouthOffsetMeters) || blow.bellMouthOffsetMeters < 0.0)
     return false;
   return true;
 }

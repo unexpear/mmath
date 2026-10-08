@@ -1332,6 +1332,56 @@ void reportPhrase(const char* instrument, const std::vector<PhraseNote>& notes,
 // (2016), Eq. 3. 27.29 is that product.
 constexpr double kDecayDbPerHz = 27.29;
 
+// Bach Stradivarius 42 tenor trombone. Conn-Selmer prints an 8-1/2 in
+// one-piece hand-hammered bell and a .547 in large bore:
+// https://connselmer.com/instruments/trombones/bach-stradivarius-tenor-trombone-in-bb-42
+// The international inch is 0.0254 m. The radius is half that diameter.
+// The .547 in bore is not substituted for the excerpt throat.
+constexpr double kBach42BellRadiusMeters = 0.5 * 8.5 * 0.0254;
+
+// Bach 180S37. The maker's page names a #37 bell and a .459 in bore and
+// does not print a diameter:
+// https://bachbrass.com/trumpets/bach-stradivarius-trumpet-in-bb-180s37
+// The Vincent Bach catalog prints 4 13/16 in (122.24 mm) for Bb trumpet
+// bells and says every Bb trumpet bell has that diameter; the bell number
+// is the mandrel, not the diameter. 4.8 in is that figure rounded and is
+// not the value used here. The .459 in bore is not substituted for the
+// excerpt throat.
+constexpr double kBach37BellRadiusMeters = 0.5 * (4.0 + 13.0 / 16.0) * 0.0254;
+
+// Bach 42 large bore, the same Conn-Selmer page. Kirchhoff's ring uses
+// this radius. The cone area stays 3.0e-4 m².
+constexpr double kBach42BoreRadiusMeters = 0.5 * 0.547 * 0.0254;
+
+// Scott, Measurement and Synthesis of the Trombone (SFU M.Sc., 2012),
+// Table 2.2. a(x) = b (x + x0)^{−γ}, x from the mouth. The table prints
+// a 0.108 m mouth; the Bach 42 mouth is the Levine–Schwinger termination.
+void applyScottBell(ValveBlow& blow) {
+  blow.radiusMeters = kBach42BellRadiusMeters;
+  blow.bellLengthMeters = 0.502;
+  blow.bellFlare = 0.7;
+  blow.bellCoefficient = 0.0063;
+  blow.bellMouthOffsetMeters = 0.0174;
+}
+
+// Thibault and Chabassier, JASA 150 (2021): a natural trumpet, cylinder
+// radius 6 mm, then a Bessel horn of exponent 0.7 from 0.716 m to
+// 1.335 m. Their mouth is 60 mm. b and x0 are the pair that meets the
+// 6 mm throat and the Bach #37 mouth. They are not solved onto a Q.
+void applyBach37Bell(ValveBlow& blow) {
+  constexpr double kLength = 1.335 - 0.716;
+  constexpr double kGamma = 0.7;
+  constexpr double kThroat = 0.006;
+  const double mouth = kBach37BellRadiusMeters;
+  const double ratio = std::pow(mouth / kThroat, 1.0 / kGamma);
+  const double offset = kLength / (ratio - 1.0);
+  blow.radiusMeters = mouth;
+  blow.bellLengthMeters = kLength;
+  blow.bellFlare = kGamma;
+  blow.bellCoefficient = mouth * std::pow(offset, kGamma);
+  blow.bellMouthOffsetMeters = offset;
+}
+
 // Autocorrelation lag nearest the expected period. A subharmonic of the
 // played pitch is outside the ±12% search.
 double playedNear(const std::vector<double>& x, std::size_t origin, double expectHz,
@@ -2128,6 +2178,10 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     lip.tongueReleaseFrames = kTrumpetTongue;
     lip.brassiness = 1.0;
     lip.reedTurbulence = 0.20;
+    // Bessel flare of the natural-trumpet horn, Levine–Schwinger at the
+    // Bach #37 mouth. The cone apex stays 0.26 m. The horn's travel is
+    // not stacked on the sounding length.
+    applyBach37Bell(lip);
     auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
     std::vector<PhraseNote> notes;
     double start = 0.0;
@@ -2153,8 +2207,9 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
       int mode;
     };
     const Finger finger[] = {
-        // Lengths are the tubes this 3.0e-4 m² bore plays on pitch.
-        // The fingers tuned for 1.0e-4 m² sat flat on this bore.
+        // Lengths are the tubes the previous 3.0e-4 m² bore played on pitch.
+        // The throat is now the Bach 42 .547 in bore. The fingers tuned
+        // for 1.0e-4 m² sat flat on the wider bore.
         {466.16, 1.331, 4}, {440.00, 1.416, 4}, {392.00, 1.596, 4}, {349.23, 1.312, 3},
         {523.25, 1.181, 4}, {329.63, 1.394, 3}, {293.66, 1.579, 3}, {554.37, 1.732, 6},
     };
@@ -2181,6 +2236,11 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     bone.tongueReleaseFrames = kTromboneTongue;
     bone.brassiness = 1.0;
     bone.reedTurbulence = 0.20;
+    // Scott's Bessel bell, Levine–Schwinger at the Bach 42 mouth.
+    // The cone apex stays 0.60 m. Kirchhoff's ring uses the .547 in
+    // slide; the cone area stays 3.0e-4 m², the area these lengths play.
+    applyScottBell(bone);
+    bone.wallRadiusMeters = kBach42BoreRadiusMeters;
     auto voice = unwrap(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate));
     std::vector<PhraseNote> notes;
     double start = 0.0;
@@ -2225,16 +2285,17 @@ TEST_CASE("brass breath stops ring at the published bandwidth", "[contact][wind]
   {
     // Mode 4, about 465 Hz, is the excerpt Bb4 fingering. The note is
     // played on the mild log-mean wall. Kirchhoff on the existing
-    // 1.09e-4 m² throat is fitted when the breath stops. No bell radius
-    // is added: a radius chosen to hit 10.9–13.9 Hz would be a fit.
+    // 1.09e-4 m² throat is fitted when the breath stops. The bell radius
+    // is the Bach #37 mouth, not a radius solved onto 10.9–13.9 Hz.
     const double mass = 3.0e-5;
     const double lip0 = 0.75 * speed / 1.45;
     const double omega = constants::twoPi * lip0;
     auto trumpet = unwrap(makeTrumpet(TrumpetSpec{1.70, 1.09e-4, kAir, kTemp, 0.0, 8.0e-7, 1.5e-5,
                                                   1.2e-2, mass, omega * omega * mass, 1.2e-5,
                                                   0.001}));
-    auto voice = unwrap(ConeValveVoice::fromTrumpet(
-        trumpet, 0.26, lipBlow(2800.0, 10000.0, 1.00, 0.0, 0.0, 0.0), kRate));
+    ValveBlow mode4 = lipBlow(2800.0, 10000.0, 1.00, 0.0, 0.0, 0.0);
+    applyBach37Bell(mode4);
+    auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, mode4, kRate));
     REQUIRE(voice.setSoundingLength(1.023));
     const double lip = 0.80 * conePartial(1.023, 0.26, 3);
     const RingGrade grade =
@@ -2355,9 +2416,19 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
                "Fréour et al., JASA 148:748 (2020): Bb trumpet mode 4, 464.7 Hz, "
                "Q 42.6, Δf 10.9 Hz, about 298 dB/s. Petiot, Poirson & Gilbert "
                "(2004): single horn Q 32–38, and mode 8 Q 26–43. Ablitzer, "
-               "Acta Acustica 5:53 (2021): bass-trombone peaks 2–9, Q 24–40, "
-               "Δf 4.8–14 Hz, a proxy. No constant is fitted to those targets. "
-               "No bell radius on these notes.\n";
+               "Acta Acustica 5:53 (2021): bass-trombone peaks 2–9, Q 24–40. "
+               "The windows below are per mode, ±20% of each Ablitzer range "
+               "(that ±20% is UNSOURCED), not the 4.8–14 Hz span. "
+               "Trumpet mouth is the Bach #37 bell, 4 13/16 in, on the Thibault "
+               "and Chabassier Bessel horn (exponent 0.7, length 0.619 m, "
+               "throat 6 mm). Trombone mouth is the Bach 42 bell, 8-1/2 in, "
+               "on Scott's Table 2.2 horn (exponent 0.7, length 0.502 m). "
+               "Levine–Schwinger ends that horn. It is not the straight-pipe "
+               "load of the mouth on the unflared cone. The trombone ring "
+               "uses Kirchhoff on the Bach 42 .547 in slide. The cone area "
+               "stays 3.0e-4 m², the area these lengths play. The trumpet "
+               "throat stays 1.09e-4 m². The radius is not reduced to enter "
+               "a window.\n";
 
   struct Finger {
     double hertz;
@@ -2372,6 +2443,7 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
 
   auto grade = [&](ConeValveVoice& voice, const char* instrument, const char* name, double scoreSec,
                    double targetHz, double lipHz, double length, double peakHz, double stopSec,
+                   const char* place, int acousticMode, double windowLo, double windowHi,
                    std::vector<double>& demo) {
     REQUIRE(voice.setSoundingLength(length));
     REQUIRE(voice.setLipResonanceHz(lipHz));
@@ -2396,11 +2468,16 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
     const double playedCents = played > 1.0 ? 1200.0 * std::log2(played / targetHz) : 0.0;
     const double ringCents =
         (ring > 1.0 && played > 1.0) ? 1200.0 * std::log2(ring / played) : 0.0;
-    std::cout << instrument << " " << name << " score " << scoreSec << " s  peak " << peakHz
-              << " Hz  Q " << q << "  df " << df << " Hz  played " << played << " Hz ("
-              << playedCents << " cents)  ring " << ring << " Hz (" << ringCents
-              << " cents)  tail " << slope << " dB/s  model " << model << " dB/s  ratio " << ratio
-              << "\n";
+    std::cout << instrument << " " << name << " score " << scoreSec << " s  " << place
+              << "  mode " << acousticMode << "  peak " << peakHz << " Hz  Q " << q << "  df "
+              << df << " Hz";
+    if (windowHi > windowLo)
+      std::cout << "  window " << windowLo << "–" << windowHi;
+    else
+      std::cout << "  window none";
+    std::cout << "  played " << played << " Hz (" << playedCents << " cents)  ring " << ring
+              << " Hz (" << ringCents << " cents)  tail " << slope << " dB/s  model " << model
+              << " dB/s  ratio " << ratio << "\n";
     CHECK(df > 0.0);
     CHECK(played > 1.0);
     CHECK(std::fabs(playedCents) < 50.0);
@@ -2408,6 +2485,10 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
     CHECK(slope < 0.0);
     CHECK(ratio > 0.80);
     CHECK(ratio < 1.20);
+    if (windowHi > windowLo) {
+      CHECK(df >= windowLo);
+      CHECK(df <= windowHi);
+    }
     demo.insert(demo.end(), out.begin(), out.end());
   };
 
@@ -2444,13 +2525,33 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
         blow.tongueReleaseFrames = 0;
         blow.brassiness = 1.0;
         blow.reedTurbulence = 0.20;
+        applyBach37Bell(blow);
         auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, blow, kRate));
+        const char* place = "fingering UNSOURCED";
+        int acoustic = 0;
+        double windowLo = 0.0;
+        double windowHi = 0.0;
+        // Ordinary Bb-trumpet valves. Written pitch is a major second
+        // above concert. The chart itself is UNSOURCED. Mode 4 is the
+        // open Bb4 (Fréour 464.7 Hz), window 10.9–13.9 Hz. Mode 8 is
+        // about 929 Hz and is not in this excerpt.
+        if (std::fabs(src.hertz - 392.00) < 0.02) place = "1+2";
+        else if (std::fabs(src.hertz - 349.23) < 0.02) place = "open";
+        else if (std::fabs(src.hertz - 466.16) < 0.02) {
+          place = "open";
+          acoustic = 4;
+          windowLo = 10.9;
+          windowHi = 13.9;
+        } else if (std::fabs(src.hertz - 587.33) < 0.02) place = "open";
+        else if (std::fabs(src.hertz - 523.25) < 0.02) place = "1";
         grade(voice, "trumpet", src.name, start, src.hertz, lip, row.length, peak, src.seconds,
-              demo);
+              place, acoustic, windowLo, windowHi, demo);
       }
       start += src.seconds;
     }
     writePhrase(demo, "mmath-trumpet-breath-release.wav", kFs);
+    std::cout << "trumpet excerpt has no mode 8 note (Petiot window 21.6–35.7 Hz "
+                 "is about 929 Hz). Graded notes are G4, F4, Bb4, D5, and C5.\n";
   }
 
   {
@@ -2476,9 +2577,34 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
         blow.tongueReleaseFrames = 0;
         blow.brassiness = 1.0;
         blow.reedTurbulence = 0.20;
+        applyScottBell(blow);
+        blow.wallRadiusMeters = kBach42BoreRadiusMeters;
         auto voice = unwrap(ConeValveVoice::fromTrombone(horn, 0.60, blow, kRate));
+        const char* place = "position not a mode 2–9";
+        int acoustic = 0;
+        double windowLo = 0.0;
+        double windowHi = 0.0;
+        // Bb tenor slide. Bb4 is 1st position, Ablitzer mode 8. G4 and E4
+        // are 2nd position, modes 7 and 6. The ±20% windows are the ones
+        // already used for Tables 1–2. Db5 is not a mode 2–9 partial.
+        if (std::fabs(src.hertz - 466.16) < 0.02) {
+          place = "1st";
+          acoustic = 8;
+          windowLo = 8.90;
+          windowHi = 14.24;
+        } else if (std::fabs(src.hertz - 392.00) < 0.02) {
+          place = "2nd";
+          acoustic = 7;
+          windowLo = 7.54;
+          windowHi = 12.10;
+        } else if (std::fabs(src.hertz - 329.63) < 0.02) {
+          place = "2nd";
+          acoustic = 6;
+          windowLo = 6.96;
+          windowHi = 10.79;
+        }
         grade(voice, "trombone", src.name, start, src.hertz, lip, row.length, peak, src.seconds,
-              demo);
+              place, acoustic, windowLo, windowHi, demo);
       }
       start += src.seconds;
     }

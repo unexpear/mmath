@@ -289,4 +289,82 @@ class OpenEndReflection {
   double lowpass_ = 0.0;
 };
 
+// Piecewise-cylindrical Bessel horn a(x) = b (x + x0)^{−γ}, x from the
+// mouth, ended by the Levine–Schwinger load of an unflanged pipe of
+// mouthRadiusMeters. The return is the pressure-reflection magnitude
+// at the throat. The horn's own travel stays in the caller's bore
+// length: this magnitude is not a second delay. Invalid geometry or a
+// non-positive frequency returns 1, a sealed lossless end.
+struct BesselBellProfile {
+  double lengthMeters = 0.0;
+  double gamma = 0.0;
+  double coefficient = 0.0;
+  double mouthOffsetMeters = 0.0;
+  double mouthRadiusMeters = 0.0;
+};
+
+[[nodiscard]] inline double besselBellReflectionMagnitude(BesselBellProfile bell,
+                                                         double frequencyHz,
+                                                         double speedMetersPerSecond) {
+  if (!(bell.lengthMeters > 0.0) || !(bell.gamma > 0.0) || !(bell.coefficient > 0.0) ||
+      !(bell.mouthOffsetMeters > 0.0) || !(bell.mouthRadiusMeters > 0.0) ||
+      !(frequencyHz > 0.0) || !(speedMetersPerSecond > 0.0))
+    return 1.0;
+  constexpr int kSlices = 160;
+  const double wave = constants::twoPi * frequencyHz / speedMetersPerSecond;
+  if (!std::isfinite(wave) || !(wave > 0.0)) return 1.0;
+  const double step = bell.lengthMeters / static_cast<double>(kSlices);
+  double radius[kSlices];
+  for (int i = 0; i < kSlices; ++i) {
+    const double fromMouth =
+        bell.lengthMeters * (1.0 - (static_cast<double>(i) + 0.5) / static_cast<double>(kSlices));
+    const double arg = fromMouth + bell.mouthOffsetMeters;
+    if (!(arg > 0.0)) return 1.0;
+    radius[i] = bell.coefficient * std::pow(arg, -bell.gamma);
+    if (!(radius[i] > 0.0) || !std::isfinite(radius[i])) return 1.0;
+  }
+  const double ka = wave * bell.mouthRadiusMeters;
+  const double load = 0.25 * ka * ka;
+  if (!std::isfinite(load) || load < 0.0) return 1.0;
+  double real = (load - 1.0) / (load + 1.0);
+  double imag = 0.0;
+  const double theta = 2.0 * wave * step;
+  const double cosine = std::cos(theta);
+  const double sine = std::sin(theta);
+  for (int i = kSlices - 1; i >= 0; --i) {
+    const double nextReal = real * cosine + imag * sine;
+    const double nextImag = imag * cosine - real * sine;
+    real = nextReal;
+    imag = nextImag;
+    if (i == 0) break;
+    const double here = radius[i] * radius[i];
+    const double previous = radius[i - 1] * radius[i - 1];
+    if (!(here > 0.0) || !(previous > 0.0)) return 1.0;
+    const double zHere = 1.0 / here;
+    const double zPrev = 1.0 / previous;
+    const double dRe = 1.0 - real;
+    const double dIm = -imag;
+    const double den = dRe * dRe + dIm * dIm;
+    if (!(den > 0.0) || !std::isfinite(den)) return 1.0;
+    const double nRe = 1.0 + real;
+    const double nIm = imag;
+    const double qRe = (nRe * dRe + nIm * dIm) / den;
+    const double qIm = (nIm * dRe - nRe * dIm) / den;
+    const double inRe = zHere * qRe;
+    const double inIm = zHere * qIm;
+    const double aRe = inRe - zPrev;
+    const double aIm = inIm;
+    const double bRe = inRe + zPrev;
+    const double bIm = inIm;
+    const double bDen = bRe * bRe + bIm * bIm;
+    if (!(bDen > 0.0) || !std::isfinite(bDen)) return 1.0;
+    real = (aRe * bRe + aIm * bIm) / bDen;
+    imag = (aIm * bRe - aRe * bIm) / bDen;
+    if (!std::isfinite(real) || !std::isfinite(imag)) return 1.0;
+  }
+  const double magnitude = std::hypot(real, imag);
+  if (!std::isfinite(magnitude) || !(magnitude > 0.0) || magnitude > 1.0) return 1.0;
+  return magnitude;
+}
+
 }  // namespace mmathen

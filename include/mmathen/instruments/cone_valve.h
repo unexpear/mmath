@@ -30,8 +30,12 @@
 // A positive ValveBlow::radiusMeters replaces the ideal open-end −1
 // with OpenEndReflection. The bell radius and the end correction are
 // arguments. The geometric bell area is not used as that radius. A
-// non-conical area exponent is BesselHornVoice, not a chain of cones.
-// No bell curve is stored. A positive cup compliance on the lip path is
+// positive bell length is a different termination: the input reflectance
+// of a Bessel flare a(x) = b (x + x0)^{−γ}, ended by Levine–Schwinger at
+// that same mouth. The horn travel is not added to the sounding length.
+// A non-conical area exponent on the whole air column is
+// BesselHornVoice, not a chain of cones. No measured bell curve is
+// stored. A positive cup compliance on the lip path is
 // the lumped volume in parallel with the throat: C dp/dt = U_lip − U_bore, with
 // C = V/(ρ c²) taken from the trumpet. A zero cup leaves the junction
 // unchanged. Cup volume is an argument. An extra length on the trumpet
@@ -114,7 +118,8 @@ class ConeValveVoice final : public IVoice {
       // incident wave, not the filtered return.
       const double incident = readBore();
       const double reflected = cutoff_.step(incident);
-      const double incoming = radiating_ ? openEnd_.step(reflected) : -reflected;
+      const double incoming = flareOn_ ? -flareLoss_.step(reflected)
+                                    : (radiating_ ? openEnd_.step(reflected) : -reflected);
       if (!std::isfinite(incoming)) return R::failure(QuantityError::RangeError);
       const bool open = frame_ < blowFrames_;
       double mouth = valve_detail::blowingPressure(
@@ -295,6 +300,8 @@ class ConeValveVoice final : public IVoice {
     frame_ = 0;
     if (playingWallSaved_) wall_.pole = playingWallPole_;
     playingWallSaved_ = false;
+    flareLoss_.reset();
+    flareMatchHz_ = 0.0;
   }
 
   [[nodiscard]] double fundamentalHz() const noexcept { return fundamentalHz_; }
@@ -314,7 +321,9 @@ class ConeValveVoice final : public IVoice {
       return 0.0;
     double magnitude = valve_detail::onePoleMagnitude(wall_.pole, frequencyHz, fs) *
                        valve_detail::onePoleMagnitude(cutoff_.pole, frequencyHz, fs);
-    if (radiating_) {
+    if (flareOn_) {
+      magnitude *= besselBellReflectionMagnitude(bell_, frequencyHz, speed_);
+    } else if (radiating_) {
       auto reflected = openEnd_.response(frequencyHz);
       if (!reflected.ok()) return 0.0;
       magnitude *= std::hypot(reflected.value().real, reflected.value().imag);
@@ -348,12 +357,20 @@ class ConeValveVoice final : public IVoice {
     }
     if (!(frequencyHz < 0.5 * fs)) return false;
     const double area = density_ * speed_ / impedance_;
-    const double throat = std::sqrt(area / constants::pi);
+    const double throat =
+        wallRadius_ > 0.0 ? wallRadius_ : std::sqrt(area / constants::pi);
     const double transmission = valve_detail::kirchhoffTripMagnitude(
         frequencyHz, throat, soundingLength_, speed_, density_);
     const double pole = valve_detail::onePoleMatching(transmission, frequencyHz, fs);
     if (!(pole > 0.0) || !(pole < 1.0)) return false;
     wall_.pole = pole;
+    if (flareOn_ && frequencyHz > 0.0) {
+      flareMatchHz_ = frequencyHz;
+      const double reflected =
+          besselBellReflectionMagnitude(bell_, frequencyHz, speed_);
+      const double flarePole = valve_detail::onePoleMatching(reflected, frequencyHz, fs);
+      if (flarePole > 0.0) flareLoss_.pole = flarePole;
+    }
     return true;
   }
 
@@ -388,6 +405,8 @@ class ConeValveVoice final : public IVoice {
       wall_.pole = playingWallPole_;
       playingWallSaved_ = false;
     }
+    // The next sounding length matches the flare at c/(2L) again.
+    flareMatchHz_ = 0.0;
     return true;
   }
 
@@ -406,9 +425,29 @@ class ConeValveVoice final : public IVoice {
     // Half a sample is the Nyquist average in readBore, as in create().
     double timed = fs * 2.0 * lengthMeters / speed_ - 0.5;
     const double guess = speed_ / (2.0 * lengthMeters);
+    if (flareOn_) {
+      // The ring matches the flare at the impedance peak. While the lip
+      // is driving, the pole stays a wire: a match at c/(2L) sits far
+      // under the note, and its phase put the opening YIN on the bore
+      // peak. The sounding length is already the turning plane.
+      if (flareMatchHz_ > 0.0) {
+        const double reflected =
+            besselBellReflectionMagnitude(bell_, flareMatchHz_, speed_);
+        const double flarePole =
+            valve_detail::onePoleMatching(reflected, flareMatchHz_, fs);
+        if (flarePole > 0.0) flareLoss_.pole = flarePole;
+      } else {
+        flareLoss_.pole = 0.0;
+      }
+    }
+    // A straight-pipe mouth keeps its fraction inside OpenEndReflection.
+    // A flare is a one-pole on the same loop as the wall, so its phase
+    // comes off the line and the geometric length stays the round trip.
     if (!radiating_) {
       timed -= valve_detail::onePolePhaseDelay(wall_.pole, guess, fs);
       timed -= valve_detail::onePolePhaseDelay(cutoff_.pole, guess, fs);
+      if (flareOn_ && flareLoss_.pole > 0.0)
+        timed -= valve_detail::onePolePhaseDelay(flareLoss_.pole, guess, fs);
     }
     if (!std::isfinite(timed) || !(timed > 1.0)) return false;
     const double limit = static_cast<double>(line_.size());
@@ -489,6 +528,27 @@ class ConeValveVoice final : public IVoice {
     double cutPole = 0.0;
     const bool lossy = blow.reflectionCutoffHz > 0.0;
     const double geometricGuess = speed / (2.0 * sounding);
+    const bool flare = blow.bellLengthMeters > 0.0 && blow.bellFlare > 0.0 &&
+                       blow.bellCoefficient > 0.0 && blow.bellMouthOffsetMeters > 0.0 &&
+                       blow.radiusMeters > 0.0;
+    // A straight-pipe mouth keeps OpenEndReflection, fraction and all.
+    // A Bessel flare is a one-pole of that horn's throat reflectance, so
+    // the line keeps the geometric length the way a lossless −1 does.
+    const bool radiating = blow.radiusMeters > 0.0 && !flare;
+    BesselBellProfile bell{};
+    double flarePole = 0.0;
+    if (flare) {
+      bell.lengthMeters = blow.bellLengthMeters;
+      bell.gamma = blow.bellFlare;
+      bell.coefficient = blow.bellCoefficient;
+      bell.mouthOffsetMeters = blow.bellMouthOffsetMeters;
+      bell.mouthRadiusMeters = blow.radiusMeters;
+      const double reflected =
+          besselBellReflectionMagnitude(bell, geometricGuess, speed);
+      flarePole = valve_detail::onePoleMatching(reflected, geometricGuess, fs);
+      if (flarePole > 0.0)
+        timed -= valve_detail::onePolePhaseDelay(flarePole, geometricGuess, fs);
+    }
     if (lossy) {
       // α ∝ 1/r and r grows linearly along the cone, so the trip uses
       // the log-mean radius, not the throat alone.
@@ -515,7 +575,7 @@ class ConeValveVoice final : public IVoice {
       if (!std::isfinite(cutPole) || !(cutPole > 0.0) || !(cutPole < 1.0) ||
           !std::isfinite(logMean) || !(logMean > 0.0))
         return R::failure(QuantityError::RangeError);
-      if (!(blow.radiusMeters > 0.0)) {
+      if (!radiating) {
         timed -= valve_detail::onePolePhaseDelay(wallPole, geometricGuess, fs);
         timed -= valve_detail::onePolePhaseDelay(cutPole, geometricGuess, fs);
       }
@@ -539,7 +599,6 @@ class ConeValveVoice final : public IVoice {
     const double alpha = speed / apex;
     if (!std::isfinite(alpha) || !(alpha > 0.0))
       return R::failure(QuantityError::RangeError);
-    const bool radiating = blow.radiusMeters > 0.0;
     OpenEndReflection openEnd;
     double decay = 0.0;
     double boreThiran = 0.0;
@@ -588,6 +647,14 @@ class ConeValveVoice final : public IVoice {
     }
     if (!std::isfinite(hertz) || !(hertz > 0.0))
       return R::failure(QuantityError::RangeError);
+    if (flare) {
+      const double reflected = besselBellReflectionMagnitude(bell, hertz, speed);
+      if (!(reflected > 0.0) || reflected > 1.0)
+        return R::failure(QuantityError::RangeError);
+      const double trip = roundTrip > 0.0 ? roundTrip : static_cast<double>(delay) / fs;
+      decay -= std::log(reflected) / trip;
+      if (!std::isfinite(decay)) return R::failure(QuantityError::RangeError);
+    }
     if (lossy) {
       const double extra = valve_detail::onePoleMagnitude(wallPole, hertz, fs) *
                            valve_detail::onePoleMagnitude(cutPole, hertz, fs);
@@ -601,6 +668,10 @@ class ConeValveVoice final : public IVoice {
                          radiating);
     voice.wall_.pole = wallPole;
     voice.cutoff_.pole = cutPole;
+    voice.flareLoss_.pole = flarePole;
+    voice.flareOn_ = flare;
+    voice.bell_ = bell;
+    voice.wallRadius_ = blow.wallRadiusMeters;
     voice.decay_ = decay;
     voice.openEnd_ = std::move(openEnd);
     voice.boreThiran_ = boreThiran;
@@ -833,6 +904,11 @@ class ConeValveVoice final : public IVoice {
   double slitWidth_ = 0.0;
   bool lip_ = false;
   bool radiating_ = false;
+  bool flareOn_ = false;
+  double flareMatchHz_ = 0.0;
+  double wallRadius_ = 0.0;
+  BesselBellProfile bell_{};
+  valve_detail::TripLoss flareLoss_{};
   OpenEndReflection openEnd_{};
   ReedCharacteristic reed_{};
   ReedInertia inertia_{};
