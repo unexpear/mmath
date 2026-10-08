@@ -17,9 +17,9 @@
 // A positive ValveBlow::radiusMeters replaces the ideal open-end −1
 // with OpenEndReflection. The bell radius and the end correction are
 // arguments. The geometric bell area is not used as that radius. A
-// non-conical Bessel exponent is not discretized, and no bell curve
-// is stored. A positive cup compliance on the lip path is the lumped
-// volume in parallel with the throat: C dp/dt = U_lip − U_bore, with
+// non-conical area exponent is BesselHornVoice, not a chain of cones.
+// No bell curve is stored. A positive cup compliance on the lip path is
+// the lumped volume in parallel with the throat: C dp/dt = U_lip − U_bore, with
 // C = V/(ρ c²) taken from the trumpet. A zero cup leaves the junction
 // unchanged. Cup volume is an argument. An extra length on the trumpet
 // or the trombone is tubing the caller adds to L: engaged valve slides,

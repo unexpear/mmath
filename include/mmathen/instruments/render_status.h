@@ -8,8 +8,8 @@
 // rendersAudio is the audio column: the stepper produces samples.
 // fullInstrumentComplete is stricter. It is true only when the full
 // instrument and the physics that shape its sound are in that stepper.
-// None of these rows are complete: viscous wall loss, a non-conical
-// flare, snare wires, a bass-drum port, cymbal nonlinearity, an
+// None of these rows are complete: viscous wall loss, a measured bell
+// curve, snare wires, a bass-drum port, cymbal nonlinearity, an
 // electric-guitar body, unison courses, and a wolf note are still out.
 // render/voice.h pulls any IVoice into a
 // WavSink. Plucked courses, a bowed course, a felt hammer, a mallet,
@@ -106,11 +106,11 @@ inline constexpr InstrumentRenderStatus kInstrumentRenderStatus[] = {
     {"trumpet", "outward lip steps a cone with the cup",
      "truncated cone; cup compliance C dp/dt = U_lip - U_bore", "none",
      "Levine-Schwinger open end on the cone", true, false,
-     "Engaged valve lengths are an argument. A non-conical bell flare is outside this cone."},
+     "Engaged valve lengths are an argument. A caller Bessel area exponent is the flare. No measured bell curve is stored."},
     {"trombone", "outward lip steps the slide length on a cone with the cup",
      "truncated cone at L = L0 + 2x; cup compliance is stepped", "none",
      "Levine-Schwinger open end on the cone", true, false,
-     "The F-attachment length is an argument. A non-conical flare is outside this slide."},
+     "The F-attachment length is an argument. A caller Bessel area exponent is the flare. No measured slide chart is stored."},
     {"saxophone", "inward reed steps the spherical-wave cone",
      "truncated-cone delay; the cylinder is not this stepper",
      "none", "Levine-Schwinger open end; bell radius is an argument", true, false,

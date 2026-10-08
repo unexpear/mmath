@@ -112,6 +112,7 @@ if(BUILD_TESTING)
     tests/test_soundboard.cpp
     tests/test_cavity_drum.cpp
     tests/test_bore_network.cpp
+    tests/test_bessel_horn.cpp
     tests/test_published_defaults.cpp
     tests/test_tuning.cpp
     tests/test_pitch.cpp
@@ -241,6 +242,7 @@ if(BUILD_TESTING)
     tests/headers/th_instruments_reed.cpp
     tests/headers/th_instruments_clarinet.cpp
     tests/headers/th_instruments_bore_network.cpp
+    tests/headers/th_instruments_bessel_horn.cpp
     tests/headers/th_instruments_flute.cpp
     tests/headers/th_instruments_trumpet.cpp
     tests/headers/th_instruments_saxophone.cpp

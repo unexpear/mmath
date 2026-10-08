@@ -110,8 +110,8 @@ snare wires are not in those steppers.
 | Piano | Felt hammer steps a stiff waveguide | Lossy stiff tuned waveguide; strike and stiffness are arguments | Hammer closes on a modal soundboard; bridge force is the drive | Compact monopole of the hammered bridge acceleration | yes | no | Mode frequency, Q, and mass are arguments. The other four courses are not coupled |
 | Clarinet | Inward reed steps a bore delay | Cylindrical delay; an open end replaces the constant magnitude | None | Levine-Schwinger open end; radius and end correction are arguments | yes | no | Caller holes and a register key sit on the lattice. Viscous wall loss is outside this bore |
 | Flute | Jet steps an open embouchure | Open-open cylindrical delay | None | Levine-Schwinger open end at the far end; the embouchure stays an ideal release | yes | no | Caller tone holes sit on the lattice. Viscous wall loss is outside this bore |
-| Trumpet | Outward lip steps a cone with the cup | Truncated cone; cup compliance \(C\,dp/dt = U_{\mathrm{lip}}-U_{\mathrm{bore}}\) | None | Levine-Schwinger open end on the cone | yes | no | Engaged valve lengths are an argument. A non-conical bell flare is outside this cone |
-| Trombone | Outward lip steps the slide length on a cone with the cup | Truncated cone at \(L = L_0 + 2x\); cup compliance is stepped | None | Levine-Schwinger open end on the cone | yes | no | The F-attachment length is an argument. A non-conical flare is outside this slide |
+| Trumpet | Outward lip steps a cone with the cup | Truncated cone, or a caller Bessel area exponent | None | Levine-Schwinger open end on the cone or the horn | yes | no | Engaged valve lengths are an argument. A caller Bessel area exponent is the flare. No measured bell curve is stored |
+| Trombone | Outward lip steps the slide length on a cone with the cup | Truncated cone at \(L = L_0 + 2x\), or a caller Bessel area exponent | None | Levine-Schwinger open end on the cone or the horn | yes | no | The F-attachment length is an argument. A caller Bessel area exponent is the flare. No measured slide chart is stored |
 | Saxophone | Inward reed steps the spherical-wave cone | Truncated-cone delay; the cylinder is not this stepper | None | Levine-Schwinger open end; bell radius is an argument | yes | no | Caller tone holes sit on the stepped cone. Viscous wall loss is outside this bore |
 | Bass drum | Felt mallet steps the batter head | Damped membrane modes; a port is not opened | Closed cavity, not a ported shell | Monopole of the batter volume acceleration | no | no | Two heads and a closed cavity radiate. The port is absent |
 | Rack tom 10 in | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | no | Head tension and Q are arguments. No port is in this shell |
@@ -194,6 +194,7 @@ interval.
 | `instruments/soundboard_voice.h` | Plucked course on a yielding modal soundboard. Bridge force drives the modes; their velocity is the end displacement. The sample is \(\rho A a(t-r/c)/(4\pi r)\). Frequency, Q, mass, area, and distance are arguments |
 | `physics/radiation.h` | Unflanged open-end load \((1/4)(ka)^2+jk\Delta\) and its delay-plus-curvature stepper. Radius and end correction are arguments |
 | `instruments/cone_valve.h` | Reed or lip on the spherical-wave cone, optional open end, cup compliance, and a caller extra length for valves or the F attachment. Zero extra length leaves the cone unchanged |
+| `instruments/bessel_horn.h` | Lip on a Webster power-law horn. Area exponent 0 is the cylinder and 2 is the cone. Any other non-negative exponent is the flare, solved with Bessel functions rather than a chain of cones. No measured bell curve is stored |
 | `instruments/plucked_string.h` | One course as a lossy tuned-waveguide voice, or the same pluck on `Fdtd1D`. Listen fraction and `CoilVelocity` are arguments. No stored T60, stiffness, or pickup location |
 | `instruments/bowed_string.h` | Stick-slip junction on the tuned loop, optionally closed on a modal soundboard. Without a body the sample is bow-point velocity and the bridge is rigid. With a body the sample is the compact monopole of the bridge acceleration. Frequency, Q, mass, area, and distance are arguments |
 | `instruments/struck_string.h` | Felt hammer against hinged stiff-string modes, and the same Hunt–Crossley force on a stiff tuned loop closed on a modal soundboard. The radiating sample is the compact monopole of the bridge acceleration. \(K\), \(p\), \(\lambda\), frequency, Q, mass, area, and distance are arguments |
@@ -1249,6 +1250,28 @@ substituted either; a test may pass them, and they are not a violin,
 viola, cello, bass, or harp core. Le Carrou's printed diameters are outer
 diameters and are not read. No instrument stores a core.
 
+## Bessel horn
+
+`besselHornResonanceHz` is the Webster power-law horn
+\(S(x)=S_a(x/x_a)^\varepsilon\). \(\varepsilon=0\) is the cylinder
+\((2n-1)c/(4L)\). \(\varepsilon=2\) is the spherical cone, and its first
+root matches `ConeValveVoice`. A sealed throat is \(\partial p/\partial x=0\)
+and an ideal open bell is \(p=0\), so the root is a Bessel cross product
+of order \(|\varepsilon-1|/2\). The exponent is an argument. It is not
+replaced by conical slices, and no measured bell radius list is stored.
+`BesselHornVoice` drives those roots from the lip. The throat impedance
+is the modal sum whose residue is
+\(2\omega\rho p/(S\partial^2 p/\partial x\partial\omega)\). Each mode
+steps with the open-end loss \(-\ln(|R|)\) per round trip \(2L/c\). A
+positive radius uses the Levine-Schwinger reflection at that mode. An
+end correction lengthens the stepped horn and leaves `fundamentalHz()`
+on the uncorrected length. Extra length is valve tubing or the F
+attachment. The cup, when the trumpet has one, stays
+\(C\,dp/dt=U_{\mathrm{lip}}-U_{\mathrm{bore}}\). Exponent 2 is not a
+different delay line from the cone, so the cone samples are unchanged.
+Full-instrument complete stays false: there is still no measured bell
+curve.
+
 ## Still planned
 
 The audio-rate bow, felt hammer, mallet, bore valve, and cone valve
@@ -1269,7 +1292,8 @@ open hole, and no fingering chart is stored. Viscous wall loss and
 hole interaction are not in that lattice. A flute end correction,
 embouchure-hole radiation, and the spatial growth of the jet are not in
 this layer. Trumpet valves and the trombone F attachment are an extra
-length on the cone; a non-conical flare and a stored slide chart are
+length on the cone. A caller Bessel area exponent is the flare and is
+not a chain of cones. A measured bell curve and a stored slide chart are
 not. A saxophone mouthpiece volume beyond the apex distance is not in
 this layer. Full-instrument complete stays false for every row. The
 stick-slip capture still uses rigid ends. Snare wires, shell air, a bass-drum port, and a hi-hat clutch
