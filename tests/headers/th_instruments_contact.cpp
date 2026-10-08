@@ -4,6 +4,7 @@
 #include <mmathen/physics/radiation.h>
 #include <mmathen/instruments/bowed_string.h>
 #include <mmathen/instruments/mallet_voice.h>
+#include <mmathen/instruments/cavity_drum.h>
 #include <mmathen/instruments/soundboard_voice.h>
 #include <mmathen/instruments/struck_string.h>
 

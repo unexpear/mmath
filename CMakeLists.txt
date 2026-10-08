@@ -110,6 +110,7 @@ if(BUILD_TESTING)
     tests/test_plucked_string.cpp
     tests/test_contact_voice.cpp
     tests/test_soundboard.cpp
+    tests/test_cavity_drum.cpp
     tests/test_tuning.cpp
     tests/test_pitch.cpp
     tests/test_structures.cpp

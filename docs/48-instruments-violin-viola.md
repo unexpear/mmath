@@ -77,8 +77,11 @@ body modes: the bridge force \(Z(v_+-v_-)\) drives each mode, the
 bridge velocity is their sum, and that displacement replaces the rigid
 reflection. The sample is the compact monopole
 \(\rho A a(t-r/c)/(4\pi r)\). Clarinet, flute, saxophone, harp,
-harpsichord, and classical guitar render audio. The bow, the felt
-hammer, the brass cup, and a drum's air cavity are not in those
+harpsichord, and classical guitar render audio. `CavityDrumVoice`
+diagonalizes the closed-shell compliance \(p=\rho c^{2}\Delta V/V\) on
+the membrane modes and radiates the batter's outward volume
+acceleration. The three toms render audio. The bow, the felt hammer,
+the brass cup, the bass-drum port, and snare wires are not in those
 steppers.
 
 | Instrument | Excitation | Resonator | Body | Radiation | Renders audio | Remaining gap |
@@ -97,12 +100,12 @@ steppers.
 | Trumpet | Outward lip steps a cone | Truncated cone of the trumpet length; the cup is not stepped | None | Levine-Schwinger open end on the cone | no | The lip, cone, and open end step. The cup is absent |
 | Trombone | Outward lip steps the slide length on a cone | Truncated cone at L = L0 + 2x; the cup is not stepped | None | Levine-Schwinger open end on the cone | no | The lip, slide cone, and open end step. The cup is absent |
 | Saxophone | Inward reed steps the spherical-wave cone | Truncated-cone delay; the cylinder is not this stepper | None | Levine-Schwinger open end; bell radius is an argument | yes | Tone holes are outside this cone |
-| Bass drum | Felt mallet steps the head | Damped membrane modes; air cavity not loaded | Shell air not loaded | None | no | Mallet and head step. Air cavity and radiation are absent |
-| Rack tom 10 in | Felt mallet steps the head | Damped membrane modes; air cavity not loaded | Shell air not loaded | None | no | Mallet and head step. Air cavity and radiation are absent |
-| Rack tom 12 in | Felt mallet steps the head | Damped membrane modes; air cavity not loaded | Shell air not loaded | None | no | Mallet and head step. Air cavity and radiation are absent |
-| Floor tom | Felt mallet steps the head | Damped membrane modes; air cavity not loaded | Shell air not loaded | None | no | Mallet and head step. Air cavity and radiation are absent |
-| Snare 5.5 in | Felt mallet steps one head | Damped membrane modes; snare wires absent | Shell air not loaded | None | no | Mallet and one head step. Wires, cavity, and radiation are absent |
-| Snare 6.5 in | Felt mallet steps one head | Damped membrane modes; snare wires absent | Shell air not loaded | None | no | Mallet and one head step. Wires, cavity, and radiation are absent |
+| Bass drum | Felt mallet steps the batter head | Damped membrane modes; a port is not opened | Closed cavity, not a ported shell | Monopole of the batter volume acceleration | no | Two heads and a closed cavity radiate. The port is absent |
+| Rack tom 10 in | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | Head tension and Q are arguments. No port is in this shell |
+| Rack tom 12 in | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | Head tension and Q are arguments. No port is in this shell |
+| Floor tom | Felt mallet steps the batter head | Damped membrane modes of both heads | Closed cavity couples the heads; shell depth is the volume | Monopole of the batter volume acceleration | yes | Head tension and Q are arguments. No port is in this shell |
+| Snare 5.5 in | Felt mallet steps the batter head | Damped membrane modes of both heads; snare wires absent | Closed cavity couples the heads | Monopole of the batter volume acceleration | no | Two heads, the cavity, and radiation step. Snare wires are absent |
+| Snare 6.5 in | Felt mallet steps the batter head | Damped membrane modes of both heads; snare wires absent | Closed cavity couples the heads | Monopole of the batter volume acceleration | no | Two heads, the cavity, and radiation step. Snare wires are absent |
 | Splash | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | Mallet and plate step. Nonlinearity and radiation are absent |
 | Hi-hat | Felt mallet steps one free plate | Damped Kirchhoff mode; plates uncoupled | None | None | no | Mallet and one plate step. The pair, nonlinearity, and radiation are absent |
 | Crash 16 in | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | Mallet and plate step. Nonlinearity and radiation are absent |
@@ -132,7 +135,13 @@ soundboard test writes
 `/opt/cursor/artifacts/mmath-harp-soundboard.wav`,
 `/opt/cursor/artifacts/mmath-harpsichord-soundboard.wav`, and
 `/opt/cursor/artifacts/mmath-classical-guitar-soundboard.wav` the same
-way.
+way. The cavity-drum test writes
+`/opt/cursor/artifacts/mmath-bass-drum-cavity.wav`,
+`/opt/cursor/artifacts/mmath-rack-tom-10-cavity.wav`,
+`/opt/cursor/artifacts/mmath-rack-tom-12-cavity.wav`,
+`/opt/cursor/artifacts/mmath-floor-tom-cavity.wav`,
+`/opt/cursor/artifacts/mmath-snare-55-cavity.wav`, and
+`/opt/cursor/artifacts/mmath-snare-65-cavity.wav`.
 
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
@@ -158,7 +167,8 @@ interval.
 | `instruments/flute.h` | Open-open flute and an embouchure jet. Length, bore area, jet area, thickness, flue-to-edge distance, and the convection ratio are arguments |
 | `instruments/trumpet.h` | Lip-driven cylinder and a mouthpiece cup. Length, bore area, cup volume, and the lip parameters are arguments |
 | `instruments/trombone.h` | That lip and cup on a U-slide. Closed length and handslide travel are arguments. The air column is \(L_0+2x\) |
-| `instruments/render_status.h` | Per-instrument audible-physics bar. Clarinet, flute, saxophone, harp, harpsichord, and classical guitar render audio; the other twenty do not |
+| `instruments/render_status.h` | Per-instrument audible-physics bar. Clarinet, flute, saxophone, harp, harpsichord, classical guitar, and the three toms render audio; the other seventeen do not |
+| `instruments/cavity_drum.h` | Mallet, one or two heads, closed-cavity compliance, and a monopole. Shell depth is the volume. A port and snare wires are not stored |
 | `instruments/soundboard_voice.h` | Plucked course on a yielding modal soundboard. Bridge force drives the modes; their velocity is the end displacement. The sample is \(\rho A a(t-r/c)/(4\pi r)\). Frequency, Q, mass, area, and distance are arguments |
 | `physics/radiation.h` | Unflanged open-end load \((1/4)(ka)^2+jk\Delta\) and its delay-plus-curvature stepper. Radius and end correction are arguments |
 | `instruments/cone_valve.h` | Reed or lip on the spherical-wave cone, optional open end. Apex, bell radius, and end correction are arguments. The cup is not stepped |
@@ -1222,8 +1232,9 @@ The audio-rate bow, felt hammer, mallet, bore valve, and cone valve
 write samples. Clarinet, flute, and saxophone close excitation, bore,
 and bell radiation. Harp, harpsichord, and classical guitar close a
 pluck, a waveguide, a modal soundboard, and monopole radiation. The
-bow, the felt hammer, the brass cup, and shell air are still outside
-those steppers.
+three toms close a mallet, both heads, a closed cavity, and monopole
+radiation. The bow, the felt hammer, the brass cup, the bass-drum
+port, and snare wires are still outside those steppers.
 Images after the first from each hammer end are not in this layer. A
 viscous reed channel, clarinet tone holes, a bell correction, and a
 register key are not in this layer. A flute end correction, tone holes,

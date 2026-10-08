@@ -186,7 +186,7 @@ TEST_CASE("a constant-force oscillator steps its own decay", "[contact]") {
 
 TEST_CASE("bow, hammer, and mallet still leave the audible bar unmet", "[contact]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 6);
+  CHECK(instrumentsThatRenderAudio() == 9);
   CHECK(std::strstr(statusNamed("violin")->resonator, "waveguide") != nullptr);
   CHECK(std::strstr(statusNamed("violin")->excitation, "bow") != nullptr);
   CHECK_FALSE(statusNamed("piano")->rendersAudio);
@@ -197,7 +197,7 @@ TEST_CASE("bow, hammer, and mallet still leave the audible bar unmet", "[contact
   CHECK(statusNamed("saxophone")->rendersAudio);
   CHECK_FALSE(statusNamed("trumpet")->rendersAudio);
   CHECK(std::strstr(statusNamed("saxophone")->resonator, "cone") != nullptr);
-  CHECK(std::strstr(statusNamed("bass drum")->gap, "cavity") != nullptr);
+  CHECK(std::strstr(statusNamed("bass drum")->gap, "port") != nullptr);
   CHECK_FALSE(statusNamed("splash")->rendersAudio);
 }
 

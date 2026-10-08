@@ -3,7 +3,7 @@
 // The waveguide voice is the stepper already in tuned_waveguide.h. Its
 // decay is the loop's loss filter, not an envelope. Plucked courses have
 // their own voice. Clarinet, flute, saxophone, harp, harpsichord, and
-// classical guitar are the six that
+// classical guitar, and the three toms are the nine that
 // render audio.
 
 #include <catch2/catch_test_macros.hpp>
@@ -87,9 +87,9 @@ class FailingVoice final : public IVoice {
 };
 }  // namespace
 
-TEST_CASE("six instruments meet the audible-physics bar", "[voice]") {
+TEST_CASE("nine instruments meet the audible-physics bar", "[voice]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 6);
+  CHECK(instrumentsThatRenderAudio() == 9);
   for (std::size_t i = 0; i < kInstrumentRenderStatusCount; ++i) {
     const char* name = kInstrumentRenderStatus[i].name;
     const bool renders = std::strcmp(name, "clarinet") == 0 ||
@@ -97,7 +97,10 @@ TEST_CASE("six instruments meet the audible-physics bar", "[voice]") {
                          std::strcmp(name, "saxophone") == 0 ||
                          std::strcmp(name, "harp") == 0 ||
                          std::strcmp(name, "harpsichord") == 0 ||
-                         std::strcmp(name, "classical guitar") == 0;
+                         std::strcmp(name, "classical guitar") == 0 ||
+                         std::strcmp(name, "rack tom 10 in") == 0 ||
+                         std::strcmp(name, "rack tom 12 in") == 0 ||
+                         std::strcmp(name, "floor tom") == 0;
     CHECK(kInstrumentRenderStatus[i].rendersAudio == renders);
     CHECK(name != nullptr);
     CHECK(kInstrumentRenderStatus[i].gap != nullptr);
