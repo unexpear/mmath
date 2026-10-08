@@ -1387,7 +1387,9 @@ Attack time below is the first moment a 10 ms RMS stays within 1 dB of
 the 1.5–2.0 s level for 40 ms. That hold includes the exponential tail,
 so it is longer than a 10–90% rise. Steady state is 1.0–2.0 s. Ten
 100 ms windows in that second each stay within 1 dB of their mean RMS.
-Partials below are dB re the fundamental. Levels are the unscaled steady
+Partials in the bullets below are goertzel magnitudes on the unscaled
+render, dB re the fundamental. The playback WAVs use a separate count,
+dB re the strongest partial, written with the files. Levels are the unscaled steady
 RMS at the shared listener, \(r=1\,\mathrm{m}\), in dB re 1 Pa, and the
 same level inside 20 Hz–16 kHz. A cone multiplies bell volume flow by
 \(x_\mathrm{bell}/x_0\) before that same radiator; a cylinder does not.
@@ -1422,6 +1424,28 @@ sit within 1 LU. That gain is playback only. The assertions read the
 unscaled samples. Full instrument complete stays false: the tone-hole lattice
 still has no wall loss and no fingering chart, and there is no measured
 bell. The lattice is not what these five files step.
+
+The spectral bar for this pass is that playback WAV. A 16384-point
+symmetric Hann window centered in 1.00–1.85 s counts harmonics of the
+YIN fundamental, while \(h f_0\) stays under 12 kHz, whose peak is
+within 40 dB of the strongest partial. One or two partials in that
+window fails the bar. The bar is
+clarinet at least 4 (an odd-heavy series meets it), alto saxophone at
+least 6, flute at least 3, trumpet at least 5, and trombone at least 5.
+The files measure clarinet 24, alto saxophone 9, flute 8, trumpet 18,
+and trombone 20. Harmonics 1–10 of the same windows, dB re the strongest
+partial: clarinet 0, −29.6, −2.0, −26.7, −6.5, −29.6, −10.2, −32.5,
+−15.9, −36.0; saxophone 0, −2.0, −9.2, −9.9, −10.9, −18.1, −23.3, −27.6,
+−37.7, −41.5; flute 0, −15.3, −15.9, −20.6, −31.8, −26.8, −55.6, −32.8,
+−41.0, −39.3, with the eight partials at indices 1–6, 8, and 10;
+trumpet 0, −9.0, −13.7, −18.2, −22.9, −26.5, −29.5, −31.6, −31.4, −32.8;
+trombone 0, −11.0, −18.0, −20.8, −25.1, −26.6, −29.8, −30.5, −33.0,
+−33.3. YIN on 1.00–1.85 s is 191.22, 199.24, 283.48, 226.47, and
+121.62 Hz. Twenty of the clarinet's 24 lie in the first 21 partials;
+h58, h60, h61, and h62 sit near 11 kHz, about 21 dB above the −58 dB
+inter-harmonic floor. The goertzel counts in the bullets (21, 9, 6, 16,
+17) are the other measurement. The Old Castle G#4 is a different note:
+four partials inside 40 dB, under the saxophone bar, and it is not finished.
 
 The same file renders an audition excerpt for each wind, `mmath-excerpt-clarinet.wav`, `mmath-excerpt-saxophone.wav`, `mmath-excerpt-flute.wav`, `mmath-excerpt-trumpet.wav`, and `mmath-excerpt-trombone.wav`. The melodies are note data in `tests/wind_excerpts.h`: concert pitch, duration, articulation, and the score's dynamic. No engraved edition is copied, and no samples are played. Pitch is the delay the voice already holds. `BoreLatticeVoice` is not stepped: it has no runtime fingering, no wall loss, and no envelope. A tongue holds the lip on the closed stop and forces that opening to zero. The stop arithmetic can leave a roundoff slit, and the pressure search then fails against a bore that is already sounding. A note is graded when it lasts at least 0.45 s, so the measurement window sits inside it. Shorter notes are printed. The saxophone D#4 pickup is the one that does not speak: it is shorter than the 0.40 s breath attack. Every graded note speaks. Gershwin's Rhapsody in Blue opening is not the clarinet line: the bore glide is 35 ms at the start of a slur, not a smear across a bar.
 
