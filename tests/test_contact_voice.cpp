@@ -184,9 +184,9 @@ TEST_CASE("a constant-force oscillator steps its own decay", "[contact]") {
         QuantityError::DomainError);
 }
 
-TEST_CASE("contact voices leave the audible bar unmet", "[contact]") {
+TEST_CASE("bow, hammer, and mallet still leave the audible bar unmet", "[contact]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 3);
+  CHECK(instrumentsThatRenderAudio() == 6);
   CHECK(std::strstr(statusNamed("violin")->resonator, "waveguide") != nullptr);
   CHECK(std::strstr(statusNamed("violin")->excitation, "bow") != nullptr);
   CHECK_FALSE(statusNamed("piano")->rendersAudio);

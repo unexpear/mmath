@@ -436,6 +436,38 @@ class TunedWaveguide {
     ++steps_;
   }
 
+  // Same rail shift and bridge filter as step(), but the bridge-end
+  // displacement is the caller's metres instead of a rigid zero.
+  // Zero reproduces step()'s reflection. Returns the filtered arrival.
+  [[nodiscard]] double stepYieldingBridge(double endDisplacement) {
+    const std::size_t m = right_.size() - 1;
+    for (std::size_t j = m; j > 0; --j) right_[j] = right_[j - 1];
+    for (std::size_t j = 0; j < m; ++j) left_[j] = left_[j + 1];
+    right_[0] = -left_[0];
+    double x = right_[m];
+    {
+      const double y = f_.thiran * x + thX_ - f_.thiran * thY_;
+      thX_ = x;
+      thY_ = y;
+      x = y;
+    }
+    for (int i = 0; i < f_.dispersionStages; ++i) {
+      const auto ii = static_cast<std::size_t>(i);
+      const double y = f_.dispersion * x + dsX_[ii] - f_.dispersion * dsY_[ii];
+      dsX_[ii] = x;
+      dsY_[ii] = y;
+      x = y;
+    }
+    {
+      const double y = f_.lossGain * (1.0 - f_.lossPole) * x + f_.lossPole * lsY_;
+      lsY_ = y;
+      x = y;
+    }
+    left_[m] = endDisplacement - x;
+    ++steps_;
+    return x;
+  }
+
   void reset() {
     right_ = initialRail_;
     left_ = initialRail_;

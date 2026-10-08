@@ -4,10 +4,12 @@
 #include <mmathen/physics/radiation.h>
 #include <mmathen/instruments/bowed_string.h>
 #include <mmathen/instruments/mallet_voice.h>
+#include <mmathen/instruments/soundboard_voice.h>
 #include <mmathen/instruments/struck_string.h>
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <span>
 #include <utility>
 
 TEST_CASE("contact voices are self-contained", "[headers]") {
@@ -36,4 +38,12 @@ TEST_CASE("contact voices are self-contained", "[headers]") {
       0.4);
   REQUIRE(struck.ok());
   CHECK(std::move(struck).value().renderBlock(block, mmathen::FrameCount{8}).ok());
+
+  const mmathen::BodyModeSpec mode{440.0, 40.0, 1.0};
+  const mmathen::Excitation pluck{mmathen::ExcitationKind::Pluck, 0.3, 1.0e-4};
+  auto board = mmathen::SoundboardVoice::create(
+      course.value(), pluck, loss.value(), std::span<const mmathen::BodyModeSpec>(&mode, 1),
+      0.01, 1.0, 101325.0, 293.15, rate);
+  REQUIRE(board.ok());
+  CHECK(std::move(board).value().renderBlock(block, mmathen::FrameCount{8}).ok());
 }

@@ -72,18 +72,24 @@ constant far-end magnitude with the Levine–Schwinger unflanged load:
 radius and end correction are arguments, and \(0.6133a\) is not stored.
 `ConeValveVoice` is the spherical-wave cone, bilinear at the throat, so
 a sealed mouth rings at \(\tan(kL)=-k x_0\). The same open end sits on
-that cone. Clarinet, flute, and saxophone render audio. The brass cup,
-bridge feedback, and a drum's air cavity are not in those steppers.
+that cone. `SoundboardVoice` closes one plucked course on a bank of
+body modes: the bridge force \(Z(v_+-v_-)\) drives each mode, the
+bridge velocity is their sum, and that displacement replaces the rigid
+reflection. The sample is the compact monopole
+\(\rho A a(t-r/c)/(4\pi r)\). Clarinet, flute, saxophone, harp,
+harpsichord, and classical guitar render audio. The bow, the felt
+hammer, the brass cup, and a drum's air cavity are not in those
+steppers.
 
 | Instrument | Excitation | Resonator | Body | Radiation | Renders audio | Remaining gap |
 |---|---|---|---|---|---|---|
-| Violin | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Bow and pizzicato step. Bridge feedback and radiation are absent |
-| Viola | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Bow and pizzicato step. Bridge feedback and radiation are absent |
-| Cello | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Bow and pizzicato step. Bridge feedback and radiation are absent |
-| Double bass | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Open-loop modal sum, no bridge feedback | Compact monopole formula, not driven by the string | no | Bow and pizzicato step. Bridge feedback and radiation are absent |
-| Harp | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | No soundboard | None | no | The plucked course steps. Soundboard and radiation are absent |
-| Harpsichord | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | No soundboard | None | no | The plucked course steps. Soundboard and radiation are absent |
-| Classical guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 650 mm course | No soundboard | None | no | The plucked course steps. Soundboard and radiation are absent |
+| Violin | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Pizzicato can close on a modal soundboard; the bow cannot | Compact monopole of a plucked bridge; the bow does not drive it | no | Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge |
+| Viola | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Pizzicato can close on a modal soundboard; the bow cannot | Compact monopole of a plucked bridge; the bow does not drive it | no | Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge |
+| Cello | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Pizzicato can close on a modal soundboard; the bow cannot | Compact monopole of a plucked bridge; the bow does not drive it | no | Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge |
+| Double bass | Bow friction and pizzicato both step | Lossy tuned waveguide; stiffness is a caller argument | Pizzicato can close on a modal soundboard; the bow cannot | Compact monopole of a plucked bridge; the bow does not drive it | no | Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge |
+| Harp | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
+| Harpsichord | Pluck position steps a waveguide | Lossy tuned waveguide; stiffness is a caller argument | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
+| Classical guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 650 mm course | Modal soundboard driven by bridge force, with feedback | Compact monopole of the bridge acceleration; area and distance are arguments | yes | Mode frequency, Q, and mass are arguments. Other courses are not coupled |
 | Electric guitar | Pluck position steps a waveguide | Lossy tuned waveguide on the 25.5 in course | No body filter | Pickup position comb and coil velocity; no inductance | no | String and pickup step. The body filter is absent |
 | Piano | Felt hammer steps a stiff string | Modal stiff string, loss and strike are arguments | No soundboard | None | no | The felt hammer steps a stiff string. Soundboard and radiation are absent |
 | Clarinet | Inward reed steps a bore delay | Cylindrical delay; an open end replaces the constant magnitude | None | Levine-Schwinger open end; radius and end correction are arguments | yes | Tone holes and a register key are outside this bore |
@@ -119,7 +125,14 @@ files are generated artifacts and are not committed. The contact test
 writes the bow, hammer, mallet, and valve renders to
 `/opt/cursor/artifacts/mmath-<instrument>.wav`, peak-scaled to 0.5 so a
 displacement in metres or a pressure in pascals is audible. That scale
-is playback only. The assertions read the unscaled samples.
+is playback only. The assertions read the unscaled samples. The
+soundboard test writes
+`/opt/cursor/artifacts/mmath-violin-soundboard.wav`,
+`/opt/cursor/artifacts/mmath-violin-soundboard-light.wav`,
+`/opt/cursor/artifacts/mmath-harp-soundboard.wav`,
+`/opt/cursor/artifacts/mmath-harpsichord-soundboard.wav`, and
+`/opt/cursor/artifacts/mmath-classical-guitar-soundboard.wav` the same
+way.
 
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
@@ -145,7 +158,8 @@ interval.
 | `instruments/flute.h` | Open-open flute and an embouchure jet. Length, bore area, jet area, thickness, flue-to-edge distance, and the convection ratio are arguments |
 | `instruments/trumpet.h` | Lip-driven cylinder and a mouthpiece cup. Length, bore area, cup volume, and the lip parameters are arguments |
 | `instruments/trombone.h` | That lip and cup on a U-slide. Closed length and handslide travel are arguments. The air column is \(L_0+2x\) |
-| `instruments/render_status.h` | Per-instrument audible-physics bar. Clarinet, flute, and saxophone render audio; the other twenty-three do not |
+| `instruments/render_status.h` | Per-instrument audible-physics bar. Clarinet, flute, saxophone, harp, harpsichord, and classical guitar render audio; the other twenty do not |
+| `instruments/soundboard_voice.h` | Plucked course on a yielding modal soundboard. Bridge force drives the modes; their velocity is the end displacement. The sample is \(\rho A a(t-r/c)/(4\pi r)\). Frequency, Q, mass, area, and distance are arguments |
 | `physics/radiation.h` | Unflanged open-end load \((1/4)(ka)^2+jk\Delta\) and its delay-plus-curvature stepper. Radius and end correction are arguments |
 | `instruments/cone_valve.h` | Reed or lip on the spherical-wave cone, optional open end. Apex, bell radius, and end correction are arguments. The cup is not stepped |
 | `instruments/plucked_string.h` | One course as a lossy tuned-waveguide voice, or the same pluck on `Fdtd1D`. Listen fraction and `CoilVelocity` are arguments. No stored T60, stiffness, or pickup location |
@@ -1206,8 +1220,10 @@ diameters and are not read. No instrument stores a core.
 
 The audio-rate bow, felt hammer, mallet, bore valve, and cone valve
 write samples. Clarinet, flute, and saxophone close excitation, bore,
-and bell radiation. Bridge feedback, the brass cup, and shell air are
-still outside those steppers.
+and bell radiation. Harp, harpsichord, and classical guitar close a
+pluck, a waveguide, a modal soundboard, and monopole radiation. The
+bow, the felt hammer, the brass cup, and shell air are still outside
+those steppers.
 Images after the first from each hammer end are not in this layer. A
 viscous reed channel, clarinet tone holes, a bell correction, and a
 register key are not in this layer. A flute end correction, tone holes,
@@ -1219,5 +1235,5 @@ saxophone tone-hole lattice, a separate mouthpiece volume, a radiation
 load, and an end correction are not in this layer. The
 stick-slip capture still uses rigid ends. Snare wires, shell air, a bass-drum port, and a hi-hat clutch
 gap are not in the drum kit. A double-slip wolf cycle is not stepped. A
-classical-guitar soundboard and a fret table are not in this layer. An
+measured classical-guitar mode table and a fret table are not in this layer. An
 electric-guitar pickup and the other 83 piano keys are not in this layer.

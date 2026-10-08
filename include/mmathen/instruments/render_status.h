@@ -7,10 +7,12 @@
 // single-instant mouth, a modal formula, or an envelope is not enough.
 // rendersAudio is that bar. render/voice.h pulls any IVoice into a
 // WavSink. Plucked courses, a bowed course, a felt hammer, a mallet,
-// and a bore valve each step. Clarinet, flute, and saxophone now step
-// excitation, bore, and bell radiation in one voice. The brass cup,
-// bridge feedback, and the drum's air cavity are still outside, so
-// those rows stay false.
+// and a bore valve each step. Clarinet, flute, and saxophone step
+// excitation, bore, and bell radiation in one voice. Harp,
+// harpsichord, and classical guitar step a pluck, a lossy waveguide,
+// a yielding modal soundboard, and a compact monopole in one voice.
+// The bow, the felt hammer, the brass cup, and the drum's air cavity
+// are still outside those couplings, so those rows stay false.
 //
 // The strings are the status, not stored physical constants.
 
@@ -35,36 +37,42 @@ struct InstrumentRenderStatus {
 inline constexpr InstrumentRenderStatus kInstrumentRenderStatus[] = {
     {"violin", "bow friction and pizzicato both step",
      "lossy tuned waveguide; stiffness is a caller argument",
-     "open-loop modal sum, no bridge feedback",
-     "compact monopole formula, not driven by the string", false,
-     "Bow and pizzicato step. Bridge feedback and radiation are absent."},
+     "pizzicato can close on a modal soundboard; the bow cannot",
+     "compact monopole of a plucked bridge; the bow does not drive it", false,
+     "Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge."},
     {"viola", "bow friction and pizzicato both step",
      "lossy tuned waveguide; stiffness is a caller argument",
-     "open-loop modal sum, no bridge feedback",
-     "compact monopole formula, not driven by the string", false,
-     "Bow and pizzicato step. Bridge feedback and radiation are absent."},
+     "pizzicato can close on a modal soundboard; the bow cannot",
+     "compact monopole of a plucked bridge; the bow does not drive it", false,
+     "Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge."},
     {"cello", "bow friction and pizzicato both step",
      "lossy tuned waveguide; stiffness is a caller argument",
-     "open-loop modal sum, no bridge feedback",
-     "compact monopole formula, not driven by the string", false,
-     "Bow and pizzicato step. Bridge feedback and radiation are absent."},
+     "pizzicato can close on a modal soundboard; the bow cannot",
+     "compact monopole of a plucked bridge; the bow does not drive it", false,
+     "Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge."},
     {"double bass", "bow friction and pizzicato both step",
      "lossy tuned waveguide; stiffness is a caller argument",
-     "open-loop modal sum, no bridge feedback",
-     "compact monopole formula, not driven by the string", false,
-     "Bow and pizzicato step. Bridge feedback and radiation are absent."},
+     "pizzicato can close on a modal soundboard; the bow cannot",
+     "compact monopole of a plucked bridge; the bow does not drive it", false,
+     "Pizzicato can radiate through a modal soundboard. The bow still reflects from a rigid bridge."},
     {"harp", "pluck position steps a waveguide",
      "lossy tuned waveguide; stiffness is a caller argument",
-     "no soundboard", "none", false,
-     "The plucked course steps. Soundboard and radiation are absent."},
+     "modal soundboard driven by bridge force, with feedback",
+     "compact monopole of the bridge acceleration; area and distance are arguments",
+     true,
+     "Mode frequency, Q, and mass are arguments. Other courses are not coupled."},
     {"harpsichord", "pluck position steps a waveguide",
      "lossy tuned waveguide; stiffness is a caller argument",
-     "no soundboard", "none", false,
-     "The plucked course steps. Soundboard and radiation are absent."},
+     "modal soundboard driven by bridge force, with feedback",
+     "compact monopole of the bridge acceleration; area and distance are arguments",
+     true,
+     "Mode frequency, Q, and mass are arguments. Other courses are not coupled."},
     {"classical guitar", "pluck position steps a waveguide",
      "lossy tuned waveguide on the 650 mm course",
-     "no soundboard", "none", false,
-     "The plucked course steps. Soundboard and radiation are absent."},
+     "modal soundboard driven by bridge force, with feedback",
+     "compact monopole of the bridge acceleration; area and distance are arguments",
+     true,
+     "Mode frequency, Q, and mass are arguments. Other courses are not coupled."},
     {"electric guitar", "pluck position steps a waveguide",
      "lossy tuned waveguide on the 25.5 in course",
      "no body filter",

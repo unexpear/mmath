@@ -193,16 +193,21 @@ StringCourse electricCourse() {
 }
 }  // namespace
 
-TEST_CASE("plucked courses still leave the audible bar unmet", "[pluck]") {
+TEST_CASE("three plucked soundboards meet the audible bar", "[pluck]") {
   REQUIRE(kInstrumentRenderStatusCount == 26);
-  CHECK(instrumentsThatRenderAudio() == 3);
-  const char* stepped[] = {"violin", "viola", "cello", "double bass",
-                           "harp", "harpsichord", "classical guitar",
-                           "electric guitar"};
-  for (const char* name : stepped) {
+  CHECK(instrumentsThatRenderAudio() == 6);
+  const char* rigidBridge[] = {"violin", "viola", "cello", "double bass",
+                               "electric guitar"};
+  for (const char* name : rigidBridge) {
     const auto* row = statusNamed(name);
     REQUIRE(row != nullptr);
     CHECK_FALSE(row->rendersAudio);
+    CHECK(std::strstr(row->resonator, "waveguide") != nullptr);
+  }
+  for (const char* name : {"harp", "harpsichord", "classical guitar"}) {
+    const auto* row = statusNamed(name);
+    REQUIRE(row != nullptr);
+    CHECK(row->rendersAudio);
     CHECK(std::strstr(row->resonator, "waveguide") != nullptr);
   }
   const auto* electric = statusNamed("electric guitar");
