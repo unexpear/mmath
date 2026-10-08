@@ -1304,6 +1304,136 @@ void reportPhrase(const char* instrument, const std::vector<PhraseNote>& notes,
   }
 }
 
+// 20 log10(e) π. Amplitude exp(−π Δf t) falls at this many dB/s per hertz
+// of half-power bandwidth. 27.29 is that product.
+constexpr double kDecayDbPerHz = 27.29;
+
+// Autocorrelation lag nearest the expected period. A subharmonic of the
+// played pitch is outside the ±12% search.
+double playedNear(const std::vector<double>& x, std::size_t origin, double expectHz,
+                  double rate) {
+  const int center = std::max(8, static_cast<int>(std::llround(rate / expectHz)));
+  const int lo = std::max(4, center - center / 8);
+  const int hi = center + center / 8;
+  double best = -1.0e300;
+  int lag = center;
+  for (int step = lo; step <= hi; ++step) {
+    double sum = 0.0;
+    for (int i = 0; i < 1600; ++i)
+      sum += x[origin + static_cast<std::size_t>(i)] *
+             x[origin + static_cast<std::size_t>(i + step)];
+    if (sum > best) {
+      best = sum;
+      lag = step;
+    }
+  }
+  return rate / static_cast<double>(lag);
+}
+
+// Free-decay slope, dB/s, of one partial after the breath stops.
+// Two periods, and at least 12 ms, are left for the seal. The fit is the
+// next 12 dB, before a slower residue takes the window. A dip in the
+// first five samples is not the end of the partial.
+double tailDbPerSec(const std::vector<double>& x, double stopSec, double frequency,
+                    double rate) {
+  constexpr int kWin = 256;
+  auto dbAt = [&](double time) {
+    const auto start = static_cast<std::size_t>(time * rate);
+    if (start + static_cast<std::size_t>(kWin) > x.size()) return -300.0;
+    const double amplitude =
+        goertzel(x, start, kWin, frequency, rate) / static_cast<double>(kWin);
+    return 20.0 * std::log10(amplitude + 1.0e-30);
+  };
+  const double skip = std::max(0.012, 2.0 / std::max(frequency, 40.0));
+  const double t0 = stopSec + skip;
+  const double db0 = dbAt(t0);
+  double sx = 0.0, sy = 0.0, sxx = 0.0, sxy = 0.0;
+  int count = 0;
+  for (double time = t0; time < stopSec + 0.32; time += 0.004) {
+    const double db = dbAt(time);
+    if (count >= 5 && db < db0 - 12.0) break;
+    sx += time;
+    sy += db;
+    sxx += time * time;
+    sxy += time * db;
+    ++count;
+  }
+  if (count < 4) return 0.0;
+  const double denom = static_cast<double>(count) * sxx - sx * sx;
+  if (!(std::fabs(denom) > 0.0)) return 0.0;
+  return (static_cast<double>(count) * sxy - sx * sy) / denom;
+}
+
+// Cylinder radius whose Kirchhoff half-power bandwidth at frequencyHz
+// equals bandwidthHz. Δf = α c / π is independent of length.
+double radiusForBandwidth(double frequencyHz, double bandwidthHz, double speed,
+                          double density) {
+  constexpr double kTrial = 0.01;
+  constexpr double kLength = 1.0;
+  const double magnitude = valve_detail::kirchhoffTripMagnitude(
+      frequencyHz, kTrial, kLength, speed, density);
+  const double trip = 2.0 * kLength / speed;
+  const double trial = -std::log(magnitude) / (constants::pi * trip);
+  return kTrial * trial / bandwidthHz;
+}
+
+struct RingGrade {
+  const char* name = "";
+  double playedHz = 0.0;
+  double ringHz = 0.0;
+  double nominalHz = 0.0;
+  double dfNominal = 0.0;
+  double dfRing = 0.0;
+  double tailDb = 0.0;
+};
+
+// Breath stop: the blow frames end, the lip is forced shut, and no tongue
+// is scheduled. matchAtStop fits Kirchhoff on the throat after the note
+// has spoken, so the tail is the lossy bore and the attack is not.
+RingGrade measureRing(ConeValveVoice& voice, const char* name, double lipHz, double searchHz,
+                      double nominalHz, double stopSec, bool matchAtStop, double matchHz) {
+  REQUIRE(voice.setLipResonanceHz(lipHz));
+  const auto blow = static_cast<std::uint64_t>(std::llround(stopSec * kFs));
+  const auto tailN = static_cast<std::uint64_t>(std::llround(0.45 * kFs));
+  std::vector<double> out(static_cast<std::size_t>(blow + tailN), 0.0);
+  REQUIRE(voice.renderBlock(out.data(), FrameCount{blow}).ok());
+  if (matchAtStop) REQUIRE(voice.setWallMatchHz(matchHz));
+  REQUIRE(voice.renderBlock(out.data() + blow, FrameCount{tailN}).ok());
+  for (double sample : out) REQUIRE(std::isfinite(sample));
+  // A tenth of a second before the breath stops, inside the steady tone.
+  const auto origin = static_cast<std::size_t>(blow) - static_cast<std::size_t>(0.125 * kFs);
+  const auto tailAt =
+      static_cast<std::size_t>(blow) + static_cast<std::size_t>(std::llround(0.03 * kFs));
+  RingGrade grade;
+  grade.name = name;
+  grade.nominalHz = nominalHz;
+  grade.playedHz = playedNear(out, origin, searchHz, kFs);
+  grade.ringHz = playedNear(out, tailAt, grade.playedHz, kFs);
+  grade.dfNominal = voice.halfPowerBandwidthHz(nominalHz);
+  grade.dfRing = voice.halfPowerBandwidthHz(grade.ringHz);
+  grade.tailDb = tailDbPerSec(out, stopSec, grade.ringHz, kFs);
+  return grade;
+}
+
+void expectRing(const RingGrade& grade, double windowLo, double windowHi, double pitchCents) {
+  const double q = grade.nominalHz / grade.dfNominal;
+  const double model = -kDecayDbPerHz * grade.dfRing;
+  const double ratio = grade.tailDb / model;
+  const double playedCents = 1200.0 * std::log2(grade.playedHz / grade.nominalHz);
+  const double ringCents = 1200.0 * std::log2(grade.ringHz / grade.playedHz);
+  std::cout << grade.name << " played " << grade.playedHz << " Hz (" << playedCents
+            << " cents)  ring " << grade.ringHz << " Hz  Q " << q << "  df " << grade.dfNominal
+            << " Hz  window " << windowLo << "–" << windowHi << "  tail " << grade.tailDb
+            << " dB/s  model " << model << " dB/s  ratio " << ratio << "\n";
+  CHECK(grade.dfNominal >= windowLo);
+  CHECK(grade.dfNominal <= windowHi);
+  CHECK(grade.tailDb < 0.0);
+  CHECK(ratio > 0.80);
+  CHECK(ratio < 1.20);
+  CHECK(std::fabs(playedCents) < pitchCents);
+  CHECK(std::fabs(ringCents) < 250.0);
+}
+
 double conePartial(double length, double apex, int mode) {
   SaxophoneSpec spec{length, apex, 1.6e-4, kAir, kTemp, 1.8e-5, 7500.0,
                      2.0e-6, 1.4e-4, 7.0e-4, 0.09};
@@ -2019,5 +2149,146 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     auto samples = renderPhrase(voice, notes, total, false);
     reportPhrase("trombone", notes, samples, total, 0.15);
     writePhrase(samples, "mmath-excerpt-trombone.wav", kFs);
+  }
+}
+
+// Breath-stop rings. Tongue stops are step 2: tongueReleaseFrames stays 0.
+// Δf = f/Q. The rendered partial has to fall within ±20% of 27.29·Δf,
+// using Δf at the frequency that is actually ringing.
+TEST_CASE("brass breath stops ring at the published bandwidth", "[contact][wind]") {
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  const double density =
+      unwrap(airDensity(PressurePascals{kAir}, TemperatureKelvin{kTemp})).value();
+
+  auto lipBlow = [](double pressure, double cutoff, double seconds, double wallMatch,
+                    double radius, double turbulence) {
+    ValveBlow blow = sustained(pressure, cutoff, kTrumpetAttack);
+    blow.frames = static_cast<std::uint64_t>(std::llround(seconds * kFs));
+    blow.reflectionMagnitude = 0.999;
+    blow.initialDisplacementMeters = 0.0;
+    blow.tongueReleaseFrames = 0;
+    blow.brassiness = 0.0;
+    blow.reedTurbulence = turbulence;
+    blow.wallMatchHz = wallMatch;
+    blow.radiusMeters = radius;
+    return blow;
+  };
+
+  {
+    // Mode 4, about 465 Hz, is the excerpt Bb4 fingering. The note is
+    // played on the mild log-mean wall. Kirchhoff on the existing
+    // 1.09e-4 m² throat is fitted when the breath stops. No bell radius
+    // is added: a radius chosen to hit 10.9–13.9 Hz would be a fit.
+    const double mass = 3.0e-5;
+    const double lip0 = 0.75 * speed / 1.45;
+    const double omega = constants::twoPi * lip0;
+    auto trumpet = unwrap(makeTrumpet(TrumpetSpec{1.70, 1.09e-4, kAir, kTemp, 0.0, 8.0e-7, 1.5e-5,
+                                                  1.2e-2, mass, omega * omega * mass, 1.2e-5,
+                                                  0.001}));
+    auto voice = unwrap(ConeValveVoice::fromTrumpet(
+        trumpet, 0.26, lipBlow(2800.0, 10000.0, 1.00, 0.0, 0.0, 0.0), kRate));
+    REQUIRE(voice.setSoundingLength(1.023));
+    const double lip = 0.80 * conePartial(1.023, 0.26, 3);
+    const RingGrade grade =
+        measureRing(voice, "trumpet mode 4", lip, 466.16, 466.16, 1.00, true, 466.16);
+    // Fréour et al., JASA 148:748 (2020), eight-horn mean Q 42.6;
+    // Petiot, Poirson, and Gilbert (2004), single horn Q 32–38.
+    expectRing(grade, 10.9, 13.9, 80.0);
+  }
+
+  {
+    // Mode 8, about 929 Hz. The length is the cone whose eighth root is
+    // 929 Hz. The bell radius is that cone's geometric bell, not a
+    // radius solved against 21.6–35.7 Hz.
+    double lo = 0.80;
+    double hi = 2.20;
+    for (int i = 0; i < 48; ++i) {
+      const double mid = 0.5 * (lo + hi);
+      if (conePartial(mid, 0.26, 8) > 929.0) lo = mid;
+      else hi = mid;
+    }
+    const double length = 0.5 * (lo + hi);
+    const double partial = conePartial(length, 0.26, 8);
+    CHECK(std::fabs(partial - 929.0) < 0.05);
+    const double throat = std::sqrt(1.09e-4 / constants::pi);
+    const double bell = throat * (0.26 + length) / 0.26;
+    const double mass = 3.0e-5;
+    const double omega = constants::twoPi * partial;
+    auto trumpet = unwrap(makeTrumpet(TrumpetSpec{length, 1.09e-4, kAir, kTemp, 0.0, 8.0e-7,
+                                                  1.5e-5, 1.2e-2, mass, omega * omega * mass,
+                                                  1.2e-5, 0.001}));
+    auto voice = unwrap(ConeValveVoice::fromTrumpet(
+        trumpet, 0.26, lipBlow(2800.0, 10000.0, 0.70, partial, bell, 0.0), kRate));
+    const RingGrade grade =
+        measureRing(voice, "trumpet mode 8", partial, 929.0, partial, 0.70, false, 0.0);
+    // Petiot, Poirson, and Gilbert (2004), Q 26–43 at about 929 Hz.
+    expectRing(grade, 21.6, 35.7, 80.0);
+  }
+
+  {
+    // Ablitzer, Acta Acustica 5:53 (2021), Tables 1–2, Courtois bass
+    // trombone, first position. Δf = 2ξf, min–max of the complex-mode
+    // and real-mode fits. The ±20% band around that range is UNSOURCED.
+    // No tenor per-mode table was found; this bass trombone is a proxy.
+    // Modes 2–9 only. The radius is not in those tables: it is the
+    // cylinder whose Kirchhoff Δf at 115.6 Hz equals 4.84 Hz, the center
+    // of 4.83–4.85. Modes 3–9 use that same cylinder.
+    struct Published {
+      int mode;
+      double frequency;
+      double dfLo;
+      double dfHi;
+    };
+    const Published published[] = {
+        {2, 115.6, 4.83, 4.85}, {3, 173.5, 6.00, 6.00}, {4, 233.6, 6.68, 6.73},
+        {5, 294.1, 7.64, 7.71}, {6, 345.6, 8.70, 8.99}, {7, 406.4, 9.42, 10.08},
+        {8, 463.8, 11.13, 11.87}, {9, 519.7, 12.57, 14.03},
+    };
+    const double mode2Center = 0.5 * (published[0].dfLo + published[0].dfHi);
+    const double radius = radiusForBandwidth(published[0].frequency, mode2Center, speed, density);
+    const double area = constants::pi * radius * radius;
+    const double mass = 6.0e-5;
+    const double yMax = (2.5e-5 - 1.0e-6) / 1.5e-2;
+    const double pressureArea = 2.0e-5;
+    // 2.70 m, apex 0.60 m: the excerpt's apex on one reference cone.
+    // Not a Courtois length, and not a length solved onto each published
+    // frequency. The excerpt bore 3.0e-4 m² is a different argument.
+    constexpr double kLength = 2.70;
+    constexpr double kApex = 0.60;
+    const double lip0 = 0.75 * speed / kLength;
+    const double omega0 = constants::twoPi * lip0;
+    auto horn = unwrap(makeTrombone(TromboneSpec{kLength, 0.0, area, kAir, kTemp, 0.0, 1.0e-6,
+                                                 2.5e-5, 1.5e-2, mass, omega0 * omega0 * mass,
+                                                 pressureArea, 0.0005}));
+    for (const Published& mode : published) {
+      const double partial = conePartial(kLength, kApex, mode.mode);
+      // 0.75 keeps modes 2 and 3 on that root. 0.80 is the excerpt's
+      // fraction and locks modes 4–9. Both are arguments.
+      const double scale = mode.mode <= 3 ? 0.75 : 0.80;
+      const double lip = scale * partial;
+      const double omega = constants::twoPi * lip;
+      // Thirty percent of the opening rail. A higher pressure pins the
+      // lip open and the bore stays quiet. Not a measured mouth pressure.
+      const double pressure = 0.30 * yMax * mass * omega * omega / pressureArea;
+      // The excerpt's 0.20 seeds modes 2 and 3. Higher modes speak
+      // without it. The seed stops when the breath stops.
+      const double turbulence = mode.mode <= 3 ? 0.20 : 0.0;
+      auto voice = unwrap(ConeValveVoice::fromTrombone(
+          horn, kApex, lipBlow(pressure, 8000.0, 0.85, 0.0, 0.0, turbulence), kRate));
+      const char* names[] = {"",
+                             "",
+                             "trombone mode 2",
+                             "trombone mode 3",
+                             "trombone mode 4",
+                             "trombone mode 5",
+                             "trombone mode 6",
+                             "trombone mode 7",
+                             "trombone mode 8",
+                             "trombone mode 9"};
+      const RingGrade grade =
+          measureRing(voice, names[mode.mode], lip, partial, mode.frequency, 0.85, true,
+                      mode.frequency);
+      expectRing(grade, mode.dfLo * 0.80, mode.dfHi * 1.20, 150.0);
+    }
   }
 }

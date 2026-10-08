@@ -1480,6 +1480,27 @@ The same file renders an audition excerpt for each wind, `mmath-excerpt-clarinet
 
 Slurred woodwind notes glide the length over 35 ms. Brass length jumps at the note. The blowing-pressure gain stays 1: the dynamic in the note data is the score marking, not a second pressure law. An 8% drop flattened this saxophone's low register. Playback of each excerpt is K-weighted from 0.5 s to the end (ITU-R BS.1770-4), aimed at −20 LUFS with a −1 dBFS ceiling. Clarinet, saxophone, flute, and trombone land on −20. Trumpet measures −22.4 LUFS because a peak met the ceiling. Quieter than −20 is the same rule as the two-second files. The last note that lasts at least 0.40 s keeps energy above \(0.4 f_s\) under 1%.
 
+## Brass ring
+
+The brass ring is the bore after the breath stops. Ending the blow forces the lip onto the closed stop; that seal is not a tongue, and `tongueReleaseFrames` stays 0. Tongue stops wait. Δf = f/Q is the half-power bandwidth of the loop the sample stepper runs: the wall one-pole, the reflection-cutoff one-pole, and, when a bell radius is set, the Levine–Schwinger open end. The traveling wave is multiplied by that loop magnitude once per round trip, so a mode's amplitude is exp(−π Δf t). In decibels per second that is 20 log10(e) · π · Δf. 27.29 is that product. The free decay of the partial that is ringing, read from the rendered samples, has to sit within ±20% of 27.29·Δf, using the model's Δf at the ringing frequency. The published windows below are on Δf at the named mode, which is not always the frequency the lip was holding.
+
+Trumpet, Bb. Mode 4, about 465 Hz, passes when the model's Δf is 10.9–13.9 Hz. Fréour et al., JASA 148:748 (2020), report an eight-horn mean Q of 42.6 at that peak. Petiot, Poirson, and Gilbert (2004) report one horn at Q 32–38. The bore is the excerpt's \(1.09\times 10^{-4}\,\mathrm{m}^2\). The note is the Promenade Bb4 fingering, 1.023 m with the lip at 0.8 of cone mode 3, played on the mild log-mean wall so the lip still locks that pitch. Kirchhoff loss on the throat is fitted when the breath stops. No bell radius is added for this mode. On the render: played 461.5 Hz (−17 cents), ringing 432.4 Hz, Q 39.2, Δf 11.89 Hz, tail −260 dB/s against a model −287 dB/s (ratio 0.90).
+
+Mode 8, about 929 Hz, passes when Δf is 21.6–35.7 Hz. The source is Petiot, Poirson, and Gilbert (2004), Q 26–43. The length is the cone, apex 0.26 m, whose eighth root of \(\tan(kL)=-k x_0\) is 929 Hz. The bell radius is that cone's own geometric bell, \(r_\mathrm{throat}(x_0+L)/x_0\), and the wall one-pole is Kirchhoff on the throat at that root. The radius is not solved against the window. On the render: played 941.2 Hz (+23 cents), ringing 923.1 Hz, Q 39.5, Δf 23.53 Hz, tail −652 dB/s against a model −636 dB/s (ratio 1.02).
+
+Trombone. Ablitzer, Acta Acustica 5:53 (2021), Tables 1–2, Courtois bass trombone in first position, with Δf = 2ξf. Each range is the minimum and maximum of the complex-mode and real-mode fits. A mode passes when the model's Δf at that published frequency is within ±20% of the range. The ±20% is UNSOURCED: the tables print the fits, not an acceptance band. No tenor per-mode bandwidth was found, so the bass trombone is a proxy for this cone. Modes 2–9 only.
+
+- Mode 2, 115.6 Hz: 4.83–4.85 Hz. Model Δf 4.84 Hz, window 3.86–5.82. Played 117.9 Hz (+35 cents), ringing 105.0 Hz, Q 23.9, tail −99 dB/s, model −113 dB/s, ratio 0.87.
+- Mode 3, 173.5 Hz: 6.00 Hz. Model Δf 5.93 Hz, window 4.80–7.20. Played 179.8 Hz (+62 cents), ringing 161.6 Hz, Q 29.2, tail −129 dB/s, model −145 dB/s, ratio 0.89.
+- Mode 4, 233.6 Hz: 6.68–6.73 Hz. Model Δf 6.89 Hz, window 5.34–8.08. Played 242.4 Hz (+64 cents), ringing 221.2 Hz, Q 33.9, tail −163 dB/s, model −174 dB/s, ratio 0.94.
+- Mode 5, 294.1 Hz: 7.64–7.71 Hz. Model Δf 7.73 Hz, window 6.11–9.25. Played 305.7 Hz (+67 cents), ringing 285.7 Hz, Q 38.0, tail −187 dB/s, model −203 dB/s, ratio 0.92.
+- Mode 6, 345.6 Hz: 8.70–8.99 Hz. Model Δf 8.39 Hz, window 6.96–10.79. Played 366.4 Hz (+101 cents), ringing 342.9 Hz, Q 41.2, tail −233 dB/s, model −226 dB/s, ratio 1.03.
+- Mode 7, 406.4 Hz: 9.42–10.08 Hz. Model Δf 9.10 Hz, window 7.54–12.10. Played 428.6 Hz (+92 cents), ringing 406.8 Hz, Q 44.7, tail −234 dB/s, model −249 dB/s, ratio 0.94.
+- Mode 8, 463.8 Hz: 11.13–11.87 Hz. Model Δf 9.73 Hz, window 8.90–14.24. Played 494.8 Hz (+112 cents), ringing 484.8 Hz, Q 47.7, tail −243 dB/s, model −281 dB/s, ratio 0.86.
+- Mode 9, 519.7 Hz: 12.57–14.03 Hz. Model Δf 10.30 Hz, window 10.06–16.84. Played 558.1 Hz (+124 cents), ringing 539.3 Hz, Q 50.5, tail −238 dB/s, model −294 dB/s, ratio 0.81.
+
+Ablitzer does not print a bore radius. The radius here is the cylinder whose Kirchhoff Δf at 115.6 Hz equals 4.84 Hz, the center of the mode-2 range. Modes 3–9 are that same cylinder, not eight separate fits. The reference cone is 2.70 m with apex 0.60 m, the excerpt's apex. It is not a Courtois length, and it is not a length solved so that each cone root sits on the published frequency. The excerpt bore \(3.0\times 10^{-4}\,\mathrm{m}^2\) is unchanged and is not this radius. The Promenade and Boléro tubes are slide positions, not these first-position modes, and they are not graded against the windows above. The lip fraction (0.75 on modes 2–3, 0.80 on modes 4–9) and the pressure that holds the lip at 30% of its opening rail are arguments. Modes 2 and 3 use the excerpt's lip-jet seed, 0.20, so those roots speak; the seed ends with the breath.
+
 ## Still planned
 
 The audio-rate bow, felt hammer, mallet, bore valve, and cone valve
@@ -1502,7 +1523,9 @@ into the bore. Clarinet, flute, and
 saxophone holes are a lattice of caller radii; a register key is one
 open hole, and no fingering chart is stored. Viscous wall loss and
 hole interaction are not in that lattice. The valve applies Kirchhoff
-loss only when the caller sets a reflection corner, and a non-radiating
+loss only when the caller sets a reflection corner. A positive
+wall-match frequency fits that loss on the throat at the named
+frequency; zero keeps the log-mean radius. A non-radiating
 flute can add an end correction; embouchure-hole radiation and the
 spatial growth of the jet are not in this layer. Trumpet valves and the trombone F attachment are an extra
 length on the cone. A caller Bessel area exponent is the flare and is

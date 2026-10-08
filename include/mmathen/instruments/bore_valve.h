@@ -160,6 +160,12 @@ struct ValveBlow {
   double reedTurbulence = 0.0;
   double brassiness = 0.0;
   double spectrumBreakHz = 0.0;
+  // When positive, Kirchhoff's round-trip loss is fitted at this
+  // frequency on the cylindrical bore radius, instead of the default
+  // one-pole matched near 4 kHz on the cone's log-mean radius. Zero
+  // keeps that default. The frequency is the caller's mode, not a
+  // stored bandwidth.
+  double wallMatchHz = 0.0;
 };
 
 namespace valve_detail {
@@ -252,7 +258,8 @@ namespace valve_detail {
   if (!std::isfinite(blow.reedTurbulence) || blow.reedTurbulence < 0.0 ||
       blow.reedTurbulence > 1.0 || !std::isfinite(blow.brassiness) ||
       blow.brassiness < 0.0 || blow.brassiness > 1.0 ||
-      !std::isfinite(blow.spectrumBreakHz) || blow.spectrumBreakHz < 0.0)
+      !std::isfinite(blow.spectrumBreakHz) || blow.spectrumBreakHz < 0.0 ||
+      !std::isfinite(blow.wallMatchHz) || blow.wallMatchHz < 0.0)
     return false;
   return true;
 }

@@ -290,9 +290,62 @@ class ConeValveVoice final : public IVoice {
 
   [[nodiscard]] double fundamentalHz() const noexcept { return fundamentalHz_; }
   [[nodiscard]] double reflectionDecay() const noexcept { return decay_; }
+
+  // Half-power bandwidth of this bore's loop at frequencyHz.
+  // Δf = f/Q. The traveling wave is multiplied by the loop magnitude
+  // once per round trip T = 2L/c, so the amplitude is exp(t ln|H| / T).
+  // A mode's amplitude is exp(−π Δf t), and 20 log10 of that falls at
+  // 20 log10(e) π Δf ≈ 27.29 Δf decibels per second. Wall loss, the
+  // reflection cutoff, and an unflanged bell, when one is engaged, are
+  // the loop. The lip is not in |H|.
+  [[nodiscard]] double halfPowerBandwidthHz(double frequencyHz) const {
+    const double fs = rate_.value();
+    if (!std::isfinite(frequencyHz) || !(frequencyHz > 0.0) || !(fs > frequencyHz * 2.0) ||
+        !(soundingLength_ > 0.0) || !(speed_ > 0.0))
+      return 0.0;
+    double magnitude = valve_detail::onePoleMagnitude(wall_.pole, frequencyHz, fs) *
+                       valve_detail::onePoleMagnitude(cutoff_.pole, frequencyHz, fs);
+    if (radiating_) {
+      auto reflected = openEnd_.response(frequencyHz);
+      if (!reflected.ok()) return 0.0;
+      magnitude *= std::hypot(reflected.value().real, reflected.value().imag);
+    }
+    if (!std::isfinite(magnitude) || !(magnitude > 0.0) || magnitude > 1.0) return 0.0;
+    const double trip = 2.0 * soundingLength_ / speed_;
+    if (!(trip > 0.0)) return 0.0;
+    const double bandwidth = -std::log(magnitude) / (constants::pi * trip);
+    if (!std::isfinite(bandwidth) || bandwidth < 0.0) return 0.0;
+    return bandwidth;
+  }
   [[nodiscard]] bool radiating() const noexcept { return radiating_; }
   [[nodiscard]] int delaySamples() const noexcept {
     return static_cast<int>(line_.size());
+  }
+
+  // Fit the wall one-pole to Kirchhoff's round-trip transmission at
+  // frequencyHz on the cylindrical bore (Zc = ρ c / S). The cone's
+  // log-mean fit is left in place until this is called. Zero clears
+  // the pole. The sounding length is the one already set.
+  bool setWallMatchHz(double frequencyHz) {
+    const double fs = rate_.value();
+    if (!std::isfinite(frequencyHz) || frequencyHz < 0.0 || !(fs > 0.0) ||
+        !(soundingLength_ > 0.0) || !(speed_ > 0.0) || !(density_ > 0.0) ||
+        !(impedance_ > 0.0))
+      return false;
+    if (frequencyHz == 0.0) {
+      wall_.pole = 0.0;
+      wall_.state = 0.0;
+      return true;
+    }
+    if (!(frequencyHz < 0.5 * fs)) return false;
+    const double area = density_ * speed_ / impedance_;
+    const double throat = std::sqrt(area / constants::pi);
+    const double transmission = valve_detail::kirchhoffTripMagnitude(
+        frequencyHz, throat, soundingLength_, speed_, density_);
+    const double pole = valve_detail::onePoleMatching(transmission, frequencyHz, fs);
+    if (!(pole > 0.0) || !(pole < 1.0)) return false;
+    wall_.pole = pole;
+    return true;
   }
 
   // Mouth pressure after the attack. The raised cosine still uses this
@@ -412,10 +465,20 @@ class ConeValveVoice final : public IVoice {
       const double ratio = (apex + sounding) / apex;
       const double logMean =
           ratio > 1.0 ? throat * (ratio - 1.0) / std::log(ratio) : throat;
-      const double match =
-          std::min(0.3 * fs, std::max(12.0 * geometricGuess, 4000.0));
+      // The default one-pole is matched high, on the log-mean radius,
+      // and is mild at a playing frequency. A caller match frequency
+      // fits Kirchhoff at that frequency on the cylindrical bore
+      // (the throat), which is the leadpipe loss a bandwidth is
+      // compared with. The flare's log-mean stays the default.
+      double match = std::min(0.3 * fs, std::max(12.0 * geometricGuess, 4000.0));
+      double lossRadius = logMean;
+      if (blow.wallMatchHz > 0.0) {
+        if (!(blow.wallMatchHz < 0.5 * fs)) return R::failure(QuantityError::RangeError);
+        match = blow.wallMatchHz;
+        lossRadius = throat;
+      }
       const double wall = valve_detail::kirchhoffTripMagnitude(
-          match, logMean, sounding, speed, density);
+          match, lossRadius, sounding, speed, density);
       wallPole = valve_detail::onePoleMatching(wall, match, fs);
       cutPole = std::exp(-constants::twoPi * blow.reflectionCutoffHz / fs);
       if (!std::isfinite(cutPole) || !(cutPole > 0.0) || !(cutPole < 1.0) ||
