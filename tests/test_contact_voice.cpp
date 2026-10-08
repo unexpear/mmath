@@ -667,7 +667,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   const double reedRing = pitchNear(reedSamples, 18000, 150.0, 230.0);
   CHECK(std::fabs(reedRing - reed.fundamentalHz()) < 0.5);
   checkDecay(reedSamples, 18432, 150.0, 230.0, reed.reflectionDecay());
-  writeListening(reedSamples, "mmath-clarinet.wav");
+  writeListening(reedSamples, "mmath-clarinet-delay.wav");
 
   SaxophoneSpec saxSpec{0.45, 0.12, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0,
                         1.0e-6, 1.0e-4, 1.0e-3, 0.01};
@@ -680,7 +680,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   const double saxRing = pitchNear(saxSamples, 18000, 150.0, 230.0);
   CHECK(std::fabs(saxRing - saxVoice.fundamentalHz()) < 0.5);
   checkDecay(saxSamples, 18432, 150.0, 230.0, saxVoice.reflectionDecay());
-  writeListening(saxSamples, "mmath-saxophone.wav");
+  writeListening(saxSamples, "mmath-saxophone-delay.wav");
 
   const double length = 0.55;
   const double pipe = speed / (2.0 * length);
@@ -704,7 +704,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   const double jetRing = pitchNear(jetSamples, 18432, pipe - 40.0, pipe + 40.0);
   CHECK(std::fabs(jetRing - jet.fundamentalHz()) < 1.0);
   checkDecay(jetSamples, 18432, pipe - 40.0, pipe + 40.0, jet.reflectionDecay());
-  writeListening(jetSamples, "mmath-flute.wav");
+  writeListening(jetSamples, "mmath-flute-delay.wav");
 
   const double lipMass = 2.0e-5;
   const double lipOmega = 2.0 * constants::pi * (speed / (4.0 * 0.45));
@@ -724,7 +724,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   const double lipRing = pitchNear(lipSamples, 18000, 150.0, 230.0);
   CHECK(std::fabs(lipRing - lip.fundamentalHz()) < 0.5);
   checkDecay(lipSamples, 18432, 150.0, 230.0, lip.reflectionDecay());
-  writeListening(lipSamples, "mmath-trumpet.wav");
+  writeListening(lipSamples, "mmath-trumpet-delay.wav");
 
   TromboneSpec tromboneSpec{0.45, 0.15, 1.2e-4, kAir, kTemp, 0.0, 8.0e-6,
                             4.0e-5, 8.0e-3, lipMass, lipStiffness, 1.5e-5, 0.002};
@@ -737,7 +737,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   const double slideRing = pitchNear(slideSamples, 18000, 80.0, 160.0);
   CHECK(std::fabs(slideRing - slide.fundamentalHz()) < 0.5);
   checkDecay(slideSamples, 18432, 80.0, 160.0, slide.reflectionDecay());
-  writeListening(slideSamples, "mmath-trombone.wav");
+  writeListening(slideSamples, "mmath-trombone-delay.wav");
 
   CHECK(BoreValveVoice::fromClarinet(
             clarinet, ValveBlow{4000.0, 100, 0.0, 0.0}, kRate)

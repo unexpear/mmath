@@ -14,8 +14,12 @@
 //     1340±240 Hz (Acoustics Australia 37, 2009). The radiated pressure
 //     then passes Benade and Lutgen's envelope, JASA 83, 1900–1907
 //     (1988), with their alto break frequency 837 Hz. A turbulence
-//     fraction 0.40 is an argument, not a measured intensity. It scales
-//     the round-trip envelope of the radiated pressure.
+//     fraction 0.55 is an argument, not a measured intensity. It scales
+//     the round-trip envelope of the radiated pressure. Wolfe's UNSW
+//     saxophone notes record breathy noise from turbulence in the
+//     reed–mouthpiece gap and print no level. The acceptance on a held
+//     mid-range note is a median inter-harmonic floor no quieter than
+//     −50 dB, 200 Hz–6 kHz, re the strongest partial.
 //   flute — open pipe, embouchure release, Levine–Schwinger end
 //     correction 0.61 a, and a jet delay W/(σ U) with σ = 0.45, inside
 //     Coltman's 0.4–0.5 convection range. The jet is tanh with an aim
@@ -23,8 +27,9 @@
 //     argument: 400 Hz left the third harmonic under −40 dB. Fletcher
 //     (JASA 57, 233–244, 1975) measured second and third partials
 //     within about 10 dB of the fundamental in the middle octave.
-//     Jet turbulence is the same unsourced fraction 0.40 as the
-//     saxophone, on the round-trip envelope after the loop;
+//     Jet turbulence is the unsourced fraction 0.40, on the round-trip
+//     envelope after the loop. The saxophone fraction is 0.55 so the
+//     held G#4 clears the −50 dB floor; the flute is not that note.
 //   trumpet and trombone — outward-striking lip below the cone's second
 //     root (Fletcher, 1979), near concert Bb3 (233 Hz) and Bb2 (117 Hz).
 //     The outgoing wave takes the cylindrical Burgers advance,
@@ -65,6 +70,7 @@
 #include <mmathen/physics/medium.h>
 #include <mmathen/sink/wav.h>
 #include <mmathen/sink/wav_path.h>
+#include <mmathen/sink/wav_reader.h>
 
 #include "wind_excerpts.h"
 
@@ -320,7 +326,7 @@ struct Tone {
 // The old dull trumpet, partials falling about 7 dB each from 119 Hz,
 // sits near 2.2–2.5. A flat odd square sits far above that and is
 // rejected separately.
-// Median Hann bin more than 20 Hz from every harmonic, 300 Hz–8 kHz,
+// Median Hann bin more than 20 Hz from every harmonic, 200 Hz–6 kHz,
 // relative to the strongest bin in 80 Hz–2 kHz. A deterministic bore
 // sits near −147 dB. Rectangular-window leakage is not this number.
 double offHarmonicFloorDb(const std::vector<double>& x, std::size_t origin, double f0,
@@ -349,8 +355,8 @@ double offHarmonicFloorDb(const std::vector<double>& x, std::size_t origin, doub
   }
   const double peakMag = std::abs(bins[static_cast<std::size_t>(kPeak)]) + 1.0e-30;
   std::vector<double> floors;
-  const int from = std::max(1, static_cast<int>(300.0 / df));
-  const int to = std::min(kN / 2 - 1, static_cast<int>(8000.0 / df));
+  const int from = std::max(1, static_cast<int>(200.0 / df));
+  const int to = std::min(kN / 2 - 1, static_cast<int>(6000.0 / df));
   for (int k = from; k <= to; ++k) {
     const double hz = static_cast<double>(k) * df;
     bool near = false;
@@ -469,63 +475,15 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     std::cout << tone.name << " envelope below 1 kHz " << lowMean
               << " dB  2.5–5 kHz " << highMean << " dB\n";
     CHECK(highMean < lowMean - 18.0);
-    // Off-harmonic Hann bins. A goertzel halfway between partials reads
-    // the sidelobes of the line spectrum, about −65 dB, even when the
-    // radiated floor is numerical noise near −147 dB. Bins more than
-    // 20 Hz from every harmonic, median from 300 Hz to 8 kHz, relative
-    // to the strongest bin, as 20*log10(|bin|). Turbulence 0 sits near
-    // −147 dB. A product of the radiated sample with the fraction piled
-    // the disturbance on the harmonics, and the median sat near −59 dB:
-    // 20*log10 of that power is about −118 dB, which is the reading
-    // reported as digital silence. The fraction now scales the
-    // round-trip envelope. The median has to be louder than −54 dB, so
-    // the doubled reading is past about −108 dB, and quieter than −40 dB, so
-    // the ninth partial (near −39 dB) stays above it. Fletcher and
-    // Rossing do not print this ratio.
-    constexpr int kN = 16384;
-    std::vector<std::complex<double>> buf(static_cast<std::size_t>(kN));
-    for (int i = 0; i < kN; ++i) {
-      const double window =
-          0.5 * (1.0 - std::cos(constants::twoPi * static_cast<double>(i) / static_cast<double>(kN)));
-      buf[static_cast<std::size_t>(i)] = x[a + static_cast<std::size_t>(i)] * window;
-    }
-    auto spec = fft(std::move(buf));
-    REQUIRE(spec.ok());
-    const auto& bins = spec.value();
-    const double df = rate / static_cast<double>(kN);
-    int kPeak = 1;
-    double best = 0.0;
-    const int kLo = std::max(1, static_cast<int>(80.0 / df));
-    const int kHi = std::min(kN / 2 - 1, static_cast<int>(2000.0 / df));
-    for (int k = kLo; k <= kHi; ++k) {
-      const double power = std::norm(bins[static_cast<std::size_t>(k)]);
-      if (power > best) {
-        best = power;
-        kPeak = k;
-      }
-    }
-    const double peakMag = std::abs(bins[static_cast<std::size_t>(kPeak)]) + 1.0e-30;
-    std::vector<double> floors;
-    const int from = std::max(1, static_cast<int>(300.0 / df));
-    const int to = std::min(kN / 2 - 1, static_cast<int>(8000.0 / df));
-    for (int k = from; k <= to; ++k) {
-      const double hz = static_cast<double>(k) * df;
-      bool near = false;
-      for (int h = 1; h < 48; ++h) {
-        if (std::fabs(hz - static_cast<double>(h) * f0) <= 20.0) {
-          near = true;
-          break;
-        }
-      }
-      if (near) continue;
-      floors.push_back(
-          20.0 * std::log10(std::abs(bins[static_cast<std::size_t>(k)]) / peakMag + 1.0e-30));
-    }
-    REQUIRE(!floors.empty());
-    std::sort(floors.begin(), floors.end());
-    const double floorDb = floors[floors.size() / 2];
+    // Same 200 Hz–6 kHz median as the playback WAV. Wolfe (UNSW,
+    // Introduction to saxophone acoustics) notes breathy noise from
+    // turbulence in the reed–mouthpiece gap and prints no ratio.
+    // −50 dB re the strongest partial is the acceptance argument.
+    // Quieter than −40 dB stays under the ninth partial. A reading
+    // near −120 dB is the converter and fails.
+    const double floorDb = offHarmonicFloorDb(x, a, f0, rate);
     std::cout << tone.name << " interharmonic floor " << floorDb << " dB\n";
-    CHECK(floorDb > -54.0);
+    CHECK(floorDb >= -50.0);
     CHECK(floorDb < -40.0);
   } else {
     CHECK(above >= 8);
@@ -851,6 +809,103 @@ Period yinEstimate(const std::vector<double>& x, std::size_t begin, std::size_t 
   }
   if (!(refined > 1.0)) return {};
   return Period{rate / refined, 1.0 - prime[static_cast<std::size_t>(found)]};
+}
+
+// Playback spectrum of one written WAV. The counts are this measurement,
+// not a number copied from the docs. A 16384-point Hann window is
+// centered in [t0, t1]. Level is 20*log10(|X|) of that magnitude, re the
+// strongest harmonic peak (±3 bins around h * f0). f0 is YIN on the same
+// span. A partial counts while h*f0 stays under 12 kHz. within40 is how
+// many of those peaks are within 40 dB of the strongest. total is how
+// many sit at least 10 dB above the inter-harmonic floor. evensWithin40
+// counts even partials inside that 40 dB. The floor is the median bin
+// from 200 Hz to 6 kHz more than 20 Hz from every harmonic.
+struct PlaybackCensus {
+  double fundamentalHz = 0.0;
+  int within40 = 0;
+  int total = 0;
+  int evensWithin40 = 0;
+  double floorDb = -300.0;
+};
+
+PlaybackCensus measurePlaybackWav(const char* filename, double t0, double t1) {
+  const auto path = wavOutputPath(filename);
+  auto opened = readWavFile(path.string());
+  REQUIRE(opened.ok());
+  const WavData wav = std::move(opened).value();
+  const std::vector<double> x = wav.mono();
+  const double rate = wav.rate.value();
+  constexpr int kN = 16384;
+  const auto begin = static_cast<std::size_t>(t0 * rate);
+  const auto end = static_cast<std::size_t>(t1 * rate);
+  REQUIRE(end > begin + static_cast<std::size_t>(kN));
+  REQUIRE(x.size() >= end);
+  const Period yin = yinEstimate(x, begin, end, rate);
+  REQUIRE(yin.frequencyHz > 60.0);
+  auto origin = (begin + end) / 2 - static_cast<std::size_t>(kN) / 2;
+  REQUIRE(origin + static_cast<std::size_t>(kN) <= x.size());
+  std::vector<std::complex<double>> buf(static_cast<std::size_t>(kN));
+  for (int i = 0; i < kN; ++i) {
+    const double window =
+        0.5 * (1.0 - std::cos(constants::twoPi * static_cast<double>(i) / static_cast<double>(kN)));
+    buf[static_cast<std::size_t>(i)] = x[origin + static_cast<std::size_t>(i)] * window;
+  }
+  auto spec = fft(std::move(buf));
+  REQUIRE(spec.ok());
+  const auto& bins = spec.value();
+  const double df = rate / static_cast<double>(kN);
+  const double f0 = yin.frequencyHz;
+  double strongest = 0.0;
+  std::vector<double> peaks;
+  for (int h = 1; static_cast<double>(h) * f0 < 12000.0; ++h) {
+    const int k = std::max(1, static_cast<int>(std::llround(static_cast<double>(h) * f0 / df)));
+    const int lo = std::max(1, k - 3);
+    const int hi = std::min(kN / 2 - 1, k + 3);
+    double peak = 0.0;
+    for (int bin = lo; bin <= hi; ++bin)
+      peak = std::max(peak, std::abs(bins[static_cast<std::size_t>(bin)]));
+    peaks.push_back(peak);
+    strongest = std::max(strongest, peak);
+  }
+  REQUIRE(strongest > 0.0);
+  REQUIRE(peaks.size() >= 8);
+  PlaybackCensus census;
+  census.fundamentalHz = f0;
+  std::vector<double> levels;
+  levels.reserve(peaks.size());
+  for (std::size_t h = 0; h < peaks.size(); ++h) {
+    const double decibel = 20.0 * std::log10(peaks[h] / strongest + 1.0e-30);
+    levels.push_back(decibel);
+    if (decibel >= -40.0) {
+      ++census.within40;
+      if ((h + 1) % 2 == 0) ++census.evensWithin40;
+    }
+  }
+  std::vector<double> floors;
+  const int from = std::max(1, static_cast<int>(200.0 / df));
+  const int to = std::min(kN / 2 - 1, static_cast<int>(6000.0 / df));
+  for (int k = from; k <= to; ++k) {
+    const double hz = static_cast<double>(k) * df;
+    bool near = false;
+    for (int h = 1; h < 64; ++h) {
+      if (std::fabs(hz - static_cast<double>(h) * f0) <= 20.0) {
+        near = true;
+        break;
+      }
+    }
+    if (near) continue;
+    floors.push_back(20.0 * std::log10(std::abs(bins[static_cast<std::size_t>(k)]) / strongest + 1.0e-30));
+  }
+  REQUIRE(!floors.empty());
+  std::sort(floors.begin(), floors.end());
+  census.floorDb = floors[floors.size() / 2];
+  for (double decibel : levels) {
+    if (decibel >= census.floorDb + 10.0) ++census.total;
+  }
+  std::cout << filename << " wav f0 " << f0 << " Hz  within40 " << census.within40
+            << "  total " << census.total << "  evens " << census.evensWithin40
+            << "  floor " << census.floorDb << " dB\n";
+  return census;
 }
 
 struct PhraseNote {
@@ -1191,8 +1246,9 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // and Lutgen's alto break, 837 Hz, shapes the radiated pressure. On
   // this reed a loop corner at 837 Hz itself jumps to the octave, so
   // that number is the external envelope and not the reflection pole.
-  // reedTurbulence 0.40 is an argument. It scales the round-trip
-  // envelope, not the instantaneous pressure.
+  // reedTurbulence 0.55 is an argument. It scales the round-trip
+  // envelope, not the instantaneous pressure. 0.40 left the held
+  // Old Castle G#4 at about −50.2 dB between partials.
   SaxophoneSpec saxSpec{0.70, 0.20, 1.6e-4, kAir, kTemp, 1.8e-5, 7500.0,
                         2.0e-6, 1.4e-4, 7.0e-4, 0.09};
   const auto saxophone = unwrap(makeSaxophone(saxSpec));
@@ -1203,7 +1259,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   CHECK(second / saxophone.fundamentalHz > 1.85);
   ValveBlow saxBlow = sustained(4200.0, 1500.0, kSaxophoneAttack);
   saxBlow.initialDisplacementMeters = 1.0e-5;
-  saxBlow.reedTurbulence = 0.40;
+  saxBlow.reedTurbulence = 0.55;
   saxBlow.spectrumBreakHz = 837.0;
   auto saxVoice =
       unwrap(ConeValveVoice::fromSaxophone(saxophone, saxBlow, kRate));
@@ -1212,6 +1268,13 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
       Tone{"saxophone", saxophone.fundamentalHz, Spectrum::Saxophone, saxSamples},
       kFs);
   const double saxLufs = writeListening(saxSamples, "mmath-saxophone.wav", kFs);
+  {
+    // The two-second note is the low register. The bar below is the
+    // same WAV the file just wrote: 20*log10(|X|), not a doc count.
+    const PlaybackCensus saxWav = measurePlaybackWav("mmath-saxophone.wav", 1.00, 1.85);
+    CHECK(saxWav.within40 >= 6);
+    CHECK(saxWav.evensWithin40 >= 2);
+  }
 
   const double fluteLength = 0.60;
   const double pipe = speed / (2.0 * fluteLength);
@@ -1332,6 +1395,23 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   const double tromboneLufs =
       writeListening(boneSamples, "mmath-trombone.wav", kFs);
 
+  // Within-40 dB counts, the brass total, and the saxophone evens are
+  // this read of the written WAV. The thresholds are the pass bar.
+  {
+    const PlaybackCensus clarinetWav =
+        measurePlaybackWav("mmath-clarinet.wav", 1.00, 1.85);
+    CHECK(clarinetWav.within40 >= 4);
+    const PlaybackCensus fluteWav = measurePlaybackWav("mmath-flute.wav", 1.00, 1.85);
+    CHECK(fluteWav.within40 >= 3);
+    const PlaybackCensus trumpetWav = measurePlaybackWav("mmath-trumpet.wav", 1.00, 1.85);
+    CHECK(trumpetWav.within40 >= 5);
+    CHECK(trumpetWav.total >= 8);
+    const PlaybackCensus tromboneWav =
+        measurePlaybackWav("mmath-trombone.wav", 1.00, 1.85);
+    CHECK(tromboneWav.within40 >= 5);
+    CHECK(tromboneWav.total >= 8);
+  }
+
   // Time to stay within 1 dB of the 1.5–2.0 s level. That hold is
   // stricter than a 10–90% rise, so a cited "significant change" can be
   // shorter than the number checked here. The bands are the measured
@@ -1401,7 +1481,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
 // the length at which this reed's strongest spectral peak is that pitch
 // under 4200 Pa. The old scale factors lengthened G#4 onto a second-mode
 // tube and the autocorrelation then reported the octave below. Loop
-// corner 1500 Hz, Benade and Lutgen envelope 837 Hz, turbulence 0.12.
+// corner 1500 Hz, Benade and Lutgen envelope 837 Hz, turbulence 0.55.
 // Vibrato is a length modulation, arguments 5.5 Hz and 12 cents.
 //
 // Flute — bore length, jet delay, and blowing pressure together. The
@@ -1503,7 +1583,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     ValveBlow blow = sustained(4200.0, 1500.0, kSaxophoneAttack);
     blow.frames = frames;
     blow.initialDisplacementMeters = 1.0e-5;
-    blow.reedTurbulence = 0.40;
+    blow.reedTurbulence = 0.55;
     blow.spectrumBreakHz = 837.0;
     auto voice = unwrap(ConeValveVoice::fromSaxophone(sax, blow, kRate));
     std::vector<PhraseNote> notes;
@@ -1519,6 +1599,17 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     auto samples = renderPhrase(voice, notes, total, false);
     reportPhrase("saxophone", notes, samples, total, 0.50);
     writePhrase(samples, "mmath-excerpt-saxophone.wav", kFs);
+    // Held G#4: the note starts at 0.4 s and lasts 2.8 s. The window
+    // sits after the 0.40 s ramp. Median inter-harmonic level, 200 Hz
+    // to 6 kHz, re the strongest partial. −50 dB is the acceptance
+    // argument. Wolfe's UNSW saxophone page records the breathy noise
+    // and does not print this level. −120 dB is digital silence.
+    const PlaybackCensus heldNote =
+        measurePlaybackWav("mmath-excerpt-saxophone.wav", 1.20, 2.80);
+    CHECK(heldNote.fundamentalHz > 400.0);
+    CHECK(heldNote.fundamentalHz < 430.0);
+    CHECK(heldNote.floorDb >= -50.0);
+    CHECK(heldNote.evensWithin40 >= 1);
   }
 
   {
