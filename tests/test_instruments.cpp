@@ -1381,6 +1381,25 @@ TEST_CASE("a reed bore is an ideal cylinder and inertia follows the static line"
   CHECK(unwrap(reedAreaAtDisplacement(reed, undamped, 2.0 * closing)) == 0.0);
   CHECK(nearlyEqual(unwrap(reedAreaAtDisplacement(reed, undamped, -closing)),
                     2.0 * jet, 0.0, 1e-12));
+
+  // Overdamped spring, clarinet-like mass. Explicit Euler on r/m is
+  // outside the stability region at 48 kHz and chatters on the lay.
+  // The exact step loses that energy in a couple of milliseconds
+  // (Li, Almeida, Smith, and Wolfe, JASA 139, 2016).
+  const auto heavy = unwrap(makeReedInertia(
+      reed, ReedInertiaSpec{1.0e-6, tip, closing, 0.12}));
+  const double pressure = 1500.0;
+  const double equilibrium = tip * pressure / heavy.stiffnessNewtonsPerMeter;
+  double y = closing;
+  double v = 0.0;
+  const double dt = 1.0 / 48000.0;
+  for (int i = 0; i < 96; ++i) {
+    const auto moved = unwrap(stepReedTip(heavy, y, v, pressure, dt));
+    y = moved.displacementMeters;
+    v = moved.velocityMetersPerSecond;
+  }
+  CHECK(std::fabs(y - equilibrium) < 0.05 * closing);
+  CHECK(std::fabs(v) < 0.2);
 }
 
 TEST_CASE("a clarinet is an open cylinder on the reed characteristic",

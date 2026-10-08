@@ -442,6 +442,85 @@ struct ReedInertia {
 // when y passes y_close, and it accepts a negative ΔP. Non-finite
 // inputs, or a mass or stiffness that is not strictly positive, are
 // InvalidArgument.
+
+// Tip displacement and velocity one sample later. The spring is linear
+// in y and v for a frozen ΔP, so the step is that ODE's solution, not
+// an explicit Euler increment. The fast pole sits near −r/m. On the
+// clarinet mass, r dt / m exceeds 2 and explicit Euler then chatters
+// against the lay at a fraction of the sample rate. The continuous
+// spring loses that mechanical energy in milliseconds, which is what
+// Li, Almeida, Smith, and Wolfe measured after a tongue release
+// (JASA 139, 2016). The lay stop is not applied here.
+struct ReedTipMotion {
+  double displacementMeters = 0.0;
+  double velocityMetersPerSecond = 0.0;
+};
+
+[[nodiscard]] inline Result<ReedTipMotion, QuantityError> stepReedTip(
+    const ReedInertia& inertia, double displacementMeters,
+    double velocityMetersPerSecond, double pressureDifferencePa, double dt) {
+  using R = Result<ReedTipMotion, QuantityError>;
+  if (!std::isfinite(displacementMeters) ||
+      !std::isfinite(velocityMetersPerSecond) ||
+      !std::isfinite(pressureDifferencePa) || !std::isfinite(dt) || !(dt > 0.0))
+    return R::failure(QuantityError::InvalidArgument);
+  if (!std::isfinite(inertia.massKg) || !(inertia.massKg > 0.0) ||
+      !std::isfinite(inertia.tipAreaM2) || !(inertia.tipAreaM2 > 0.0) ||
+      !std::isfinite(inertia.stiffnessNewtonsPerMeter) ||
+      !(inertia.stiffnessNewtonsPerMeter > 0.0) ||
+      !std::isfinite(inertia.dampingNewtonSecondsPerMeter) ||
+      inertia.dampingNewtonSecondsPerMeter < 0.0)
+    return R::failure(QuantityError::InvalidArgument);
+  const double mass = inertia.massKg;
+  const double stiffness = inertia.stiffnessNewtonsPerMeter;
+  const double damping = inertia.dampingNewtonSecondsPerMeter;
+  const double alpha = damping / (2.0 * mass);
+  const double omega0Sq = stiffness / mass;
+  const double equilibrium =
+      inertia.tipAreaM2 * pressureDifferencePa / stiffness;
+  if (!std::isfinite(alpha) || !std::isfinite(omega0Sq) || !(omega0Sq > 0.0) ||
+      !std::isfinite(equilibrium))
+    return R::failure(QuantityError::RangeError);
+  const double offset = displacementMeters - equilibrium;
+  const double discriminant = alpha * alpha - omega0Sq;
+  ReedTipMotion moved;
+  if (discriminant > 1.0e-9 * omega0Sq) {
+    const double split = std::sqrt(discriminant);
+    const double slow = -alpha + split;
+    const double fast = -alpha - split;
+    const double span = slow - fast;
+    if (!(std::fabs(span) > 0.0)) return R::failure(QuantityError::RangeError);
+    const double slowCoeff = (velocityMetersPerSecond - fast * offset) / span;
+    const double fastCoeff = offset - slowCoeff;
+    const double slowWave = std::exp(slow * dt);
+    const double fastWave = std::exp(fast * dt);
+    moved.displacementMeters =
+        equilibrium + slowCoeff * slowWave + fastCoeff * fastWave;
+    moved.velocityMetersPerSecond =
+        slowCoeff * slow * slowWave + fastCoeff * fast * fastWave;
+  } else if (discriminant < -1.0e-9 * omega0Sq) {
+    const double omega = std::sqrt(-discriminant);
+    const double decay = std::exp(-alpha * dt);
+    const double cosine = std::cos(omega * dt);
+    const double sine = std::sin(omega * dt);
+    const double sineCoeff = (velocityMetersPerSecond + alpha * offset) / omega;
+    const double oscillation = offset * cosine + sineCoeff * sine;
+    moved.displacementMeters = equilibrium + decay * oscillation;
+    moved.velocityMetersPerSecond =
+        -alpha * decay * oscillation +
+        decay * omega * (-offset * sine + sineCoeff * cosine);
+  } else {
+    const double decay = std::exp(-alpha * dt);
+    const double ramp = velocityMetersPerSecond + alpha * offset;
+    const double carried = offset + ramp * dt;
+    moved.displacementMeters = equilibrium + carried * decay;
+    moved.velocityMetersPerSecond = (ramp - alpha * carried) * decay;
+  }
+  if (!std::isfinite(moved.displacementMeters) ||
+      !std::isfinite(moved.velocityMetersPerSecond))
+    return R::failure(QuantityError::RangeError);
+  return R::success(moved);
+}
 [[nodiscard]] inline Result<double, QuantityError> reedTipAcceleration(
     const ReedInertia& inertia, double displacementMeters,
     double velocityMetersPerSecond, double pressureDifferencePa) {

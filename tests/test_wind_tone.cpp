@@ -14,8 +14,10 @@
 //     1340±240 Hz (Acoustics Australia 37, 2009). The radiated pressure
 //     then passes Benade and Lutgen's envelope, JASA 83, 1900–1907
 //     (1988), with their alto break frequency 837 Hz. A turbulence
-//     fraction 0.55 is an argument, not a measured intensity. It scales
-//     the round-trip envelope of the radiated pressure. Wolfe's UNSW
+//     fraction 0.55 is an argument, not a measured intensity. Below
+//     threshold it scales the reed-period monopole of the aperture
+//     flow, and a sample of that flow seeds the bore. Once the tone
+//     is up it scales the round-trip envelope. Wolfe's UNSW
 //     saxophone notes record breathy noise from turbulence in the
 //     reed–mouthpiece gap and print no level. The acceptance on a held
 //     mid-range note is a median inter-harmonic floor no quieter than
@@ -566,10 +568,13 @@ void checkTone(const Tone& tone, double rate) {
 }
 
 Clarinet workingClarinet(double length) {
-  // Reed damping 0.12 N·s/m. 0.05 N·s/m on this bore left the third
-  // harmonic a few decibels from the fundamental.
+  // Reed damping 0.11 N·s/m. stepReedTip is the exact spring, and at
+  // 0.12 N·s/m this 0.45 m bore plays about 8.2 Hz under c/(4L).
+  // 0.11 N·s/m stays inside 8 Hz and the third harmonic still leads
+  // the second. The value is the embouchure argument, not a measured
+  // constant.
   ClarinetSpec spec{length, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0,
-                    1.0e-6, 1.0e-4, 1.0e-3, 0.12};
+                    1.0e-6, 1.0e-4, 1.0e-3, 0.11};
   return unwrap(makeClarinet(spec));
 }
 
@@ -609,6 +614,36 @@ double attackMilliseconds(const std::vector<double>& x, double rate) {
     if (held) return 1000.0 * static_cast<double>(t) / rate;
   }
   return 1.0e9;
+}
+
+// Rise of 20*log10(fundamental), in dB/s, from 30 dB under the 1.6 s
+// amplitude to 8 dB under it. A regression through the noise floor
+// flattens this: the floor sits in the band for a long time and the
+// bore's growth does not. Li, Almeida, Smith, and Wolfe, JASA 139
+// (2016): above threshold the fundamental grows at a rate r, tens to
+// hundreds of dB/s on a soft note and about 1000 dB/s on an accent.
+// A playback gain does not change the slope. Zero means a crossing
+// was missing.
+double growthDbPerSec(const std::vector<double>& x, double fundamentalHz, double rate) {
+  const int window = 1024;
+  const int hop = 240;
+  const auto steadyAt = static_cast<std::size_t>(1.6 * rate);
+  const double steady = goertzel(x, steadyAt, 8192, fundamentalHz, rate) / 8192.0;
+  const double steadyDb = 20.0 * std::log10(steady + 1.0e-30);
+  double enter = -1.0;
+  double leave = -1.0;
+  const int limit = static_cast<int>(0.80 * rate);
+  for (int start = 0; start + window < limit; start += hop) {
+    const double amplitude =
+        goertzel(x, static_cast<std::size_t>(start), window, fundamentalHz, rate) /
+        static_cast<double>(window);
+    const double db = 20.0 * std::log10(amplitude + 1.0e-30);
+    const double time = (static_cast<double>(start) + 0.5 * window) / rate;
+    if (enter < 0.0 && db >= steadyDb - 30.0) enter = time;
+    if (enter >= 0.0 && leave < 0.0 && db >= steadyDb - 8.0) leave = time;
+  }
+  if (!(enter >= 0.0) || !(leave > enter)) return 0.0;
+  return 22.0 / (leave - enter);
 }
 
 // Power fractions of a Hann-windowed steady FFT. high is above 0.4 fs,
@@ -1189,14 +1224,42 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   auto clarinet = workingClarinet(0.45);
   const double clarinetHz = speed / (4.0 * 0.45);
   ValveBlow clarinetBlow = sustained(4000.0, 1500.0, kClarinetAttack);
-  // Same unsourced fraction as the saxophone. The reed channel is
-  // turbulent (Fletcher and Rossing, chap. 13); that chapter prints
-  // no ratio. The fraction scales the round-trip envelope. Zero leaves
-  // a line spectrum.
+  // Unsourced fraction. The reed channel is turbulent (Fletcher and
+  // Rossing, chap. 13); that chapter prints no ratio. Below threshold
+  // it scales the reed-period monopole; once the tone is up it scales
+  // the round-trip envelope. Zero leaves a line spectrum.
   clarinetBlow.reedTurbulence = 0.40;
   auto clarinetVoice = unwrap(BoreValveVoice::fromClarinet(clarinet, clarinetBlow, kRate));
   auto clarinetSamples = renderOf(clarinetVoice, kFrames);
   checkTone(Tone{"clarinet", clarinetHz, Spectrum::Clarinet, clarinetSamples}, kFs);
+  const Period clarinetPeriod = periodNear(clarinetSamples, 70000, clarinetHz, kFs);
+  const double growth = growthDbPerSec(clarinetSamples, clarinetPeriod.frequencyHz, kFs);
+  std::cout << "clarinet fundamental growth " << growth
+            << " dB/s (Li, Almeida, Smith, and Wolfe, JASA 139, 2016: "
+               "tens to hundreds on a soft note, about 1000 on an accent)\n";
+  // The Adagio pressure rise is the soft end of that paper, not an
+  // accent and not a tone that is already periodic at full spectrum.
+  CHECK(growth > 40.0);
+  CHECK(growth < 1200.0);
+  {
+    // 80–180 ms is still the reed-gap noise. A finished tone here is
+    // the theremin attack. Lag is the steady period.
+    const int lag = std::max(8, static_cast<int>(std::llround(kFs / clarinetPeriod.frequencyHz)));
+    const std::size_t origin = static_cast<std::size_t>(0.08 * kFs);
+    double energy0 = 0.0;
+    double energy1 = 0.0;
+    double cross = 0.0;
+    for (int i = 0; i < 4800; ++i) {
+      const double u = clarinetSamples[origin + static_cast<std::size_t>(i)];
+      const double v = clarinetSamples[origin + static_cast<std::size_t>(i + lag)];
+      energy0 += u * u;
+      energy1 += v * v;
+      cross += u * v;
+    }
+    const double earlyAc = cross / std::sqrt(energy0 * energy1 + 1.0e-30);
+    std::cout << "clarinet early-attack autocorrelation " << earlyAc << "\n";
+    CHECK(earlyAc < 0.45);
+  }
   CHECK(clarinetHz > 140.0);
   CHECK(clarinetHz < 500.0);
   const double clarinetLufs =
@@ -1473,9 +1536,11 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
 // wind_excerpts.h.
 //
 // Clarinet — air-column length. The 2 s demo and this excerpt both use
-// 1500 Hz, Benade's open-hole cutoff. This reed plays about 8 cents sharp of
-// c/(4L) at that corner, so the length is the geometric one times
-// 2^(8/1200). That offset is this voice, not a published correction.
+// 1500 Hz, Benade's open-hole cutoff. The exact reed spring plays flat
+// of c/(4L), and the flatness grows with frequency, so one cents
+// factor does not put A3 and A4 on the same grid. Each length below is
+// the tube on which this reed's autocorrelation is that concert pitch
+// at 4000 Pa. The offset is this voice, not a published correction.
 //
 // Saxophone — truncated-cone length, apex fixed. Each concert pitch is
 // the length at which this reed's strongest spectral peak is that pitch
@@ -1519,7 +1584,16 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
   };
 
   auto clarinetLen = [&](double frequency) {
-    return speed / (4.0 * frequency) * std::pow(2.0, 8.0 / 1200.0);
+    struct Length { double hertz; double meters; };
+    // Shortened from c/(4f) until the autocorrelation matched. Integer
+    // lag is about 15 cents at these pitches; 25 cents is the grade.
+    const Length table[] = {
+        {220.00, 0.371149}, {293.66, 0.272573}, {329.63, 0.241609},
+        {349.23, 0.225746}, {392.00, 0.199063}, {440.00, 0.175519},
+    };
+    for (const Length& row : table)
+      if (std::fabs(row.hertz - frequency) < 0.05) return row.meters;
+    return speed / (4.0 * frequency);
   };
   {
     const double total = excerpts::excerptSeconds(excerpts::kClarinet);

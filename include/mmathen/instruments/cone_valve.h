@@ -157,7 +157,14 @@ class ConeValveVoice final : public IVoice {
       auto solved = solvePressure(opening, mouth, known, beta, cupCoeff_, cupPressure_);
       if (!solved.ok()) return R::failure(solved.error());
       pressure = solved.value();
-      const double outgoing = pressure - incoming;
+      apertureFlow_ = 0.0;
+      if (!lip_ && open && mouth > 0.0 && !tongued && opening > 0.0)
+        apertureFlow_ = std::fabs(bernoulli(opening, mouth - pressure));
+      double outgoing = pressure - incoming;
+      if (apertureFlow_ > 0.0)
+        outgoing += valve_detail::reedGapSeedPressure(
+            noise_, breathState_, apertureFlow_, reedTurbulence_, impedance_,
+            inertia_.resonanceHz, dt);
       if (!std::isfinite(pressure) || !std::isfinite(outgoing))
         return R::failure(QuantityError::RangeError);
       integrator_ += beta * (pressure + previousPressure_);
@@ -172,19 +179,21 @@ class ConeValveVoice final : public IVoice {
           if (!stepped.ok()) return R::failure(stepped.error());
           acceleration = stepped.value();
         } else {
-          auto stepped = reedTipAcceleration(inertia_, displacement_, velocity_, delta);
-          if (!stepped.ok()) return R::failure(stepped.error());
-          acceleration = stepped.value();
+          auto moved = stepReedTip(inertia_, displacement_, velocity_, delta, dt);
+          if (!moved.ok()) return R::failure(moved.error());
+          displacement_ = moved.value().displacementMeters;
+          velocity_ = moved.value().velocityMetersPerSecond;
+          if (displacement_ > closing_) {
+            displacement_ = closing_;
+            if (velocity_ > 0.0) velocity_ = 0.0;
+          }
         }
-        velocity_ += acceleration * dt;
-        displacement_ += velocity_ * dt;
-        if (!std::isfinite(velocity_) || !std::isfinite(displacement_))
-          return R::failure(QuantityError::RangeError);
-        if (lip_)
+        if (lip_) {
+          velocity_ += acceleration * dt;
+          displacement_ += velocity_ * dt;
+          if (!std::isfinite(velocity_) || !std::isfinite(displacement_))
+            return R::failure(QuantityError::RangeError);
           stopLip();
-        else if (displacement_ > closing_) {
-          displacement_ = closing_;
-          if (velocity_ > 0.0) velocity_ = 0.0;
         }
       }
       line_[pos_] = outgoing;
@@ -202,21 +211,16 @@ class ConeValveVoice final : public IVoice {
       // was supplied. The monopole above is still the bell flow; this
       // transfer is the measured saxophone spectrum of a beating reed.
       if (break_.active()) radiated = break_.step(radiated);
-      // Fraction of the radiated pressure, added after the loop so the
-      // reed's limit cycle stays put. A product with the instantaneous
-      // pressure piles the disturbance on the harmonics. The reed
-      // channel is a turbulent source of its own (Fletcher and Rossing,
-      // chap. 13), so the fraction scales a slow envelope — one round
-      // trip, the bore's own period — and the samples between partials
-      // carry it. A lip has no reed channel.
+      // Reed-gap jet, after the loop. The same mouth as the clarinet.
+      // A lip has no reed channel. See reedApertureBreath.
       if (!lip_ && reedTurbulence_ > 0.0 && open && mouth > 0.0 && !tongued) {
         const double trip =
             line_.empty() ? 1.0 : static_cast<double>(line_.size());
-        const double leak = 1.0 - std::exp(-1.0 / trip);
-        breathEnv_ += leak * (radiated * radiated - breathEnv_);
-        if (breathEnv_ < 0.0) breathEnv_ = 0.0;
-        const double scale = std::sqrt(breathEnv_);
-        radiated += reedTurbulence_ * scale * valve_detail::breathSample(noise_, breathState_);
+        const double reedPeriod =
+            inertia_.resonanceHz > 0.0 ? 1.0 / inertia_.resonanceHz : 0.0;
+        radiated += valve_detail::reedApertureBreath(
+            flowMean_, breathEnv_, noise_, breathState_, apertureFlow_, radiated,
+            reedTurbulence_, density_, listener_, trip, rate_.value(), reedPeriod);
       }
       out[i] = radiated;
       if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);
@@ -243,6 +247,8 @@ class ConeValveVoice final : public IVoice {
     noise_ = 1u;
     breathEnv_ = 0.0;
     breathState_ = 0.0;
+    flowMean_ = 0.0;
+    apertureFlow_ = 0.0;
     prevOutgoing_ = 0.0;
     displacement_ = initialDisplacement_;
     velocity_ = 0.0;
@@ -669,6 +675,8 @@ class ConeValveVoice final : public IVoice {
   std::uint32_t noise_ = 1u;
   double breathEnv_ = 0.0;
   double breathState_ = 0.0;
+  double flowMean_ = 0.0;
+  double apertureFlow_ = 0.0;
   valve_detail::BreakEnvelope break_{};
   bool useBoreThiran_ = false;
   double fundamentalHz_ = 0.0;

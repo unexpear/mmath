@@ -92,19 +92,31 @@ enum class ValveLaw { InwardReed, OutwardLip, Jet };
 // tongueReleaseFrames keeps a reed or a lip on its closed stop until
 // that frame, then places it at initialDisplacementMeters. Zero leaves
 // the valve free from the first sample. Mouth pressure ramps on its own.
-// reedTurbulence is the fraction of the radiated pressure added as a
-// zero-mean disturbance after the valve loop, on a reed or a jet. The
-// scale is the root-mean-square of that pressure over one round trip,
-// not the instantaneous sample: a product with the sample sits on the
-// harmonics and the bins between them stay at the converter floor. A
-// disturbance of the blowing pressure is cancelled by the pressure
-// search, so the bell stays a line spectrum, and on the shorter
-// saxophone tubes that same disturbance locks the second mode. A lip
-// has no reed channel and skips it. Fletcher and Rossing (The Physics
-// of Musical Instruments, 2nd ed., chap. 13) treat the reed channel as
-// turbulent, and the flue-pipe chapters treat the jet's mixing layer
-// the same way. Neither prints a noise-to-harmonic ratio, so the
-// fraction is an argument. Zero is the deterministic valve.
+// reedTurbulence is the fraction of the reed-gap jet, or of a flue
+// jet, added as a zero-mean disturbance. On a reed, one sample of
+// that fraction of the mean aperture flow, over the reed period, is
+// Z δU on the outgoing wave (reedGapSeedPressure): the sub-threshold
+// stream and the seed the bore grows from. The same fraction is also
+// radiated after the loop (reedApertureBreath). Below threshold the
+// monopole uses the reed period 1/f_res; once the tone is louder
+// than that jet the scale is the round-trip root-mean-square, which
+// keeps the breath floor of a locked note. Wolfe's UNSW clarinet and
+// saxophone pages describe the sub-threshold stream as breathy and
+// print no ratio. Li, Almeida, Smith, and Wolfe (JASA 139, 2016)
+// measured the fundamental growing out of the flow seed at a rate r;
+// a soft note is the slow end of that rate. Bergeot, arXiv:1510.04793,
+// is the rise of blowing pressure from silence with no tongue.
+// Guillemain, JASA 121, 2396–2406 (2007), is the breath attack.
+// A product with the instantaneous sample sits on the harmonics and
+// the bins between them stay at the converter floor. A disturbance
+// of the blowing pressure is cancelled by the pressure search, and
+// on the shorter saxophone tubes that pressure locks the second
+// mode, so the seed is a slice of the aperture flow and not that
+// pressure. A lip has no reed channel and skips it. Fletcher and
+// Rossing (The Physics of Musical Instruments, 2nd ed., chap. 13)
+// treat the reed channel as turbulent. Neither source prints a
+// noise-to-harmonic ratio, so the fraction is an argument. Zero is
+// the deterministic valve.
 // brassiness is the fraction of the cylindrical Burgers advance
 // applied to the traveling wave as it reaches the bell. β = (γ+1)/2
 // and δt = β p L / (ρ c³). Hirschberg, Gilbert, Msallam, and Wijnands
@@ -217,6 +229,78 @@ namespace valve_detail {
   const double gain = 1.0 - std::exp(-constants::twoPi * 0.2);
   smoother += gain * (white - smoother);
   return smoother;
+}
+
+// Pressure added to the outgoing bore wave by one sample of reed-gap
+// turbulence. The mean aperture flow is scaled by reedTurbulence, the
+// caller's fraction: Fletcher and Rossing (chap. 13) and Wolfe's UNSW
+// saxophone and clarinet notes call that stream turbulent and print
+// no ratio. The correlation time is the reed period 1/f_res.
+// f_res is ReedInertia::resonanceHz, from Dalmont's stiffness and the
+// caller's mass, not a stored musical frequency. A sample shorter
+// than that period carries dt·f_res of the fraction. The product
+// enters as Z δU on the outgoing wave, after the pressure search, so
+// the search does not cancel it. Li, Almeida, Smith, and Wolfe, JASA
+// 139 (2016): the flow pulse seeds the bore, and the reed's mechanical
+// energy is already gone on that time scale. A seed written into the
+// blowing pressure locks a short saxophone on its second mode; this
+// term is a slice of the aperture flow, not that pressure.
+[[nodiscard]] inline double reedGapSeedPressure(std::uint32_t& noise, double& smoother,
+                                                double meanFlow, double turbulence,
+                                                double impedance, double resonanceHz,
+                                                double dt) {
+  if (!(turbulence > 0.0) || !(meanFlow > 0.0) || !(impedance > 0.0) ||
+      !(resonanceHz > 0.0) || !(dt > 0.0))
+    return 0.0;
+  const double slice = dt * resonanceHz;
+  if (!(slice > 0.0) || !(slice < 1.0)) return 0.0;
+  const double fluctuation = turbulence * meanFlow * slice * breathSample(noise, smoother);
+  const double pressure = impedance * fluctuation;
+  if (!std::isfinite(pressure)) return 0.0;
+  return pressure;
+}
+
+// Far-field pressure of reed-gap turbulence for one sample.
+//
+// apertureFlow is the absolute Bernoulli volume flow through the
+// mouthpiece (m³/s). radiated is the bell pressure before this term.
+// flowMean and oscEnv are round-trip smoothers owned by the voice.
+// Below the oscillation the jet radiates as ρ (U/τ) / (4 π r). τ is
+// the reed period 1/f_res when the caller has one, otherwise the round
+// trip. f_res is the spring's own resonance, not a stored hertz.
+// Once the radiated tone is louder than that jet, the weight is
+// reedTurbulence times the oscillation's round-trip root-mean-square,
+// which is the breath floor a locked spectrum was tuned with. The two
+// expressions meet when the tone equals the jet. Guillemain, JASA 121,
+// 2396–2406 (2007), is the breath-attack synthesis. This function does
+// not impose the exponential envelope; that growth is the bore.
+[[nodiscard]] inline double reedApertureBreath(double& flowMean, double& oscEnv,
+                                               std::uint32_t& noise, double& smoother,
+                                               double apertureFlow, double radiated,
+                                               double turbulence, double density,
+                                               double listener, double tripSamples,
+                                               double sampleRate, double reedPeriodSeconds) {
+  if (!(turbulence > 0.0) || !(tripSamples > 1.0) || !(sampleRate > 0.0) ||
+      !(listener > 0.0) || !(density > 0.0))
+    return 0.0;
+  const double leak = 1.0 - std::exp(-1.0 / tripSamples);
+  const double flow = std::fabs(apertureFlow);
+  flowMean += leak * (flow - flowMean);
+  if (flowMean < 0.0) flowMean = 0.0;
+  oscEnv += leak * (radiated * radiated - oscEnv);
+  if (oscEnv < 0.0) oscEnv = 0.0;
+  const double tone = std::sqrt(oscEnv);
+  double correlation = tripSamples / sampleRate;
+  if (reedPeriodSeconds > 0.0 && std::isfinite(reedPeriodSeconds))
+    correlation = reedPeriodSeconds;
+  const double breathP =
+      density * (flowMean / correlation) / (4.0 * constants::pi * listener);
+  if (!std::isfinite(breathP) || !std::isfinite(tone)) return 0.0;
+  const double jet = turbulence * breathP;
+  const double sustain = turbulence * tone;
+  const double amp = tone >= breathP ? sustain : jet;
+  if (!std::isfinite(amp)) return 0.0;
+  return amp * breathSample(noise, smoother);
 }
 
 // External spectrum of a beating saxophone reed, Benade and Lutgen,
@@ -511,16 +595,23 @@ class BoreValveVoice final : public IVoice {
       const double bellFlow = (incident - incoming) / impedance_;
       double radiated = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
                                                  radiationState_, radiationCorner_, dt);
-      // After the loop, so the limit cycle is unchanged. The fraction
-      // scales a slow envelope of the radiated pressure, one round trip,
-      // rather than the instantaneous sample. A product with that sample
-      // piles the disturbance onto the harmonics and leaves the bins
-      // between them at the converter floor. See ValveBlow::reedTurbulence.
+      // After the loop, so the limit cycle is unchanged. A reed uses
+      // the aperture jet (reedApertureBreath). A jet keeps the
+      // round-trip envelope of the radiated pressure. See
+      // ValveBlow::reedTurbulence.
       const bool open = frame_ < blowFrames_;
       const bool tongued = tongueFrames_ > 0 && frame_ < tongueFrames_;
       const double mouth = mouthNow();
-      if (reedTurbulence_ > 0.0 && law_ != ValveLaw::OutwardLip && open && mouth > 0.0 &&
-          !(law_ == ValveLaw::InwardReed && tongued)) {
+      if (reedTurbulence_ > 0.0 && law_ == ValveLaw::InwardReed && open && mouth > 0.0 &&
+          !tongued) {
+        const double trip =
+            line_.empty() ? 1.0 : static_cast<double>(line_.size());
+        const double reedPeriod =
+            reed_.inertia.resonanceHz > 0.0 ? 1.0 / reed_.inertia.resonanceHz : 0.0;
+        radiated += valve_detail::reedApertureBreath(
+            flowMean_, breathEnv_, noise_, breathState_, apertureFlow_, radiated,
+            reedTurbulence_, density_, listener_, trip, rate_.value(), reedPeriod);
+      } else if (reedTurbulence_ > 0.0 && law_ == ValveLaw::Jet && open && mouth > 0.0) {
         const double trip =
             line_.empty() ? 1.0 : static_cast<double>(line_.size());
         const double leak = 1.0 - std::exp(-1.0 / trip);
@@ -547,6 +638,8 @@ class BoreValveVoice final : public IVoice {
     noise_ = 1u;
     breathEnv_ = 0.0;
     breathState_ = 0.0;
+    flowMean_ = 0.0;
+    apertureFlow_ = 0.0;
     std::fill(jetDelay_.begin(), jetDelay_.end(), initialDisplacement_);
     jetPos_ = 0;
     displacement_ = initialDisplacement_;
@@ -904,18 +997,25 @@ class BoreValveVoice final : public IVoice {
     const double target = mouth - 2.0 * incoming;
     auto delta = solveDelta(opening.value(), target);
     if (!delta.ok()) return R::failure(delta.error());
+    apertureFlow_ = 0.0;
+    if (open && mouth > 0.0 && !tongued && opening.value() > 0.0)
+      apertureFlow_ = std::fabs(bernoulli(opening.value(), delta.value()));
     const double pressure = mouth - delta.value();
     outgoing = pressure - incoming;
+    if (apertureFlow_ > 0.0)
+      outgoing += valve_detail::reedGapSeedPressure(
+          noise_, breathState_, apertureFlow_, reedTurbulence_, impedance_,
+          reed_.inertia.resonanceHz, dt);
     if (!std::isfinite(outgoing) || !std::isfinite(pressure))
       return R::failure(QuantityError::RangeError);
     if (open && mouth > 0.0 && !tongued) {
-      auto acceleration = reedTipAcceleration(
-          reed_.inertia, displacement_, velocity_, delta.value());
-      if (!acceleration.ok()) return R::failure(acceleration.error());
-      velocity_ += acceleration.value() * dt;
-      displacement_ += velocity_ * dt;
-      if (!std::isfinite(velocity_) || !std::isfinite(displacement_))
-        return R::failure(QuantityError::RangeError);
+      // Exact spring step. Explicit Euler chatters on this mass; see
+      // stepReedTip. The lay is an inelastic stop.
+      auto moved = stepReedTip(reed_.inertia, displacement_, velocity_,
+                               delta.value(), dt);
+      if (!moved.ok()) return R::failure(moved.error());
+      displacement_ = moved.value().displacementMeters;
+      velocity_ = moved.value().velocityMetersPerSecond;
       if (displacement_ > closing_) {
         displacement_ = closing_;
         if (velocity_ > 0.0) velocity_ = 0.0;
@@ -1061,6 +1161,8 @@ class BoreValveVoice final : public IVoice {
   std::uint32_t noise_ = 1u;
   double breathEnv_ = 0.0;
   double breathState_ = 0.0;
+  double flowMean_ = 0.0;
+  double apertureFlow_ = 0.0;
   double bellFlow_ = 0.0;
   double radiationState_ = 0.0;
   double radiationCorner_ = 1.0;
