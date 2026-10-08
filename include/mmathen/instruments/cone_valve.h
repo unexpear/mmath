@@ -117,16 +117,12 @@ class ConeValveVoice final : public IVoice {
       const double incoming = radiating_ ? openEnd_.step(reflected) : -reflected;
       if (!std::isfinite(incoming)) return R::failure(QuantityError::RangeError);
       const bool open = frame_ < blowFrames_;
-      double mouth = valve_detail::blowingPressure(
+      const double mouth = valve_detail::blowingPressure(
           pressure_, blowFrames_, attackFrames_, releaseFrames_, frame_);
-      // Reed-channel turbulence. The scale is the blowing pressure, which
-      // is the Bernoulli pressure available across the lay. The fraction
-      // is ValveBlow::reedTurbulence. A lip is not this channel.
-      if (!lip_ && reedTurbulence_ > 0.0 && open && mouth > 0.0 &&
-          !(tongueFrames_ > 0 && frame_ < tongueFrames_)) {
-        mouth += reedTurbulence_ * mouth * valve_detail::unitNoise(noise_);
-        if (mouth < 0.0) mouth = 0.0;
-      }
+      // A disturbance of this blowing pressure is cancelled by the pressure
+      // search, so it does not radiate, and on the shorter tubes it is
+      // enough to lock the second mode. The fraction is applied to the
+      // radiated pressure below, after the loop. A lip is not this channel.
       // A tongue holds the valve shut while mouth pressure rises, then
       // lets go. The release frame is the start of the acoustic attack.
       const bool tongued = tongueFrames_ > 0 && frame_ < tongueFrames_;
@@ -193,14 +189,19 @@ class ConeValveVoice final : public IVoice {
       }
       line_[pos_] = outgoing;
       pos_ = (pos_ + 1) % line_.size();
-      const double bellFlow =
-          (incident - incoming) / impedance_ * bellScale_;
+      const double bellFlow = (incident - incoming) / impedance_ * bellScale_;
       double radiated = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
                                                  radiationState_, radiationCorner_, dt);
       // Benade and Lutgen's external envelope, when a break frequency
       // was supplied. The monopole above is still the bell flow; this
       // transfer is the measured saxophone spectrum of a beating reed.
       if (break_.active()) radiated = break_.step(radiated);
+      // Fraction of the radiated pressure. Applied after the loop so the
+      // reed's limit cycle stays put, and after the envelope so the
+      // smoother does not filter it back to a line spectrum. See
+      // ValveBlow::reedTurbulence. A lip has no reed channel.
+      if (!lip_ && reedTurbulence_ > 0.0 && open && mouth > 0.0 && !tongued)
+        radiated += reedTurbulence_ * radiated * valve_detail::unitNoise(noise_);
       out[i] = radiated;
       if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);
       ++frame_;

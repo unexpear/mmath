@@ -92,13 +92,15 @@ enum class ValveLaw { InwardReed, OutwardLip, Jet };
 // tongueReleaseFrames keeps a reed or a lip on its closed stop until
 // that frame, then places it at initialDisplacementMeters. Zero leaves
 // the valve free from the first sample. Mouth pressure ramps on its own.
-// reedTurbulence is the fraction of the blowing pressure added as a
-// zero-mean disturbance across an open reed. The quasi-static
-// characteristic is silent between partials. Fletcher and Rossing
-// (The Physics of Musical Instruments, 2nd ed., chap. 13) treat flow
-// in the reed channel as turbulent; the fraction is an argument
-// because that chapter does not print a saxophone noise-to-harmonic
-// ratio. Zero is the deterministic reed. spectrumBreakHz is Benade
+// reedTurbulence is the fraction of the radiated pressure added as a
+// zero-mean disturbance after the reed loop. A disturbance of the
+// blowing pressure is cancelled by the pressure search, so the bell
+// stays a line spectrum, and on the shorter tubes that same disturbance
+// locks the second mode. Fletcher and Rossing (The Physics of Musical
+// Instruments, 2nd ed., chap. 13) treat flow in the reed channel as
+// turbulent; the fraction is an argument because that chapter does not
+// print a saxophone noise-to-harmonic ratio. Zero is the deterministic
+// reed. spectrumBreakHz is Benade
 // and Lutgen's break frequency fb, JASA 83, 1900–1907 (1988). Zero
 // leaves the radiated pressure without that transfer.
 struct ValveBlow {
