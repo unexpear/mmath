@@ -117,8 +117,16 @@ class ConeValveVoice final : public IVoice {
       const double incoming = radiating_ ? openEnd_.step(reflected) : -reflected;
       if (!std::isfinite(incoming)) return R::failure(QuantityError::RangeError);
       const bool open = frame_ < blowFrames_;
-      const double mouth = valve_detail::blowingPressure(
+      double mouth = valve_detail::blowingPressure(
           pressure_, blowFrames_, attackFrames_, releaseFrames_, frame_);
+      // Reed-channel turbulence. The scale is the blowing pressure, which
+      // is the Bernoulli pressure available across the lay. The fraction
+      // is ValveBlow::reedTurbulence. A lip is not this channel.
+      if (!lip_ && reedTurbulence_ > 0.0 && open && mouth > 0.0 &&
+          !(tongueFrames_ > 0 && frame_ < tongueFrames_)) {
+        mouth += reedTurbulence_ * mouth * valve_detail::unitNoise(noise_);
+        if (mouth < 0.0) mouth = 0.0;
+      }
       // A tongue holds the valve shut while mouth pressure rises, then
       // lets go. The release frame is the start of the acoustic attack.
       const bool tongued = tongueFrames_ > 0 && frame_ < tongueFrames_;
@@ -141,6 +149,10 @@ class ConeValveVoice final : public IVoice {
         opening = restOpening_ + slitWidth_ * displacement_;
         if (opening < 0.0) opening = 0.0;
         if (opening > maximumOpening_) opening = maximumOpening_;
+        // A tongue holds the lip on the closed stop. The stop arithmetic
+        // can leave a roundoff slit, and the pressure search then fails
+        // against a bore that is already sounding.
+        if (tongued || !open) opening = 0.0;
       } else if (open && mouth > 0.0) {
         auto area = reedAreaAtDisplacement(reed_, inertia_, displacement_);
         if (!area.ok()) return R::failure(area.error());
@@ -183,8 +195,13 @@ class ConeValveVoice final : public IVoice {
       pos_ = (pos_ + 1) % line_.size();
       const double bellFlow =
           (incident - incoming) / impedance_ * bellScale_;
-      out[i] = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
-                                        radiationState_, radiationCorner_, dt);
+      double radiated = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
+                                                 radiationState_, radiationCorner_, dt);
+      // Benade and Lutgen's external envelope, when a break frequency
+      // was supplied. The monopole above is still the bell flow; this
+      // transfer is the measured saxophone spectrum of a beating reed.
+      if (break_.active()) radiated = break_.step(radiated);
+      out[i] = radiated;
       if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);
       ++frame_;
     }
@@ -205,6 +222,8 @@ class ConeValveVoice final : public IVoice {
     cupPressure_ = 0.0;
     bellFlow_ = 0.0;
     radiationState_ = 0.0;
+    break_.reset();
+    noise_ = 1u;
     displacement_ = initialDisplacement_;
     velocity_ = 0.0;
     frame_ = 0;
@@ -215,6 +234,61 @@ class ConeValveVoice final : public IVoice {
   [[nodiscard]] bool radiating() const noexcept { return radiating_; }
   [[nodiscard]] int delaySamples() const noexcept {
     return static_cast<int>(line_.size());
+  }
+
+  // Mouth pressure after the attack. The raised cosine still uses this
+  // value as its full pressure.
+  bool setBlowingPressure(double pressurePa) {
+    if (!std::isfinite(pressurePa) || pressurePa < 0.0) return false;
+    pressure_ = pressurePa;
+    return true;
+  }
+
+  // Absolute frame at which the tongue lets the valve go. Until that
+  // frame the reed or the lip stays on its closed stop. Zero clears it.
+  void scheduleTongue(std::uint64_t releaseFrame) { tongueFrames_ = releaseFrame; }
+
+  // Sounding length in metres. Travel time is 2L/c; the apex distance
+  // stays, so α = c/x0 is unchanged. The delay line is the construction
+  // length and cannot grow. This is the air column to an open hole, a
+  // valve slide, or a trombone slide, not a lattice and not a piston
+  // chart. Until this succeeds, readBore is the construction delay.
+  // fundamentalHz() stays the construction root.
+  bool setSoundingLength(double lengthMeters) {
+    if (!std::isfinite(lengthMeters) || !(lengthMeters > 0.0) || !(speed_ > 0.0) ||
+        !(apex_ > 0.0))
+      return false;
+    const double fs = rate_.value();
+    if (!std::isfinite(fs) || !(fs > 0.0)) return false;
+    // Half a sample is the Nyquist average in readBore, as in create().
+    double timed = fs * 2.0 * lengthMeters / speed_ - 0.5;
+    const double guess = speed_ / (2.0 * lengthMeters);
+    if (!radiating_) {
+      timed -= valve_detail::onePolePhaseDelay(wall_.pole, guess, fs);
+      timed -= valve_detail::onePolePhaseDelay(cutoff_.pole, guess, fs);
+    }
+    if (!std::isfinite(timed) || !(timed > 1.0)) return false;
+    const double limit = static_cast<double>(line_.size());
+    if (timed > limit + 2.0) return false;
+    if (timed > limit) timed = limit;
+    const double scale = (apex_ + lengthMeters) / apex_;
+    if (!std::isfinite(scale) || !(scale > 0.0)) return false;
+    variableAge_ = timed;
+    variableRead_ = true;
+    bellScale_ = scale;
+    return true;
+  }
+
+  // Unloaded lip resonance. k = m (2 π f)^2. A reed has no lip spring.
+  bool setLipResonanceHz(double hertz) {
+    if (!lip_) return false;
+    if (!std::isfinite(hertz) || !(hertz > 0.0) || !(trumpet_.lipMassKg > 0.0))
+      return false;
+    const double omega = constants::twoPi * hertz;
+    const double stiffness = trumpet_.lipMassKg * omega * omega;
+    if (!std::isfinite(stiffness) || !(stiffness > 0.0)) return false;
+    trumpet_.lipStiffnessNewtonsPerMeter = stiffness;
+    return true;
   }
 
  private:
@@ -233,6 +307,7 @@ class ConeValveVoice final : public IVoice {
         attackFrames_(blow.attackFrames),
         releaseFrames_(blow.releaseFrames),
         tongueFrames_(blow.tongueReleaseFrames),
+        reedTurbulence_(blow.reedTurbulence),
         fundamentalHz_(fundamentalHz),
         lip_(lip),
         radiating_(radiating),
@@ -376,6 +451,8 @@ class ConeValveVoice final : public IVoice {
     voice.openEnd_ = std::move(openEnd);
     voice.boreThiran_ = boreThiran;
     voice.useBoreThiran_ = useBoreThiran;
+    voice.apex_ = apex;
+    voice.speed_ = speed;
     voice.bellScale_ = (apex + sounding) / apex;
     if (!std::isfinite(voice.bellScale_) || !(voice.bellScale_ > 0.0))
       return R::failure(QuantityError::RangeError);
@@ -391,6 +468,7 @@ class ConeValveVoice final : public IVoice {
       voice.radiationCorner_ = constants::twoPi * blow.reflectionCutoffHz;
     if (!std::isfinite(voice.radiationCorner_) || !(voice.radiationCorner_ > 0.0))
       return R::failure(QuantityError::RangeError);
+    voice.break_.design(blow.spectrumBreakHz, fs);
     voice.reed_ = reed;
     voice.inertia_ = inertia;
     voice.closing_ = inertia.closingDisplacementMeters;
@@ -415,7 +493,9 @@ class ConeValveVoice final : public IVoice {
 
   [[nodiscard]] double readBore() {
     double x = line_[pos_];
-    if (useBoreThiran_) {
+    if (variableRead_) {
+      x = valve_detail::delayRead(line_, pos_, variableAge_);
+    } else if (useBoreThiran_) {
       const double y = boreThiran_ * x + boreX_ - boreThiran_ * boreY_;
       boreX_ = x;
       boreY_ = y;
@@ -527,9 +607,16 @@ class ConeValveVoice final : public IVoice {
   std::uint64_t attackFrames_ = 0;
   std::uint64_t releaseFrames_ = 0;
   std::uint64_t tongueFrames_ = 0;
+  double reedTurbulence_ = 0.0;
+  std::uint32_t noise_ = 1u;
+  valve_detail::BreakEnvelope break_{};
   bool useBoreThiran_ = false;
   double fundamentalHz_ = 0.0;
   double decay_ = 0.0;
+  double apex_ = 0.0;
+  double speed_ = 0.0;
+  double variableAge_ = 0.0;
+  bool variableRead_ = false;
   double closing_ = 0.0;
   double restOpening_ = 0.0;
   double maximumOpening_ = 0.0;

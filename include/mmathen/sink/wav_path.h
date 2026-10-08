@@ -8,10 +8,12 @@
 // directory already exists. A missing artifacts directory is not an
 // error: a Windows checkout and a local build do not have it.
 
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <system_error>
+#include <thread>
 
 namespace mmathen {
 
@@ -52,6 +54,8 @@ inline constexpr const char* kArtifactWavDirectory = "/opt/cursor/artifacts";
 }
 
 // An empty destination means there is nowhere to copy. That is success.
+// A listening directory on a network store can return EIO for a copy
+// that succeeds when repeated, so a failed copy is tried again.
 [[nodiscard]] inline bool copyWavFile(const std::filesystem::path& source,
                                       const std::filesystem::path& destination) {
   if (destination.empty()) return true;
@@ -60,10 +64,15 @@ inline constexpr const char* kArtifactWavDirectory = "/opt/cursor/artifacts";
     const bool same = std::filesystem::equivalent(source, destination, error);
     if (!error && same) return true;
   }
-  error.clear();
-  std::filesystem::copy_file(source, destination,
-                             std::filesystem::copy_options::overwrite_existing, error);
-  return !error;
+  for (int attempt = 0; attempt < 5; ++attempt) {
+    error.clear();
+    std::filesystem::copy_file(source, destination,
+                               std::filesystem::copy_options::overwrite_existing, error);
+    if (!error) return true;
+    if (attempt + 1 < 5)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50 * (attempt + 1)));
+  }
+  return false;
 }
 
 [[nodiscard]] inline bool copyWavToArtifacts(const std::filesystem::path& source,

@@ -92,6 +92,15 @@ enum class ValveLaw { InwardReed, OutwardLip, Jet };
 // tongueReleaseFrames keeps a reed or a lip on its closed stop until
 // that frame, then places it at initialDisplacementMeters. Zero leaves
 // the valve free from the first sample. Mouth pressure ramps on its own.
+// reedTurbulence is the fraction of the blowing pressure added as a
+// zero-mean disturbance across an open reed. The quasi-static
+// characteristic is silent between partials. Fletcher and Rossing
+// (The Physics of Musical Instruments, 2nd ed., chap. 13) treat flow
+// in the reed channel as turbulent; the fraction is an argument
+// because that chapter does not print a saxophone noise-to-harmonic
+// ratio. Zero is the deterministic reed. spectrumBreakHz is Benade
+// and Lutgen's break frequency fb, JASA 83, 1900–1907 (1988). Zero
+// leaves the radiated pressure without that transfer.
 struct ValveBlow {
   double pressurePa = 0.0;
   std::uint64_t frames = 0;
@@ -107,6 +116,8 @@ struct ValveBlow {
   double jetNoiseMeters = 0.0;
   double radiationHz = 0.0;
   std::uint64_t tongueReleaseFrames = 0;
+  double reedTurbulence = 0.0;
+  double spectrumBreakHz = 0.0;
 };
 
 namespace valve_detail {
@@ -162,8 +173,86 @@ namespace valve_detail {
       !std::isfinite(blow.radiationHz) || blow.radiationHz < 0.0)
     return false;
   if (blow.tongueReleaseFrames > blow.frames) return false;
+  if (!std::isfinite(blow.reedTurbulence) || blow.reedTurbulence < 0.0 ||
+      blow.reedTurbulence > 1.0 || !std::isfinite(blow.spectrumBreakHz) ||
+      blow.spectrumBreakHz < 0.0)
+    return false;
   return true;
 }
+
+// Unit sample in (−1, 1] from a numerical recipes LCG. The sequence is
+// the disturbance, not a stored spectrum.
+[[nodiscard]] inline double unitNoise(std::uint32_t& state) {
+  state = state * 1664525u + 1013904223u;
+  return (static_cast<double>(state & 0x00ffffffu) / 16777215.0) * 2.0 - 1.0;
+}
+
+// External spectrum of a beating saxophone reed, Benade and Lutgen,
+// JASA 83, 1900–1907 (1988):
+//
+//   E(x) = [x / (1 + x^7)]^{1/2},   x = f / fb.
+//
+// Below fb the envelope rises about 3 dB/octave; above fb it falls
+// about 18 dB/octave. fb is an argument. Their alto measurement is
+// 837 Hz and their tenor measurement is 618 Hz; neither is stored
+// here. The transfer is the length-512 frequency-sampling FIR of E,
+// normalized so its peak is 1. A zero break frequency is a wire.
+struct BreakEnvelope {
+  static constexpr int kTaps = 512;
+
+  void reset() { std::fill(memory.begin(), memory.end(), 0.0); }
+
+  [[nodiscard]] bool active() const { return !impulse.empty(); }
+
+  void design(double breakHz, double sampleRateHz) {
+    impulse.clear();
+    memory.clear();
+    cursor = 0;
+    if (!(breakHz > 0.0) || !(sampleRateHz > 2.0 * breakHz)) return;
+    double magnitude[kTaps / 2 + 1] = {};
+    double peak = 0.0;
+    for (int k = 0; k <= kTaps / 2; ++k) {
+      const double frequency = sampleRateHz * static_cast<double>(k) / kTaps;
+      const double x = frequency / breakHz;
+      const double value =
+          k == 0 ? 0.0 : std::sqrt(x / (1.0 + std::pow(x, 7.0)));
+      magnitude[k] = value;
+      if (value > peak) peak = value;
+    }
+    if (!(peak > 0.0)) return;
+    impulse.assign(static_cast<std::size_t>(kTaps), 0.0);
+    for (int n = 0; n < kTaps; ++n) {
+      const double center = static_cast<double>(n) - 0.5 * kTaps;
+      double sum = magnitude[0];
+      for (int k = 1; k < kTaps / 2; ++k) {
+        sum += 2.0 * magnitude[k] *
+               std::cos(constants::twoPi * static_cast<double>(k) * center / kTaps);
+      }
+      sum += magnitude[kTaps / 2] *
+             std::cos(constants::pi * center);
+      impulse[static_cast<std::size_t>(n)] = sum / (peak * kTaps);
+    }
+    memory.assign(static_cast<std::size_t>(kTaps), 0.0);
+  }
+
+  [[nodiscard]] double step(double x) {
+    if (impulse.empty()) return x;
+    memory[static_cast<std::size_t>(cursor)] = x;
+    double y = 0.0;
+    for (int i = 0; i < kTaps; ++i) {
+      int index = cursor - i;
+      if (index < 0) index += kTaps;
+      y += impulse[static_cast<std::size_t>(i)] * memory[static_cast<std::size_t>(index)];
+    }
+    cursor += 1;
+    if (cursor == kTaps) cursor = 0;
+    return y;
+  }
+
+  std::vector<double> impulse;
+  std::vector<double> memory;
+  int cursor = 0;
+};
 
 // One-pole low-pass, unity DC gain: (1−p)/(1−p z^{−1}). p = 0 is a wire.
 struct TripLoss {
@@ -259,6 +348,28 @@ struct TripLoss {
   if (!std::isfinite(transmission) || !(transmission > 0.0) || transmission > 1.0)
     return 1.0;
   return transmission;
+}
+
+// Sample written `age` steps ago. age == line.size() is the slot the
+// legacy loop reads, which is the full round trip. The fraction is a
+// linear interpolation toward the next older sample.
+[[nodiscard]] inline double delayRead(const std::vector<double>& line, std::size_t writePos,
+                                      double age) {
+  const int n = static_cast<int>(line.size());
+  if (n < 1 || !std::isfinite(age)) return 0.0;
+  if (age < 1.0) age = 1.0;
+  if (age > static_cast<double>(n)) age = static_cast<double>(n);
+  const int older = static_cast<int>(std::floor(age));
+  const double fraction = age - static_cast<double>(older);
+  auto at = [&](int steps) {
+    int index = static_cast<int>(writePos) - steps;
+    index %= n;
+    if (index < 0) index += n;
+    return line[static_cast<std::size_t>(index)];
+  };
+  const double recent = at(older);
+  if (!(fraction > 1.0e-9) || older >= n) return recent;
+  return (1.0 - fraction) * recent + fraction * at(older + 1);
 }
 
 }  // namespace valve_detail
@@ -394,6 +505,76 @@ class BoreValveVoice final : public IVoice {
     return reflectionDecay_;
   }
   [[nodiscard]] int delaySamples() const noexcept { return delaySamples_; }
+
+  // Mouth pressure after the attack. The raised cosine still uses this
+  // value as its full pressure.
+  bool setBlowingPressure(double pressurePa) {
+    if (!std::isfinite(pressurePa) || pressurePa < 0.0) return false;
+    pressure_ = pressurePa;
+    return true;
+  }
+
+  // Absolute frame at which the tongue lets the valve go. Until that
+  // frame a reed or a lip stays on its closed stop. Zero clears it.
+  // The jet has no tongue stop; a flute attack is the pressure ramp.
+  void scheduleTongue(std::uint64_t releaseFrame) { tongueFrames_ = releaseFrame; }
+
+  // Sounding length in metres. The delay line is allocated at
+  // construction and cannot grow, so this only shortens the round trip
+  // already allocated. It is the air column to an open hole, or a slide
+  // position, not a stepped tone-hole lattice and not a valve chart.
+  // Until this succeeds, readBore is the construction delay.
+  bool setSoundingLength(double lengthMeters) {
+    if (!std::isfinite(lengthMeters) || !(lengthMeters > 0.0) || !(speed_ > 0.0))
+      return false;
+    const double fs = rate_.value();
+    double air = lengthMeters;
+    if (!radiating_) air += endCorrection_;
+    if (!(air > 0.0) || !std::isfinite(fs) || !(fs > 0.0)) return false;
+    // Same round-trip accounting as makeCylinder. There is no half-sample
+    // Nyquist average on this bore, so none is removed here.
+    double timed = fs * 2.0 * air / speed_;
+    const double geometric = (law_ == ValveLaw::Jet) ? speed_ / (2.0 * air)
+                                                     : speed_ / (4.0 * air);
+    if (!radiating_) {
+      timed -= valve_detail::onePolePhaseDelay(wall_.pole, geometric, fs);
+      timed -= valve_detail::onePolePhaseDelay(cutoff_.pole, geometric, fs);
+    }
+    if (!std::isfinite(timed) || !(timed > 1.0)) return false;
+    const double limit = static_cast<double>(line_.size());
+    if (timed > limit + 2.0) return false;
+    if (timed > limit) timed = limit;
+    variableAge_ = timed;
+    variableRead_ = true;
+    return true;
+  }
+
+  // Unloaded lip resonance. The spring is k = m (2 π f)^2, the same
+  // relation makeTrumpet stores. A reed or a jet has no lip spring.
+  bool setLipResonanceHz(double hertz) {
+    if (law_ != ValveLaw::OutwardLip) return false;
+    if (!std::isfinite(hertz) || !(hertz > 0.0) || !(trumpet_.lipMassKg > 0.0))
+      return false;
+    const double omega = constants::twoPi * hertz;
+    const double stiffness = trumpet_.lipMassKg * omega * omega;
+    if (!std::isfinite(stiffness) || !(stiffness > 0.0)) return false;
+    trumpet_.lipStiffnessNewtonsPerMeter = stiffness;
+    return true;
+  }
+
+  // Convection delay of the jet, in samples. The buffer is the delay
+  // allocated from the construction pressure and cannot grow. The
+  // default read stays the integer buffer until this succeeds.
+  bool setJetDelaySamples(double samples) {
+    if (law_ != ValveLaw::Jet || jetDelay_.empty()) return false;
+    if (!std::isfinite(samples)) return false;
+    const double limit = static_cast<double>(jetDelay_.size());
+    if (samples < 1.0 || samples > limit + 2.0) return false;
+    if (samples > limit) samples = limit;
+    jetAge_ = samples;
+    jetVariable_ = true;
+    return true;
+  }
 
  private:
   struct ReedPack {
@@ -546,6 +727,8 @@ class BoreValveVoice final : public IVoice {
     const double radius = std::sqrt(area / constants::pi);
     voice.wall_.pole = wallPole;
     voice.cutoff_.pole = cutPole;
+    voice.speed_ = speed;
+    voice.endCorrection_ = radiating ? 0.0 : blow.endCorrectionMeters;
     voice.jetNoise_ = blow.jetNoiseMeters;
     voice.radiationCorner_ = speed / radius;
     // The caller's corner is the bell/embouchure radiation cutoff. It
@@ -597,7 +780,9 @@ class BoreValveVoice final : public IVoice {
 
   [[nodiscard]] double readBore() {
     double x = line_[pos_];
-    if (useBoreThiran_) {
+    if (variableRead_) {
+      x = valve_detail::delayRead(line_, pos_, variableAge_);
+    } else if (useBoreThiran_) {
       const double y = boreThiran_ * x + boreX_ - boreThiran_ * boreY_;
       boreX_ = x;
       boreY_ = y;
@@ -693,6 +878,9 @@ class BoreValveVoice final : public IVoice {
     double opening = restOpening_ + slitWidth_ * displacement_;
     if (opening < 0.0) opening = 0.0;
     if (opening > maximumOpening_) opening = maximumOpening_;
+    // Same closed stop as the cone: a tongue is a shut lip, not a
+    // roundoff slit. See ConeValveVoice.
+    if (tongued || !open) opening = 0.0;
     const double target = mouth - 2.0 * incoming;
     auto delta = solveDelta(opening, target);
     if (!delta.ok()) return R::failure(delta.error());
@@ -724,7 +912,11 @@ class BoreValveVoice final : public IVoice {
       if (!flow.ok()) return R::failure(flow.error());
       jetFlow = flow.value();
     }
-    double yEdge = jetDelay_.empty() ? flueY_ : jetDelay_[jetPos_];
+    double yEdge = flueY_;
+    if (!jetDelay_.empty()) {
+      yEdge = jetVariable_ ? valve_detail::delayRead(jetDelay_, jetPos_, jetAge_)
+                           : jetDelay_[jetPos_];
+    }
     // tanh is the captured fraction of a sech² jet. The factor 2 matches
     // the centered small-signal slope 2 U_j y / h of the top-hat jet.
     // A turbulent offset, argument jetNoiseMeters, is the breath noise
@@ -818,6 +1010,12 @@ class BoreValveVoice final : public IVoice {
   double jetArea_ = 0.0;
   double jetThickness_ = 0.0;
   double flueToEdge_ = 0.0;
+  double speed_ = 0.0;
+  double endCorrection_ = 0.0;
+  double variableAge_ = 0.0;
+  double jetAge_ = 0.0;
+  bool variableRead_ = false;
+  bool jetVariable_ = false;
   int delaySamples_ = 1;
   double fundamentalHz_ = 0.0;
   double reflectionDecay_ = 0.0;
