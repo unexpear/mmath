@@ -19,17 +19,19 @@
 #include <mmathen/instruments/violin.h>
 #include <mmathen/physics/medium.h>
 #include <mmathen/sink/wav.h>
+#include <mmathen/sink/wav_path.h>
 
 namespace {
 
-void writeScaled(const std::vector<double>& samples, double rate, const char* path) {
+void writeScaled(const std::vector<double>& samples, double rate, const char* filename) {
   double peak = 0.0;
   for (double sample : samples) peak = std::max(peak, std::fabs(sample));
   const double gain = peak > 0.0 ? 0.5 / peak : 0.0;
   std::vector<double> scaled(samples.size());
   for (std::size_t i = 0; i < samples.size(); ++i) scaled[i] = samples[i] * gain;
+  const auto path = mmathen::wavOutputPath(filename);
   auto opened = mmathen::WavSink::open(
-      path, mmathen::SampleRateHz{rate},
+      path.string(), mmathen::SampleRateHz{rate},
       mmathen::FrameCount{static_cast<std::uint64_t>(samples.size())});
   if (!opened.ok()) std::exit(1);
   auto sink = std::move(opened).value();
@@ -37,7 +39,8 @@ void writeScaled(const std::vector<double>& samples, double rate, const char* pa
                     mmathen::FrameCount{static_cast<std::uint64_t>(scaled.size())}))
     std::exit(1);
   if (!sink.close().ok()) std::exit(1);
-  std::printf("%s peak %.6g\n", path, peak);
+  if (!mmathen::copyWavToArtifacts(path, filename)) std::exit(1);
+  std::printf("%s peak %.6g\n", path.string().c_str(), peak);
 }
 
 }  // namespace
@@ -61,7 +64,7 @@ int main() {
                  .value();
   auto bowed = std::vector<double>(static_cast<std::size_t>(frames));
   if (!bow.renderBlock(bowed.data(), FrameCount{frames}).ok()) std::exit(1);
-  writeScaled(bowed, 48000.0, "/opt/cursor/artifacts/mmath-violin-bow.wav");
+  writeScaled(bowed, 48000.0, "mmath-violin-bow.wav");
 
   auto bank = concertGrandStringBank().value();
   const auto* spec = findPianoString(bank, "C#5");
@@ -73,7 +76,7 @@ int main() {
                     .value();
   auto struck = std::vector<double>(static_cast<std::size_t>(frames));
   if (!hammer.renderBlock(struck.data(), FrameCount{frames}).ok()) std::exit(1);
-  writeScaled(struck, 48000.0, "/opt/cursor/artifacts/mmath-piano-hammer.wav");
+  writeScaled(struck, 48000.0, "mmath-piano-hammer.wav");
 
   ClarinetSpec clarinetSpec{0.45, 2.0e-4, 101325.0, 293.15, 2.0e-5, 6000.0,
                             1.0e-6, 1.0e-4, 1.0e-3, 0.01};
@@ -83,6 +86,6 @@ int main() {
                   .value();
   auto blown = std::vector<double>(static_cast<std::size_t>(frames));
   if (!reed.renderBlock(blown.data(), FrameCount{frames}).ok()) std::exit(1);
-  writeScaled(blown, 48000.0, "/opt/cursor/artifacts/mmath-clarinet.wav");
+  writeScaled(blown, 48000.0, "mmath-clarinet.wav");
   return 0;
 }

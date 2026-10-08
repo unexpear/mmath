@@ -24,6 +24,7 @@
 #include <mmathen/render/waveguide_voice.h>
 #include <mmathen/sink/sink.h>
 #include <mmathen/sink/wav.h>
+#include <mmathen/sink/wav_path.h>
 
 using namespace mmathen;
 
@@ -160,15 +161,16 @@ TEST_CASE("a waveguide voice renders pitch and physical decay to WAV",
   CHECK(nearlyEqual(measured, decay, 0.0, 2.0e-2));
 
   voice.reset();
-  const char* path = "/tmp/mmath-voice-waveguide.wav";
-  auto wav = unwrap(WavSink::open(path, kRate, FrameCount{kFrames}));
+  const char* filename = "mmath-voice-waveguide.wav";
+  const auto path = wavOutputPath(filename);
+  auto wav = unwrap(WavSink::open(path.string(), kRate, FrameCount{kFrames}));
   const auto filed = unwrap(renderVoice(
       voice, VoiceRenderConfig{FrameCount{kFrames}, 128}, wav));
   CHECK(filed.isClean());
   CHECK(filed.peakAbs == stats.peakAbs);
   CHECK(unwrap(wav.close()).value() == kFrames);
 
-  std::ifstream in(path, std::ios::binary);
+  std::ifstream in(path.string(), std::ios::binary);
   REQUIRE(in.good());
   in.seekg(44);
   std::int16_t pcm = 0;
@@ -179,6 +181,7 @@ TEST_CASE("a waveguide voice renders pitch and physical decay to WAV",
     if (pcm != 0) ++nonzero;
   }
   CHECK(nonzero > 100);
+  REQUIRE(copyWavToArtifacts(path, filename));
 }
 
 TEST_CASE("voice block size does not change the samples", "[voice]") {

@@ -184,6 +184,7 @@ if(BUILD_TESTING)
     tests/headers/th_signal_oscillator.cpp
     tests/headers/th_sink_sink.cpp
     tests/headers/th_sink_wav.cpp
+    tests/headers/th_sink_wav_path.cpp
     tests/headers/th_render_offline.cpp
     tests/headers/th_render_voice.cpp
     tests/headers/th_music_tuning.cpp

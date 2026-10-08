@@ -2,21 +2,22 @@
 //
 // The T60 pair and the listen fraction are this example's arguments.
 // They are not measurements stored on the instruments. The electric
-// guitar file is the coil velocity. Writes:
-//   /tmp/mmath-pluck-violin.wav
-//   /tmp/mmath-pluck-viola.wav
-//   /tmp/mmath-pluck-cello.wav
-//   /tmp/mmath-pluck-double-bass.wav
-//   /tmp/mmath-pluck-harp.wav
-//   /tmp/mmath-pluck-harpsichord.wav
-//   /tmp/mmath-pluck-classical-guitar.wav
-//   /tmp/mmath-pluck-electric-guitar.wav
+// guitar file is the coil velocity. Each file is written under
+// wavOutputDirectory() (MMATH_WAV_DIR, or the process temporary
+// directory). A peak-scaled copy is written to /opt/cursor/artifacts
+// only when that directory already exists. Writes:
+//   mmath-pluck-violin.wav
+//   mmath-pluck-viola.wav
+//   mmath-pluck-cello.wav
+//   mmath-pluck-double-bass.wav
+//   mmath-pluck-harp.wav
+//   mmath-pluck-harpsichord.wav
+//   mmath-pluck-classical-guitar.wav
+//   mmath-pluck-electric-guitar.wav
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <cstring>
-#include <string>
 #include <utility>
 #include <vector>
 
@@ -30,6 +31,7 @@
 #include <mmathen/instruments/viola.h>
 #include <mmathen/instruments/violin.h>
 #include <mmathen/sink/wav.h>
+#include <mmathen/sink/wav_path.h>
 
 namespace {
 
@@ -42,7 +44,7 @@ mmathen::LossModel lossFor(const mmathen::StringCourse& course) {
   return loss.value();
 }
 
-int renderOne(const char* path, const mmathen::StringCourse& course,
+int renderOne(const char* filename, const mmathen::StringCourse& course,
               mmathen::StringReadout readout) {
   using namespace mmathen;
   const Excitation pluck{ExcitationKind::Pluck, 0.5, 1.0e-4};
@@ -52,16 +54,20 @@ int renderOne(const char* path, const mmathen::StringCourse& course,
   if (!made.ok()) return 1;
   auto voice = std::move(made).value();
   const FrameCount frames{48000};
-  auto wav = WavSink::open(path, rate, frames);
+  const auto path = wavOutputPath(filename);
+  auto wav = WavSink::open(path.string(), rate, frames);
   if (!wav.ok()) return 1;
   auto sink = std::move(wav).value();
   auto stats = renderVoice(voice, VoiceRenderConfig{frames, 512}, sink);
   if (!stats.ok() || !stats.value().isClean()) return 1;
   if (!sink.close().ok()) return 1;
-  std::printf("%s frames=%llu peak=%.6g pole=%.3f Hz\n", path,
+  std::printf("%s frames=%llu peak=%.6g pole=%.3f Hz\n", path.string().c_str(),
               static_cast<unsigned long long>(stats.value().framesRendered),
               stats.value().peakAbs, voice.fundamentalHz());
-  // Playback-only copy. The /tmp file stays the unscaled physics.
+  // Playback-only copy. The required file stays the unscaled physics.
+  // Skip the copy when the artifacts directory is absent.
+  const auto listening = artifactWavPath(filename);
+  if (listening.empty()) return 0;
   voice.reset();
   std::vector<double> samples(static_cast<std::size_t>(frames.value()));
   if (!voice.renderBlock(samples.data(), frames).ok()) return 1;
@@ -70,10 +76,7 @@ int renderOne(const char* path, const mmathen::StringCourse& course,
   if (!(peak > 0.0)) return 1;
   const double gain = 0.5 / peak;
   for (double& sample : samples) sample *= gain;
-  const char* slash = std::strrchr(path, '/');
-  const char* name = slash != nullptr ? slash + 1 : path;
-  const std::string listening = std::string("/opt/cursor/artifacts/") + name;
-  auto opened = WavSink::open(listening.c_str(), rate, frames);
+  auto opened = WavSink::open(listening.string(), rate, frames);
   if (!opened.ok()) return 1;
   auto listen = std::move(opened).value();
   if (!listen.consume(samples.data(), frames)) return 1;
@@ -138,29 +141,29 @@ mmathen::StringCourse tunedElectric() {
 
 int main() {
   using namespace mmathen;
-  if (renderOne("/tmp/mmath-pluck-violin.wav", violin().value().courses[2],
+  if (renderOne("mmath-pluck-violin.wav", violin().value().courses[2],
                 StringReadout::Displacement) != 0)
     return 1;
-  if (renderOne("/tmp/mmath-pluck-viola.wav", viola().value().courses[2],
+  if (renderOne("mmath-pluck-viola.wav", viola().value().courses[2],
                 StringReadout::Displacement) != 0)
     return 1;
-  if (renderOne("/tmp/mmath-pluck-cello.wav", cello().value().courses[3],
+  if (renderOne("mmath-pluck-cello.wav", cello().value().courses[3],
                 StringReadout::Displacement) != 0)
     return 1;
-  if (renderOne("/tmp/mmath-pluck-double-bass.wav",
+  if (renderOne("mmath-pluck-double-bass.wav",
                 doubleBass().value().courses[3],
                 StringReadout::Displacement) != 0)
     return 1;
-  if (renderOne("/tmp/mmath-pluck-harp.wav", tunedHarp(),
+  if (renderOne("mmath-pluck-harp.wav", tunedHarp(),
                 StringReadout::Displacement) != 0)
     return 1;
-  if (renderOne("/tmp/mmath-pluck-harpsichord.wav", tunedHarpsichord(),
+  if (renderOne("mmath-pluck-harpsichord.wav", tunedHarpsichord(),
                 StringReadout::Displacement) != 0)
     return 1;
-  if (renderOne("/tmp/mmath-pluck-classical-guitar.wav", tunedClassical(),
+  if (renderOne("mmath-pluck-classical-guitar.wav", tunedClassical(),
                 StringReadout::Displacement) != 0)
     return 1;
-  if (renderOne("/tmp/mmath-pluck-electric-guitar.wav", tunedElectric(),
+  if (renderOne("mmath-pluck-electric-guitar.wav", tunedElectric(),
                 StringReadout::CoilVelocity) != 0)
     return 1;
   return 0;

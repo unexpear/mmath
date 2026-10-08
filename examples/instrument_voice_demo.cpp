@@ -1,6 +1,8 @@
 // Renders the waveguide voice to a WAV file. The samples are the
 // stepper. No instrument is claimed, and no envelope is applied.
-// Writes /tmp/mmath-voice-waveguide.wav.
+// Writes mmath-voice-waveguide.wav under wavOutputDirectory()
+// (MMATH_WAV_DIR, or the process temporary directory) and copies it to
+// /opt/cursor/artifacts only when that directory already exists.
 
 #include <cstdio>
 #include <utility>
@@ -9,10 +11,12 @@
 #include <mmathen/physics/wave1d.h>
 #include <mmathen/render/waveguide_voice.h>
 #include <mmathen/sink/wav.h>
+#include <mmathen/sink/wav_path.h>
 
 int main() {
   using namespace mmathen;
-  const char* path = "/tmp/mmath-voice-waveguide.wav";
+  const char* filename = "mmath-voice-waveguide.wav";
+  const auto path = wavOutputPath(filename);
   auto base = idealString(DistanceMeters{0.6523}, TensionNewtons{97.344},
                           LinearDensityKgPerM{0.001});
   if (!base.ok()) return 1;
@@ -32,13 +36,14 @@ int main() {
   if (!made.ok()) return 1;
   auto voice = std::move(made).value();
   const FrameCount frames{48000};
-  auto wav = WavSink::open(path, rate, frames);
+  auto wav = WavSink::open(path.string(), rate, frames);
   if (!wav.ok()) return 1;
   auto sink = std::move(wav).value();
   auto stats = renderVoice(voice, VoiceRenderConfig{frames, 512}, sink);
   if (!stats.ok() || !stats.value().isClean()) return 1;
   if (!sink.close().ok()) return 1;
-  std::printf("%s frames=%llu peak=%.6f pole=%.3f Hz\n", path,
+  if (!copyWavToArtifacts(path, filename)) return 1;
+  std::printf("%s frames=%llu peak=%.6f pole=%.3f Hz\n", path.string().c_str(),
               static_cast<unsigned long long>(stats.value().framesRendered),
               stats.value().peakAbs,
               design.value().partials[0].frequency.value());

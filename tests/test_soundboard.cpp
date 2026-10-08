@@ -27,6 +27,7 @@
 #include <mmathen/math/comparison.h>
 #include <mmathen/physics/tuned_waveguide.h>
 #include <mmathen/sink/wav.h>
+#include <mmathen/sink/wav_path.h>
 
 using namespace mmathen;
 
@@ -79,20 +80,22 @@ double amplitudeNear(const std::vector<double>& samples, std::size_t begin, doub
       .amplitude;
 }
 
-void writeListening(const std::vector<double>& samples, const char* path) {
+void writeListening(const std::vector<double>& samples, const char* filename) {
   double peak = 0.0;
   for (double sample : samples) peak = std::max(peak, std::fabs(sample));
   REQUIRE(peak > 0.0);
   const double gain = 0.5 / peak;
   std::vector<double> scaled(samples.size());
   for (std::size_t i = 0; i < samples.size(); ++i) scaled[i] = samples[i] * gain;
-  auto opened =
-      WavSink::open(path, kRate, FrameCount{static_cast<std::uint64_t>(samples.size())});
+  const auto path = wavOutputPath(filename);
+  auto opened = WavSink::open(path.string(), kRate,
+                              FrameCount{static_cast<std::uint64_t>(samples.size())});
   REQUIRE(opened.ok());
   auto sink = std::move(opened).value();
   REQUIRE(sink.consume(scaled.data(),
                        FrameCount{static_cast<std::uint64_t>(scaled.size())}));
   REQUIRE(sink.close().ok());
+  REQUIRE(copyWavToArtifacts(path, filename));
 }
 
 void requireFinite(const std::vector<double>& samples) {
@@ -170,7 +173,7 @@ TEST_CASE("a heavy soundboard radiates the string", "[soundboard]") {
   REQUIRE(early > 0.0);
   const double expected = std::exp(-voice.stringDecay() * (8192.0 / kFs));
   CHECK(std::fabs(late / early - expected) / expected < 0.05);
-  writeListening(samples, "/opt/cursor/artifacts/mmath-violin-soundboard.wav");
+  writeListening(samples, "mmath-violin-soundboard.wav");
 
   voice.reset();
   std::vector<double> once(1024);
@@ -216,7 +219,7 @@ TEST_CASE("a yielding bridge changes the radiated tone", "[soundboard]") {
   const double heavyPitch = pitchNear(heavySamples, 8192, 400.0, 480.0);
   CHECK(pulledPitch > heavyPitch + 0.05);
   CHECK(std::fabs(pitchNear(pulledSamples, 16384, 400.0, 480.0) - pulledPitch) < 0.02);
-  writeListening(lightSamples, "/opt/cursor/artifacts/mmath-violin-soundboard-light.wav");
+  writeListening(lightSamples, "mmath-violin-soundboard-light.wav");
 }
 
 TEST_CASE("a mode bank still radiates the plucked fundamental", "[soundboard]") {
@@ -248,11 +251,11 @@ TEST_CASE("harp, harpsichord, and classical guitar radiate through a soundboard"
     const char* path;
   };
   const Row rows[] = {
-      {"harp", harpCourse(), "/opt/cursor/artifacts/mmath-harp-soundboard.wav"},
+      {"harp", harpCourse(), "mmath-harp-soundboard.wav"},
       {"harpsichord", harpsichordCourse(),
-       "/opt/cursor/artifacts/mmath-harpsichord-soundboard.wav"},
+       "mmath-harpsichord-soundboard.wav"},
       {"classical guitar", classicalCourse(),
-       "/opt/cursor/artifacts/mmath-classical-guitar-soundboard.wav"},
+       "mmath-classical-guitar-soundboard.wav"},
   };
   for (const Row& row : rows) {
     INFO(row.name);

@@ -22,6 +22,7 @@
 #include <mmathen/physics/medium.h>
 #include <mmathen/physics/modes.h>
 #include <mmathen/sink/wav.h>
+#include <mmathen/sink/wav_path.h>
 
 using namespace mmathen;
 
@@ -108,20 +109,22 @@ double amplitudeNear(const std::vector<double>& samples, std::size_t begin, doub
       .amplitude;
 }
 
-void writeListening(const std::vector<double>& samples, const char* path) {
+void writeListening(const std::vector<double>& samples, const char* filename) {
   double peak = 0.0;
   for (double sample : samples) peak = std::max(peak, std::fabs(sample));
   REQUIRE(peak > 0.0);
   const double gain = 0.5 / peak;
   std::vector<double> scaled(samples.size());
   for (std::size_t i = 0; i < samples.size(); ++i) scaled[i] = samples[i] * gain;
-  auto opened =
-      WavSink::open(path, kRate, FrameCount{static_cast<std::uint64_t>(samples.size())});
+  const auto path = wavOutputPath(filename);
+  auto opened = WavSink::open(path.string(), kRate,
+                              FrameCount{static_cast<std::uint64_t>(samples.size())});
   REQUIRE(opened.ok());
   auto sink = std::move(opened).value();
   REQUIRE(sink.consume(scaled.data(),
                        FrameCount{static_cast<std::uint64_t>(scaled.size())}));
   REQUIRE(sink.close().ok());
+  REQUIRE(copyWavToArtifacts(path, filename));
 }
 
 }  // namespace
@@ -172,7 +175,7 @@ TEST_CASE("a closed cavity raises the membrane and radiates", "[cavity]") {
   CHECK(CavityDrumVoice::create(other, nullptr, kit.bassDrum, strike, 0, 1, kRate,
                                 101325.0, 293.15, 1.0)
             .error() == QuantityError::InvalidArgument);
-  writeListening(samples, "/opt/cursor/artifacts/mmath-bass-drum-cavity.wav");
+  writeListening(samples, "mmath-bass-drum-cavity.wav");
 }
 
 TEST_CASE("two heads split a cavity mode and keep the bare partner", "[cavity]") {
@@ -220,15 +223,15 @@ TEST_CASE("toms radiate through two heads and a cavity", "[cavity]") {
   };
   const Row rows[] = {
       {&kit.rackTom10, 140.0, "rack tom 10 in",
-       "/opt/cursor/artifacts/mmath-rack-tom-10-cavity.wav", true},
+       "mmath-rack-tom-10-cavity.wav", true},
       {&kit.rackTom12, 110.0, "rack tom 12 in",
-       "/opt/cursor/artifacts/mmath-rack-tom-12-cavity.wav", true},
+       "mmath-rack-tom-12-cavity.wav", true},
       {&kit.floorTom, 80.0, "floor tom",
-       "/opt/cursor/artifacts/mmath-floor-tom-cavity.wav", true},
+       "mmath-floor-tom-cavity.wav", true},
       {&kit.snare55, 180.0, "snare 5.5 in",
-       "/opt/cursor/artifacts/mmath-snare-55-cavity.wav", false},
+       "mmath-snare-55-cavity.wav", false},
       {&kit.snare65, 160.0, "snare 6.5 in",
-       "/opt/cursor/artifacts/mmath-snare-65-cavity.wav", false},
+       "mmath-snare-65-cavity.wav", false},
   };
   for (const Row& row : rows) {
     INFO(row.name);

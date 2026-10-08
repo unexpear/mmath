@@ -34,6 +34,7 @@
 #include <mmathen/physics/medium.h>
 #include <mmathen/physics/oscillator.h>
 #include <mmathen/sink/wav.h>
+#include <mmathen/sink/wav_path.h>
 
 using namespace mmathen;
 
@@ -115,20 +116,22 @@ double amplitudeNear(const std::vector<double>& samples, std::size_t begin,
       .amplitude;
 }
 
-void writeListening(const std::vector<double>& samples, const char* path) {
+void writeListening(const std::vector<double>& samples, const char* filename) {
   double peak = 0.0;
   for (double sample : samples) peak = std::max(peak, std::fabs(sample));
   REQUIRE(peak > 0.0);
   const double gain = 0.5 / peak;
   std::vector<double> scaled(samples.size());
   for (std::size_t i = 0; i < samples.size(); ++i) scaled[i] = samples[i] * gain;
-  auto opened =
-      WavSink::open(path, kRate, FrameCount{static_cast<std::uint64_t>(samples.size())});
+  const auto path = wavOutputPath(filename);
+  auto opened = WavSink::open(path.string(), kRate,
+                              FrameCount{static_cast<std::uint64_t>(samples.size())});
   REQUIRE(opened.ok());
   auto sink = std::move(opened).value();
   REQUIRE(sink.consume(scaled.data(),
                        FrameCount{static_cast<std::uint64_t>(scaled.size())}));
   REQUIRE(sink.close().ok());
+  REQUIRE(copyWavToArtifacts(path, filename));
 }
 
 LossModel courseLoss(const StringCourse& course, double t1, double t2) {
@@ -241,7 +244,7 @@ TEST_CASE("a bow on a lossy waveguide has the loop pitch and decay", "[contact]"
   const double heard = pitchNear(samples, 16384, 400.0, 480.0);
   CHECK(std::fabs(heard - voice.fundamentalHz()) < 2.0);
   checkDecay(samples, 16384, 400.0, 480.0, voice.fundamentalDecay());
-  writeListening(samples, "/opt/cursor/artifacts/mmath-violin-bow.wav");
+  writeListening(samples, "mmath-violin-bow.wav");
 
   voice.reset();
   auto again = renderOf(voice, 1024);
@@ -259,9 +262,9 @@ TEST_CASE("a bow on a lossy waveguide has the loop pitch and decay", "[contact]"
   const StringCourse others[] = {unwrap(viola()).courses[2],
                                  unwrap(cello()).courses[3],
                                  unwrap(doubleBass()).courses[3]};
-  const char* paths[] = {"/opt/cursor/artifacts/mmath-viola-bow.wav",
-                         "/opt/cursor/artifacts/mmath-cello-bow.wav",
-                         "/opt/cursor/artifacts/mmath-double-bass-bow.wav"};
+  const char* paths[] = {"mmath-viola-bow.wav",
+                         "mmath-cello-bow.wav",
+                         "mmath-double-bass-bow.wav"};
   for (int i = 0; i < 3; ++i) {
     const double otherMu = others[i].material.linearDensity.value();
     const double otherT = others[i].tension.value();
@@ -311,7 +314,7 @@ TEST_CASE("a bowed bridge radiates through the soundboard", "[contact]") {
   REQUIRE(early > 0.0);
   const double expected = std::exp(-voice.fundamentalDecay() * (8192.0 / kFs));
   CHECK(std::fabs(late / early - expected) / expected < 0.05);
-  writeListening(samples, "/opt/cursor/artifacts/mmath-violin-bow-body.wav");
+  writeListening(samples, "mmath-violin-bow-body.wav");
 
   voice.reset();
   std::vector<double> once(512);
@@ -343,14 +346,14 @@ TEST_CASE("a bowed bridge radiates through the soundboard", "[contact]") {
   CHECK(lightLate / lightEarly < 0.40);
   CHECK(heavyLate / heavyEarly > 0.45);
   CHECK(peakOf(lightSamples, 0, 32768) > 5.0 * peakOf(heavySamples, 0, 32768));
-  writeListening(lightSamples, "/opt/cursor/artifacts/mmath-violin-bow-body-light.wav");
+  writeListening(lightSamples, "mmath-violin-bow-body-light.wav");
 
   const char* names[] = {"viola", "cello", "double bass"};
   const StringCourse others[] = {unwrap(viola()).courses[2], unwrap(cello()).courses[3],
                                  unwrap(doubleBass()).courses[3]};
-  const char* paths[] = {"/opt/cursor/artifacts/mmath-viola-bow-body.wav",
-                         "/opt/cursor/artifacts/mmath-cello-bow-body.wav",
-                         "/opt/cursor/artifacts/mmath-double-bass-bow-body.wav"};
+  const char* paths[] = {"mmath-viola-bow-body.wav",
+                         "mmath-cello-bow-body.wav",
+                         "mmath-double-bass-bow-body.wav"};
   for (int i = 0; i < 3; ++i) {
     const double otherF = others[i].tuning.frequency.value();
     const BodyModeSpec mode{otherF, 200.0, 20.0};
@@ -403,7 +406,7 @@ TEST_CASE("a felt hammer rings the stiff string after contact", "[contact]") {
   const double heard = pitchNear(samples, 8192, pole - 40.0, pole + 40.0);
   CHECK(std::fabs(heard - pole) < 2.0);
   checkDecay(samples, 8192, pole - 40.0, pole + 40.0, elastic.fundamentalDecay());
-  writeListening(samples, "/opt/cursor/artifacts/mmath-piano-hammer.wav");
+  writeListening(samples, "mmath-piano-hammer.wav");
 
   auto viscous = unwrap(FeltHammerVoice::create(
       course, strike, loss, stiff.stiffness, 3200.0, 1.0, 0.4, 4, kRate, 0.3));
@@ -440,7 +443,7 @@ TEST_CASE("a hammered bridge radiates through the soundboard", "[contact]") {
   REQUIRE(early > 0.0);
   const double expected = std::exp(-voice.fundamentalDecay() * (8192.0 / kFs));
   CHECK(std::fabs(late / early - expected) / expected < 0.05);
-  writeListening(samples, "/opt/cursor/artifacts/mmath-piano-soundboard.wav");
+  writeListening(samples, "mmath-piano-soundboard.wav");
 
   voice.reset();
   std::vector<double> once(512);
@@ -479,7 +482,7 @@ TEST_CASE("a hammered bridge radiates through the soundboard", "[contact]") {
   CHECK(peakOf(lightSamples, 0, 8192) > 5.0 * peakOf(heavySamples, 0, 8192));
   CHECK(std::fabs(pitchNear(lightSamples, 24576, frequency - 40.0, frequency + 40.0) -
                   lightVoice.fundamentalHz()) < 1.0);
-  writeListening(lightSamples, "/opt/cursor/artifacts/mmath-piano-soundboard-light.wav");
+  writeListening(lightSamples, "mmath-piano-soundboard-light.wav");
 
   const HammerBodyDrive empty{std::span<const BodyModeSpec>(), 0.02, 1.0, kAir, kTemp};
   CHECK(HammeredStringVoice::create(course, strike, loss, stiff.stiffness, 3200.0, 1.0, 0.0, 4,
@@ -514,15 +517,15 @@ TEST_CASE("a mallet rings a membrane mode and a free-plate mode", "[contact]") {
   const double heard = pitchNear(samples, 8192, 70.0, 110.0);
   CHECK(std::fabs(heard - voice.fundamentalHz()) < 1.0);
   checkDecay(samples, 8192, 70.0, 110.0, voice.fundamentalDecay());
-  writeListening(samples, "/opt/cursor/artifacts/mmath-bass-drum.wav");
+  writeListening(samples, "mmath-bass-drum.wav");
 
   const MembraneShell* shells[] = {&kit.rackTom10, &kit.rackTom12, &kit.floorTom,
                                    &kit.snare55, &kit.snare65};
-  const char* names[] = {"/opt/cursor/artifacts/mmath-rack-tom-10.wav",
-                         "/opt/cursor/artifacts/mmath-rack-tom-12.wav",
-                         "/opt/cursor/artifacts/mmath-floor-tom.wav",
-                         "/opt/cursor/artifacts/mmath-snare-55.wav",
-                         "/opt/cursor/artifacts/mmath-snare-65.wav"};
+  const char* names[] = {"mmath-rack-tom-10.wav",
+                         "mmath-rack-tom-12.wav",
+                         "mmath-floor-tom.wav",
+                         "mmath-snare-55.wav",
+                         "mmath-snare-65.wav"};
   const double pitches[] = {140.0, 110.0, 80.0, 180.0, 160.0};
   for (int i = 0; i < 5; ++i) {
     const MembraneHead head = tunedHead(*shells[i], pitches[i]);
@@ -559,15 +562,15 @@ TEST_CASE("a mallet rings a membrane mode and a free-plate mode", "[contact]") {
   CHECK(std::fabs(plateHeard - splash.fundamentalHz()) < 1.5);
   checkDecay(plate, 8192, plateDamped - 30.0, plateDamped + 30.0,
              splash.fundamentalDecay());
-  writeListening(plate, "/opt/cursor/artifacts/mmath-splash.wav");
+  writeListening(plate, "mmath-splash.wav");
 
   const CymbalPlate* plates[] = {&set.hiHatTop, &set.crash16, &set.crash18,
                                  &set.china, &set.ride};
-  const char* platePaths[] = {"/opt/cursor/artifacts/mmath-hi-hat.wav",
-                              "/opt/cursor/artifacts/mmath-crash-16.wav",
-                              "/opt/cursor/artifacts/mmath-crash-18.wav",
-                              "/opt/cursor/artifacts/mmath-china.wav",
-                              "/opt/cursor/artifacts/mmath-ride.wav"};
+  const char* platePaths[] = {"mmath-hi-hat.wav",
+                              "mmath-crash-16.wav",
+                              "mmath-crash-18.wav",
+                              "mmath-china.wav",
+                              "mmath-ride.wav"};
   for (int i = 0; i < 5; ++i) {
     auto cymbal = unwrap(PlateMalletVoice::create(
         *plates[i], material, plateStrike, &nodal, &radial, 1, kRate, 0.45, 0.0));
@@ -598,7 +601,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   const double reedRing = pitchNear(reedSamples, 18000, 150.0, 230.0);
   CHECK(std::fabs(reedRing - reed.fundamentalHz()) < 0.5);
   checkDecay(reedSamples, 18432, 150.0, 230.0, reed.reflectionDecay());
-  writeListening(reedSamples, "/opt/cursor/artifacts/mmath-clarinet.wav");
+  writeListening(reedSamples, "mmath-clarinet.wav");
 
   SaxophoneSpec saxSpec{0.45, 0.12, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0,
                         1.0e-6, 1.0e-4, 1.0e-3, 0.01};
@@ -611,7 +614,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   const double saxRing = pitchNear(saxSamples, 18000, 150.0, 230.0);
   CHECK(std::fabs(saxRing - saxVoice.fundamentalHz()) < 0.5);
   checkDecay(saxSamples, 18432, 150.0, 230.0, saxVoice.reflectionDecay());
-  writeListening(saxSamples, "/opt/cursor/artifacts/mmath-saxophone.wav");
+  writeListening(saxSamples, "mmath-saxophone.wav");
 
   const double length = 0.55;
   const double pipe = speed / (2.0 * length);
@@ -635,7 +638,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   const double jetRing = pitchNear(jetSamples, 18432, pipe - 40.0, pipe + 40.0);
   CHECK(std::fabs(jetRing - jet.fundamentalHz()) < 1.0);
   checkDecay(jetSamples, 18432, pipe - 40.0, pipe + 40.0, jet.reflectionDecay());
-  writeListening(jetSamples, "/opt/cursor/artifacts/mmath-flute.wav");
+  writeListening(jetSamples, "mmath-flute.wav");
 
   const double lipMass = 2.0e-5;
   const double lipOmega = 2.0 * constants::pi * (speed / (4.0 * 0.45));
@@ -655,7 +658,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   const double lipRing = pitchNear(lipSamples, 18000, 150.0, 230.0);
   CHECK(std::fabs(lipRing - lip.fundamentalHz()) < 0.5);
   checkDecay(lipSamples, 18432, 150.0, 230.0, lip.reflectionDecay());
-  writeListening(lipSamples, "/opt/cursor/artifacts/mmath-trumpet.wav");
+  writeListening(lipSamples, "mmath-trumpet.wav");
 
   TromboneSpec tromboneSpec{0.45, 0.15, 1.2e-4, kAir, kTemp, 0.0, 8.0e-6,
                             4.0e-5, 8.0e-3, lipMass, lipStiffness, 1.5e-5, 0.002};
@@ -668,7 +671,7 @@ TEST_CASE("a reed, a lip, and a jet step a bore delay", "[contact]") {
   const double slideRing = pitchNear(slideSamples, 18000, 80.0, 160.0);
   CHECK(std::fabs(slideRing - slide.fundamentalHz()) < 0.5);
   checkDecay(slideSamples, 18432, 80.0, 160.0, slide.reflectionDecay());
-  writeListening(slideSamples, "/opt/cursor/artifacts/mmath-trombone.wav");
+  writeListening(slideSamples, "mmath-trombone.wav");
 
   CHECK(BoreValveVoice::fromClarinet(
             clarinet, ValveBlow{4000.0, 100, 0.0, 0.0}, kRate)
@@ -709,7 +712,7 @@ TEST_CASE("an unflanged open end lengthens the bore and radiates", "[contact]") 
   CHECK(std::fabs(ring - voice.fundamentalHz()) < 1.0);
   checkDecay(samples, 20000, voice.fundamentalHz() - 25.0,
              voice.fundamentalHz() + 25.0, voice.reflectionDecay());
-  writeListening(samples, "/opt/cursor/artifacts/mmath-clarinet-open-end.wav");
+  writeListening(samples, "mmath-clarinet-open-end.wav");
 
   ValveBlow wider = loaded;
   wider.radiusMeters = 0.03;
@@ -736,7 +739,7 @@ TEST_CASE("an unflanged open end lengthens the bore and radiates", "[contact]") 
   CHECK(std::fabs(jetRing - jet.fundamentalHz()) < 1.5);
   checkDecay(jetSamples, 20000, jet.fundamentalHz() - 30.0,
              jet.fundamentalHz() + 30.0, jet.reflectionDecay());
-  writeListening(jetSamples, "/opt/cursor/artifacts/mmath-flute-open-end.wav");
+  writeListening(jetSamples, "mmath-flute-open-end.wav");
 }
 
 TEST_CASE("a reed on a truncated cone is not a cylinder", "[contact]") {
@@ -759,7 +762,7 @@ TEST_CASE("a reed on a truncated cone is not a cylinder", "[contact]") {
   const double late = amplitudeNear(samples, 32000, ideal.fundamentalHz() - 40.0,
                                     ideal.fundamentalHz() + 40.0);
   CHECK(std::fabs(late / early - 1.0) < 0.05);
-  writeListening(samples, "/opt/cursor/artifacts/mmath-saxophone-cone.wav");
+  writeListening(samples, "mmath-saxophone-cone.wav");
 
   ValveBlow radiating = blow;
   radiating.radiusMeters = 0.03;
@@ -783,7 +786,7 @@ TEST_CASE("a reed on a truncated cone is not a cylinder", "[contact]") {
   const double wideRatio = amplitudeNear(wideSamples, 24192, 220.0, 340.0) /
                            amplitudeNear(wideSamples, 16000, 220.0, 340.0);
   CHECK(wideRatio < ratio1);
-  writeListening(flared, "/opt/cursor/artifacts/mmath-saxophone-bell.wav");
+  writeListening(flared, "mmath-saxophone-bell.wav");
 
   const double lipMass = 2.0e-5;
   const double speed =
@@ -800,7 +803,7 @@ TEST_CASE("a reed on a truncated cone is not a cylinder", "[contact]") {
   CHECK(lipHeard < lip.fundamentalHz() - 2.0);
   const double lipLater = pitchNear(lipSamples, 28000, 200.0, 340.0);
   CHECK(std::fabs(lipHeard - lipLater) < 1.0);
-  writeListening(lipSamples, "/opt/cursor/artifacts/mmath-trumpet-cone.wav");
+  writeListening(lipSamples, "mmath-trumpet-cone.wav");
 
   TromboneSpec tromboneSpec{0.45, 0.15, 1.2e-4, kAir, kTemp, 0.0, 8.0e-6, 4.0e-5,
                             8.0e-3, lipMass, lipOmega * lipOmega * lipMass, 1.5e-5,
@@ -812,7 +815,7 @@ TEST_CASE("a reed on a truncated cone is not a cylinder", "[contact]") {
   CHECK(peakOf(slideSamples, 18000, 28000) > 20.0);
   const double slideHeard = pitchNear(slideSamples, 20000, 80.0, 260.0);
   CHECK(slideHeard < lipHeard);
-  writeListening(slideSamples, "/opt/cursor/artifacts/mmath-trombone-cone.wav");
+  writeListening(slideSamples, "mmath-trombone-cone.wav");
 }
 
 TEST_CASE("a positive cup compliance lowers the brass ring", "[contact]") {
@@ -846,7 +849,7 @@ TEST_CASE("a positive cup compliance lowers the brass ring", "[contact]") {
   const double ratio2 = late / middle;
   CHECK(ratio1 < 0.9);
   CHECK(std::fabs(ratio1 - ratio2) / ratio1 < 0.08);
-  writeListening(smallSamples, "/opt/cursor/artifacts/mmath-trumpet-cup.wav");
+  writeListening(smallSamples, "mmath-trumpet-cup.wav");
 
   Trumpet negative = brass(0.0);
   negative.acousticCompliance = -1.0e-12;
@@ -867,5 +870,5 @@ TEST_CASE("a positive cup compliance lowers the brass ring", "[contact]") {
   const double slideCupPitch = pitchNear(slideCupSamples, 20000, 80.0, 260.0);
   CHECK(slideCupPitch < slideBarePitch - 2.0);
   CHECK(peakOf(slideCupSamples, 18000, 28000) > 20.0);
-  writeListening(slideCupSamples, "/opt/cursor/artifacts/mmath-trombone-cup.wav");
+  writeListening(slideCupSamples, "mmath-trombone-cup.wav");
 }

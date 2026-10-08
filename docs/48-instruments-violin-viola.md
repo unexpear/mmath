@@ -126,44 +126,40 @@ snare wires are not in those steppers.
 | China | Felt mallet steps a free plate | Damped Kirchhoff mode; flange not modeled | None | None | no | Mallet and plate step. The flange, nonlinearity, and radiation are absent |
 | Ride | Felt mallet steps a free plate | Damped Kirchhoff mode | None | None | no | Mallet and plate step. Nonlinearity and radiation are absent |
 
-The example `instrument_voice_demo` writes
-`/tmp/mmath-voice-waveguide.wav` from the waveguide voice. The test
-writes the same path and checks the file is not silent.
-`instrument_pluck_demo` writes one second of each wired course to
-`/tmp/mmath-pluck-violin.wav`, `/tmp/mmath-pluck-viola.wav`,
-`/tmp/mmath-pluck-cello.wav`, `/tmp/mmath-pluck-double-bass.wav`,
-`/tmp/mmath-pluck-harp.wav`, `/tmp/mmath-pluck-harpsichord.wav`,
-`/tmp/mmath-pluck-classical-guitar.wav`, and
-`/tmp/mmath-pluck-electric-guitar.wav`. The electric-guitar file is
-the coil velocity. The test writes the same paths, shorter, and
-checks pitch, decay, finiteness, and a non-silent PCM payload. The
-files are generated artifacts and are not committed. The contact test
-writes the bow, hammer, mallet, and valve renders to
-`/opt/cursor/artifacts/mmath-<instrument>.wav`, peak-scaled to 0.5 so a
-displacement in metres or a pressure in pascals is audible. That scale
-is playback only. The assertions read the unscaled samples. The
-soundboard test writes
-`/opt/cursor/artifacts/mmath-violin-soundboard.wav`,
-`/opt/cursor/artifacts/mmath-violin-soundboard-light.wav`,
-`/opt/cursor/artifacts/mmath-harp-soundboard.wav`,
-`/opt/cursor/artifacts/mmath-harpsichord-soundboard.wav`, and
-`/opt/cursor/artifacts/mmath-classical-guitar-soundboard.wav` the same
-way. The cavity-drum test writes
-`/opt/cursor/artifacts/mmath-bass-drum-cavity.wav`,
-`/opt/cursor/artifacts/mmath-rack-tom-10-cavity.wav`,
-`/opt/cursor/artifacts/mmath-rack-tom-12-cavity.wav`,
-`/opt/cursor/artifacts/mmath-floor-tom-cavity.wav`,
-`/opt/cursor/artifacts/mmath-snare-55-cavity.wav`, and
-`/opt/cursor/artifacts/mmath-snare-65-cavity.wav`. The cup test writes
-`/opt/cursor/artifacts/mmath-trumpet-cup.wav` and
-`/opt/cursor/artifacts/mmath-trombone-cup.wav`. The bowed soundboard
-writes `/opt/cursor/artifacts/mmath-violin-bow-body.wav`,
-`/opt/cursor/artifacts/mmath-violin-bow-body-light.wav`,
-`/opt/cursor/artifacts/mmath-viola-bow-body.wav`,
-`/opt/cursor/artifacts/mmath-cello-bow-body.wav`, and
-`/opt/cursor/artifacts/mmath-double-bass-bow-body.wav`. The hammered
-soundboard writes `/opt/cursor/artifacts/mmath-piano-soundboard.wav`
-and `/opt/cursor/artifacts/mmath-piano-soundboard-light.wav`.
+Required WAV files go to `wavOutputDirectory()`: `MMATH_WAV_DIR` when
+that variable is set and non-empty, otherwise the process temporary
+directory. A listening copy is written under `/opt/cursor/artifacts`
+only when that directory already exists. A missing artifacts directory
+is not a failure. The files are generated and are not committed.
+
+The example `instrument_voice_demo` writes `mmath-voice-waveguide.wav`
+from the waveguide voice. The test writes the same name and checks the
+file is not silent. `instrument_pluck_demo` writes one second of each
+wired course: `mmath-pluck-violin.wav`, `mmath-pluck-viola.wav`,
+`mmath-pluck-cello.wav`, `mmath-pluck-double-bass.wav`,
+`mmath-pluck-harp.wav`, `mmath-pluck-harpsichord.wav`,
+`mmath-pluck-classical-guitar.wav`, and
+`mmath-pluck-electric-guitar.wav`. The electric-guitar file is the coil
+velocity. The test writes the same names, shorter, and checks pitch,
+decay, finiteness, and a non-silent PCM payload. The contact test
+writes the bow, hammer, mallet, and valve renders as
+`mmath-<instrument>.wav`, peak-scaled to 0.5 so a displacement in
+metres or a pressure in pascals is audible. That scale is playback
+only. The assertions read the unscaled samples. The soundboard test
+writes `mmath-violin-soundboard.wav`,
+`mmath-violin-soundboard-light.wav`, `mmath-harp-soundboard.wav`,
+`mmath-harpsichord-soundboard.wav`, and
+`mmath-classical-guitar-soundboard.wav` the same way. The cavity-drum
+test writes `mmath-bass-drum-cavity.wav`,
+`mmath-rack-tom-10-cavity.wav`, `mmath-rack-tom-12-cavity.wav`,
+`mmath-floor-tom-cavity.wav`, `mmath-snare-55-cavity.wav`, and
+`mmath-snare-65-cavity.wav`. The cup test writes
+`mmath-trumpet-cup.wav` and `mmath-trombone-cup.wav`. The bowed
+soundboard writes `mmath-violin-bow-body.wav`,
+`mmath-violin-bow-body-light.wav`, `mmath-viola-bow-body.wav`,
+`mmath-cello-bow-body.wav`, and `mmath-double-bass-bow-body.wav`. The
+hammered soundboard writes `mmath-piano-soundboard.wav` and
+`mmath-piano-soundboard-light.wav`.
 
 ## Defaults
 

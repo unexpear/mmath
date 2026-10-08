@@ -29,6 +29,7 @@
 #include <mmathen/math/comparison.h>
 #include <mmathen/physics/wave1d.h>
 #include <mmathen/sink/wav.h>
+#include <mmathen/sink/wav_path.h>
 
 using namespace mmathen;
 
@@ -82,7 +83,7 @@ double zeroCrossingHz(const std::vector<double>& x, double fs) {
   return fs / period;
 }
 
-void checkAudible(PluckedStringVoice& voice, const char* path) {
+void checkAudible(PluckedStringVoice& voice, const char* filename) {
   const double pole = voice.fundamentalHz();
   const double decay = voice.fundamentalDecay();
   REQUIRE(pole > 0.0);
@@ -123,14 +124,15 @@ void checkAudible(PluckedStringVoice& voice, const char* path) {
   CHECK(nearlyEqual(measured, decay, 0.0, 3.0e-2));
 
   voice.reset();
-  auto wav = unwrap(WavSink::open(path, kRate, FrameCount{kFrames}));
+  const auto path = wavOutputPath(filename);
+  auto wav = unwrap(WavSink::open(path.string(), kRate, FrameCount{kFrames}));
   const auto filed = unwrap(renderVoice(
       voice, VoiceRenderConfig{FrameCount{kFrames}, 128}, wav));
   CHECK(filed.isClean());
   CHECK(filed.peakAbs == stats.peakAbs);
   CHECK(unwrap(wav.close()).value() == kFrames);
 
-  std::ifstream in(path, std::ios::binary);
+  std::ifstream in(path.string(), std::ios::binary);
   REQUIRE(in.good());
   in.seekg(44);
   std::int16_t pcm = 0;
@@ -141,6 +143,7 @@ void checkAudible(PluckedStringVoice& voice, const char* path) {
     if (pcm != 0) ++nonzero;
   }
   CHECK(nonzero > 100);
+  REQUIRE(copyWavToArtifacts(path, filename));
 }
 
 StringCourse harpCourse() {
@@ -238,16 +241,16 @@ TEST_CASE("plucked instrument courses render pitch and decay", "[pluck]") {
     StringReadout readout;
   };
   const Row rows[] = {
-      {"/tmp/mmath-pluck-violin.wav", violinA, StringReadout::Displacement},
-      {"/tmp/mmath-pluck-viola.wav", violaD, StringReadout::Displacement},
-      {"/tmp/mmath-pluck-cello.wav", celloA, StringReadout::Displacement},
-      {"/tmp/mmath-pluck-double-bass.wav", bassG, StringReadout::Displacement},
-      {"/tmp/mmath-pluck-harp.wav", harpCourse(), StringReadout::Displacement},
-      {"/tmp/mmath-pluck-harpsichord.wav", harpsichordCourse(),
+      {"mmath-pluck-violin.wav", violinA, StringReadout::Displacement},
+      {"mmath-pluck-viola.wav", violaD, StringReadout::Displacement},
+      {"mmath-pluck-cello.wav", celloA, StringReadout::Displacement},
+      {"mmath-pluck-double-bass.wav", bassG, StringReadout::Displacement},
+      {"mmath-pluck-harp.wav", harpCourse(), StringReadout::Displacement},
+      {"mmath-pluck-harpsichord.wav", harpsichordCourse(),
        StringReadout::Displacement},
-      {"/tmp/mmath-pluck-classical-guitar.wav", classicalCourse(),
+      {"mmath-pluck-classical-guitar.wav", classicalCourse(),
        StringReadout::Displacement},
-      {"/tmp/mmath-pluck-electric-guitar.wav", electricCourse(),
+      {"mmath-pluck-electric-guitar.wav", electricCourse(),
        StringReadout::CoilVelocity},
   };
   for (const Row& row : rows) {
