@@ -281,6 +281,8 @@ class ConeValveVoice final : public IVoice {
     flowMean_ = 0.0;
     apertureFlow_ = 0.0;
     prevOutgoing_ = 0.0;
+    std::fill(steepHist_, steepHist_ + 16, 0.0);
+    steepPos_ = 0;
     displacement_ = initialDisplacement_;
     velocity_ = 0.0;
     frame_ = 0;
@@ -578,27 +580,38 @@ class ConeValveVoice final : public IVoice {
 
   // One trip of plane-wave steepening, heard at the bell and not
   // written back. Peaks advance by β p L / (ρ c³) samples,
-  // β = (γ+1)/2. The difference is a one-sample Taylor step, so the
-  // advance stops at one sample, and a step (a length change) cannot
-  // add more than a quarter of the wave. On these notes the unclamped
-  // advance is about two samples at the peaks, short of a shock.
-  // See ValveBlow::brassiness.
+  // β = (γ+1)/2 (Hirschberg, Gilbert, Msallam, and Wijnands, JASA 99,
+  // 1754–1758, 1996). A one-sample Taylor step had to stop that advance
+  // at one sample. On these notes the peaks ask for about two, so the
+  // radiated sample is a four-sample causal delay read at age 4 − adv,
+  // linearly interpolated. The lip still sees the linear return. A
+  // length change is a step in the incident wave; the read smooths it
+  // instead of adding a quarter-wave click. See ValveBlow::brassiness.
   [[nodiscard]] double steepenAtBell(double incident) {
-    const double previous = prevOutgoing_;
+    steepHist_[steepPos_] = incident;
     prevOutgoing_ = incident;
+    auto at = [&](int ago) {
+      int idx = steepPos_ - ago;
+      if (idx < 0) idx += 16;
+      return steepHist_[idx];
+    };
     const double c = speed_;
     const double denom = density_ * c * c * c;
-    if (!(denom > 0.0) || !(soundingLength_ > 0.0) || !std::isfinite(incident))
-      return incident;
+    if (!(denom > 0.0) || !(soundingLength_ > 0.0) || !std::isfinite(incident)) {
+      const double held = at(0);
+      steepPos_ = (steepPos_ + 1) % 16;
+      return held;
+    }
     const double beta = 0.5 * (acoustic_constants::dryAirGamma + 1.0);
     double adv = brassiness_ * beta * incident * soundingLength_ * rate_.value() / denom;
-    if (adv > 1.0) adv = 1.0;
-    if (adv < -1.0) adv = -1.0;
-    double extra = adv * (incident - previous);
-    const double cap = 0.25 * std::fabs(incident);
-    if (extra > cap) extra = cap;
-    if (extra < -cap) extra = -cap;
-    const double y = incident + extra;
+    constexpr double kDelay = 4.0;
+    if (adv > kDelay) adv = kDelay;
+    if (adv < -kDelay) adv = -kDelay;
+    const double age = kDelay - adv;
+    const int i0 = static_cast<int>(age);
+    const double frac = age - static_cast<double>(i0);
+    const double y = at(i0) * (1.0 - frac) + at(std::min(i0 + 1, 15)) * frac;
+    steepPos_ = (steepPos_ + 1) % 16;
     if (!std::isfinite(y)) return incident;
     return y;
   }
@@ -703,6 +716,8 @@ class ConeValveVoice final : public IVoice {
   double brassiness_ = 0.0;
   double soundingLength_ = 0.0;
   double prevOutgoing_ = 0.0;
+  double steepHist_[16] = {};
+  int steepPos_ = 0;
   std::uint32_t noise_ = 1u;
   double breathEnv_ = 0.0;
   double breathState_ = 0.0;

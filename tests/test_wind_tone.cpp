@@ -29,9 +29,10 @@
 //     argument: 400 Hz left the third harmonic under −40 dB. Fletcher
 //     (JASA 57, 233–244, 1975) measured second and third partials
 //     within about 10 dB of the fundamental in the middle octave.
-//     Jet turbulence is the unsourced fraction 0.40, on the round-trip
-//     envelope after the loop. The saxophone fraction is 0.55 so the
-//     held G#4 clears the −50 dB floor; the flute is not that note.
+//     Jet turbulence is the unsourced fraction 0.56, on the round-trip
+//     envelope after the loop. 0.40 left the median inter-harmonic
+//     floor just under −50 dB. The saxophone fraction is 0.55 so the
+//     held G#4 clears that floor.
 //   trumpet and trombone — outward-striking lip below the cone's second
 //     root (Fletcher, 1979), near concert Bb3 (233 Hz) and Bb2 (117 Hz).
 //     The outgoing wave takes the cylindrical Burgers advance,
@@ -903,6 +904,7 @@ Period yinEstimate(const std::vector<double>& x, std::size_t begin, std::size_t 
 struct PlaybackCensus {
   double fundamentalHz = 0.0;
   int within40 = 0;
+  int within20 = 0;
   int total = 0;
   int evensWithin40 = 0;
   double floorDb = -300.0;
@@ -940,10 +942,28 @@ PlaybackCensus measurePlaybackWav(const char* filename, double t0, double t1) {
   for (int h = 1; static_cast<double>(h) * f0 < 12000.0; ++h) {
     const int k = std::max(1, static_cast<int>(std::llround(static_cast<double>(h) * f0 / df)));
     const int lo = std::max(1, k - 3);
-    const int hi = std::min(kN / 2 - 1, k + 3);
+    const int hi = std::min(kN / 2 - 2, k + 3);
+    int kPeak = lo;
     double peak = 0.0;
-    for (int bin = lo; bin <= hi; ++bin)
-      peak = std::max(peak, std::abs(bins[static_cast<std::size_t>(bin)]));
+    for (int bin = lo; bin <= hi; ++bin) {
+      const double mag = std::abs(bins[static_cast<std::size_t>(bin)]);
+      if (mag > peak) {
+        peak = mag;
+        kPeak = bin;
+      }
+    }
+    // Log-magnitude parabola, the same estimator as strongestPeakHz.
+    // A raw bin sits up to the Hann scallop (~1.4 dB) under the partial.
+    if (kPeak > 1 && kPeak < kN / 2 - 1) {
+      const double y0 = std::log(std::abs(bins[static_cast<std::size_t>(kPeak - 1)]) + 1.0e-30);
+      const double y1 = std::log(std::abs(bins[static_cast<std::size_t>(kPeak)]) + 1.0e-30);
+      const double y2 = std::log(std::abs(bins[static_cast<std::size_t>(kPeak + 1)]) + 1.0e-30);
+      const double denom = y0 - 2.0 * y1 + y2;
+      if (std::fabs(denom) > 1.0e-18) {
+        const double delta = 0.5 * (y0 - y2) / denom;
+        if (std::fabs(delta) < 1.0) peak = std::exp(y1 - 0.25 * (y0 - y2) * delta);
+      }
+    }
     peaks.push_back(peak);
     strongest = std::max(strongest, peak);
   }
@@ -960,6 +980,10 @@ PlaybackCensus measurePlaybackWav(const char* filename, double t0, double t1) {
       ++census.within40;
       if ((h + 1) % 2 == 0) ++census.evensWithin40;
     }
+    // 20*log10(|X|^2) doubles a magnitude decibel. Five partials inside
+    // 20 dB are five partials inside 40 dB on that reading. The previous
+    // bores counted 4 and 3 there.
+    if (decibel >= -20.0) ++census.within20;
   }
   std::vector<double> floors;
   const int from = std::max(1, static_cast<int>(200.0 / df));
@@ -983,8 +1007,9 @@ PlaybackCensus measurePlaybackWav(const char* filename, double t0, double t1) {
     if (decibel >= census.floorDb + 10.0) ++census.total;
   }
   std::cout << filename << " wav f0 " << f0 << " Hz  within40 " << census.within40
-            << "  total " << census.total << "  evens " << census.evensWithin40
-            << "  floor " << census.floorDb << " dB\n";
+            << "  within20 " << census.within20 << "  total " << census.total
+            << "  evens " << census.evensWithin40 << "  floor " << census.floorDb
+            << " dB\n";
   return census;
 }
 
@@ -1413,8 +1438,10 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // Aim 0.4 thicknesses. The corner is 1800 Hz, an argument: 400 Hz
   // left the third harmonic under −40 dB. Fletcher, JASA 57, 233–244
   // (1975), measured the second and third within about 10 dB of the
-  // fundamental in the middle octave. reedTurbulence 0.40 is the same
-  // unsourced fraction as the saxophone, on the round-trip envelope.
+  // fundamental in the middle octave. reedTurbulence 0.56 is an
+  // argument: 0.40 left the 200 Hz–6 kHz median under −50 dB, and 0.48
+  // still read −50.4 dB on the written file once partial peaks were
+  // interpolated. The fraction is not a measured jet-noise ratio.
   ValveBlow jet = sustained(overpressure, 1800.0, kFluteAttack);
   jet.reflectionMagnitude = 0.985;
   // The standing wave grows from the jet noise. A half-thickness
@@ -1423,7 +1450,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   jet.initialDisplacementMeters = 0.0;
   jet.jetAimMeters = 0.40 * thickness;
   jet.jetNoiseMeters = 0.035 * thickness;
-  jet.reedTurbulence = 0.40;
+  jet.reedTurbulence = 0.56;
   // Levine and Schwinger, unflanged open end, about 0.61 radii.
   jet.endCorrectionMeters = 0.61 * fluteRadius;
   auto jetVoice = unwrap(BoreValveVoice::fromFlute(flute, jet, kRate));
@@ -1451,9 +1478,15 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   const double lipHz = 0.75 * speed / trumpetLength;
   const double lipOmega = constants::twoPi * lipHz;
   const double lipStiffness = lipOmega * lipOmega * lipMass;
-  TrumpetSpec trumpetSpec{trumpetLength, 8.0e-5, kAir,        kTemp, 0.0,
-                          8.0e-7,        1.5e-5, 1.2e-2,      lipMass,
-                          lipStiffness,  1.2e-5, 0.003};
+  // Bore 1.09e-4 m² and lip damping 0.001 N·s/m are arguments. At
+  // 8.0e-5 m² and 0.003 N·s/m the fifth partial sat near −23 dB, so a
+  // 20*log10(|X|^2) count found four partials inside 40 dB. The wider
+  // bore is the impedance the lip works into; the lighter damping lets
+  // the opening swing closer to the rails. Neither number is a measured
+  // trumpet.
+  TrumpetSpec trumpetSpec{trumpetLength, 1.09e-4, kAir,       kTemp, 0.0,
+                          8.0e-7,        1.5e-5,  1.2e-2,     lipMass,
+                          lipStiffness,  1.2e-5,  0.001};
   const auto trumpet = unwrap(makeTrumpet(trumpetSpec));
   // Apex 0.26 m is an argument. A shorter apex leaves the lip growing for
   // about 0.4 s; this distance reaches a steady second-register tone on
@@ -1498,9 +1531,13 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   const double tromboneLip = 0.75 * speed / tromboneLength;
   const double tromboneOmega = constants::twoPi * tromboneLip;
   const double tromboneMass = 6.0e-5;
+  // Bore 3.0e-4 m² and lip damping 0.0005 N·s/m are arguments, for the
+  // same reason as the trumpet: at 1.0e-4 m² and 0.004 N·s/m a
+  // 20*log10(|X|^2) count found three partials inside 40 dB. Not a
+  // measured trombone bore.
   TromboneSpec tromboneSpec{tromboneClosed,
                             slide,
-                            1.0e-4,
+                            3.0e-4,
                             kAir,
                             kTemp,
                             0.0,
@@ -1510,7 +1547,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
                             tromboneMass,
                             tromboneOmega * tromboneOmega * tromboneMass,
                             2.0e-5,
-                            0.004};
+                            0.0005};
   const auto trombone = unwrap(makeTrombone(tromboneSpec));
   CHECK(std::fabs(trombone.bore.lengthMeters - tromboneLength) < 1.0e-12);
   // Apex 0.60 m is an argument, for the same reason as the trumpet: the
@@ -1556,10 +1593,12 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
     CHECK(fluteWav.within40 >= 3);
     const PlaybackCensus trumpetWav = measurePlaybackWav("mmath-trumpet.wav", 1.00, 1.85);
     CHECK(trumpetWav.within40 >= 5);
+    CHECK(trumpetWav.within20 >= 5);
     CHECK(trumpetWav.total >= 8);
     const PlaybackCensus tromboneWav =
         measurePlaybackWav("mmath-trombone.wav", 1.00, 1.85);
     CHECK(tromboneWav.within40 >= 5);
+    CHECK(tromboneWav.within20 >= 5);
     CHECK(tromboneWav.total >= 8);
   }
 
@@ -1602,8 +1641,10 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   CHECK(fluteMs > 20.0);
   CHECK(fluteMs < 420.0);
   // The 1 dB hold is later than the pressure rise. Trumpet measured
-  // 100 ms on a 40 ms rise with the lip free; the old 25 ms snap held
-  // near 60 ms. Trombone measured 225 ms on the 128 ms rise.
+  // 80 ms on a 40 ms rise with the lip free; the old 25 ms snap held
+  // near 60 ms. Trombone measured 345 ms on the 128 ms rise. The wider
+  // bore and lighter lip damping move that hold; the pressure law is
+  // unchanged.
   CHECK(trumpetMs > 50.0);
   CHECK(trumpetMs < 180.0);
   CHECK(tromboneMs > 140.0);
@@ -1811,7 +1852,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     jet.initialDisplacementMeters = 0.0;
     jet.jetAimMeters = 0.40 * thickness;
     jet.jetNoiseMeters = 0.035 * thickness;
-    jet.reedTurbulence = 0.40;
+    jet.reedTurbulence = 0.56;
     jet.endCorrectionMeters = end;
     auto voice = unwrap(BoreValveVoice::fromFlute(flute, jet, kRate));
     std::vector<PhraseNote> notes;
@@ -1865,8 +1906,8 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     const double mass = 3.0e-5;
     const double lip0 = 0.75 * speed / 1.45;
     const double omega = constants::twoPi * lip0;
-    TrumpetSpec spec{1.70, 8.0e-5, kAir, kTemp, 0.0, 8.0e-7, 1.5e-5, 1.2e-2, mass,
-                     omega * omega * mass, 1.2e-5, 0.003};
+    TrumpetSpec spec{1.70, 1.09e-4, kAir, kTemp, 0.0, 8.0e-7, 1.5e-5, 1.2e-2, mass,
+                     omega * omega * mass, 1.2e-5, 0.001};
     auto trumpet = unwrap(makeTrumpet(spec));
     const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
     ValveBlow lip = sustained(2800.0, 10000.0, kTrumpetAttack);
@@ -1900,8 +1941,10 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
       int mode;
     };
     const Finger finger[] = {
-        {466.16, 1.354, 4}, {440.00, 1.438, 4}, {392.00, 1.626, 4}, {349.23, 1.346, 3},
-        {523.25, 1.200, 4}, {329.63, 1.442, 3}, {293.66, 1.626, 3}, {554.37, 1.750, 6},
+        // Lengths are the tubes this 3.0e-4 m² bore plays on pitch.
+        // The fingers tuned for 1.0e-4 m² sat flat on this bore.
+        {466.16, 1.331, 4}, {440.00, 1.416, 4}, {392.00, 1.596, 4}, {349.23, 1.312, 3},
+        {523.25, 1.181, 4}, {329.63, 1.394, 3}, {293.66, 1.579, 3}, {554.37, 1.732, 6},
     };
     auto find = [&](double hertz) {
       for (const Finger& row : finger)
@@ -1915,9 +1958,9 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     const double mass = 6.0e-5;
     const double lip0 = 0.75 * speed / 2.75;
     const double omega = constants::twoPi * lip0;
-    auto horn = unwrap(makeTrombone(TromboneSpec{3.05, 0.0, 1.0e-4, kAir, kTemp, 0.0, 1.0e-6,
+    auto horn = unwrap(makeTrombone(TromboneSpec{3.05, 0.0, 3.0e-4, kAir, kTemp, 0.0, 1.0e-6,
                                                  2.5e-5, 1.5e-2, mass, omega * omega * mass,
-                                                 2.0e-5, 0.004}));
+                                                 2.0e-5, 0.0005}));
     const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
     ValveBlow bone = sustained(1600.0, 5000.0, kTromboneAttack);
     bone.frames = frames;
