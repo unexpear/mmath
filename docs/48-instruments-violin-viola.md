@@ -143,6 +143,10 @@ way. The cavity-drum test writes
 `/opt/cursor/artifacts/mmath-snare-55-cavity.wav`, and
 `/opt/cursor/artifacts/mmath-snare-65-cavity.wav`.
 
+## Defaults
+
+A physical number is a default only when a comment and this file name the source. The new voices do not store a T60, a Q, a modal mass, a felt \(K\) or \(p\), a hammer mass, a radiating area, a listening distance, or a bell radius. `ValveBlow`'s radius and end correction default to 0, and that 0 keeps the constant far-end magnitude; it is not \(0.6133a\). Passing \(0.6133a\) is the caller's choice. `OpenEndReflection::create` refuses a non-positive radius. The international inch \(0.0254\,\mathrm{m}\) and the avoirdupois pound \(0.45359237\,\mathrm{kg}\) are the SI definitions used by the catalog parsers. Dry air uses \(\gamma=1.4\) and \(R=287.058\,\mathrm{J/(kg\cdot K)}\), the engineering gas constant named in `medium.h`. `VoiceRenderConfig`'s block size of 512 only batches samples.
+
 An instrument is objects + materials + excitation (architecture L26–L27).
 Geometry is a length. Material is a linear density. Tuning is a pitch the
 string is asked to play. Those three stay separate; tension is the number
@@ -1235,6 +1239,7 @@ pluck, a waveguide, a modal soundboard, and monopole radiation. The
 three toms close a mallet, both heads, a closed cavity, and monopole
 radiation. The bow, the felt hammer, the brass cup, the bass-drum
 port, and snare wires are still outside those steppers.
+Cymbal nonlinearity is not discretized: no cubic coefficient is stored.
 Images after the first from each hammer end are not in this layer. A
 viscous reed channel, clarinet tone holes, a bell correction, and a
 register key are not in this layer. A flute end correction, tone holes,
