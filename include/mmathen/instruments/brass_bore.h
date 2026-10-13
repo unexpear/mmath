@@ -135,6 +135,17 @@ inline double myersBrassiness(double c) {
   return steepeningLengthMeters() / (c / (2.0 * 116.54));
 }
 
+// Adachi-Sato lip tuning for a note on this bore: f_lip = 0.922 f_note,
+// FITTED on Bb3 (f_lip 215 Hz sounds 231.7 Hz at 5 kPa, 220 Hz sounds
+// 233.3 Hz; UNSOURCED as a rule for other notes; Adachi and Sato's own
+// Table III ratio on their bore is 1.03-1.08).
+inline double adachiSatoLipHz(double noteHz) { return 0.922 * noteHz; }
+// Blowing pressure for the measured-bore phrase trumpet: 5 kPa, inside
+// the 1.07-9.07 kPa Bb3-Bb5 range of Freour et al. 2010 (IRCAM,
+// simultaneous pressure/flow/sound in trumpet playing). The value within
+// that range is a choice.
+constexpr double kMeasuredTrumpetPressurePa = 5000.0;
+
 inline Kernels makeKernels(double fs, double rho, double c, Fingering fg = {}, std::size_t taps = 2048,
                            std::size_t n = 8192) {
   using C = std::complex<double>;

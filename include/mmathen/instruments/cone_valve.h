@@ -459,6 +459,7 @@ class ConeValveVoice final : public IVoice {
     if (!std::isfinite(lengthMeters) || !(lengthMeters > 0.0) || !(speed_ > 0.0) ||
         !(apex_ > 0.0))
       return false;
+    if (rfOn_) return selectMeasuredFingering(lengthMeters);
     const double fs = rate_.value();
     if (!std::isfinite(fs) || !(fs > 0.0)) return false;
     // Half a sample is the Nyquist average in readBore, as in create().
@@ -515,6 +516,12 @@ class ConeValveVoice final : public IVoice {
   // Unloaded lip resonance. k = m (2 π f)^2. A reed has no lip spring.
   bool setLipResonanceHz(double hertz) {
     if (!lip_) return false;
+    if (as_.on) {
+      if (!std::isfinite(hertz) || !(hertz > 0.0)) return false;
+      as_.m = 1.5 / (constants::twoPi * constants::twoPi * hertz);
+      as_.k = 1.5 * hertz;
+      return true;
+    }
     if (!std::isfinite(hertz) || !(hertz > 0.0) || !(trumpet_.lipMassKg > 0.0))
       return false;
     const double omega = constants::twoPi * hertz;
@@ -547,6 +554,8 @@ class ConeValveVoice final : public IVoice {
   // own V0. Fingering inserts the valve loops. Off by default.
   bool useMeasuredTrumpetBore(brass_bore::Fingering fingering = {}) {
     if (!lip_) return false;
+    if (!rfOn_) measuredBase_ = soundingLength_;
+    measuredMask_ = (fingering.v1 ? 1 : 0) | (fingering.v2 ? 2 : 0) | (fingering.v3 ? 4 : 0);
     const double fs = rate_.value();
     auto k = brass_bore::makeKernels(fs, density_, speed_, fingering);
     const double zc = density_ * speed_ /
@@ -564,6 +573,32 @@ class ConeValveVoice final : public IVoice {
     return true;
   }
   [[nodiscard]] bool measuredBoreOn() const noexcept { return rfOn_; }
+
+  // Phrase use of the measured bore: a sounding length is read as
+  // semitones below the open length the voice was built with, and the
+  // standard valve combination for 0-6 semitones (open, 2, 1, 1+2, 2+3,
+  // 1+3, 1+2+3; Campbell and Greated) swaps in that fingering's kernels.
+  // The p+ history is kept, so the bore carries over the change.
+  bool selectMeasuredFingering(double lengthMeters) {
+    if (!(measuredBase_ > 0.0)) return false;
+    int n = static_cast<int>(std::lround(12.0 * std::log2(lengthMeters / measuredBase_)));
+    n = std::max(0, std::min(6, n));
+    static constexpr int kMask[7] = {0, 2, 1, 3, 6, 5, 7};
+    const int mask = kMask[n];
+    if (mask == measuredMask_) return true;
+    auto& slot = kernelCache_[mask];
+    if (slot.first.empty()) {
+      brass_bore::Fingering fg{(mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0};
+      auto k = brass_bore::makeKernels(rate_.value(), density_, speed_, fg);
+      slot = {std::move(k.reflection), std::move(k.mouthFlow)};
+    }
+    if (measuredMask_ >= 0 && kernelCache_[measuredMask_].first.empty())
+      kernelCache_[measuredMask_] = {rf_, uf_};
+    rf_ = slot.first;
+    uf_ = slot.second;
+    measuredMask_ = mask;
+    return true;
+  }
 
   // Nonlinear steepening on the measured bore (off by default). The
   // outgoing throat wave p+ advances by beta p+ L_eff / (rho c^3)
@@ -1089,6 +1124,9 @@ class ConeValveVoice final : public IVoice {
     as_.y += as_.vy * dt;
     if (!std::isfinite(as_.x) || !std::isfinite(as_.y)) { as_.x = as_.eqX; as_.y = as_.eqY; as_.vx = as_.vy = 0; }
   }
+  double measuredBase_ = 0.0;
+  int measuredMask_ = -1;
+  std::pair<std::vector<double>, std::vector<double>> kernelCache_[8];
   bool rfOn_ = false;
   bool steepRfOn_ = false;
   double steepLength_ = 0.0;

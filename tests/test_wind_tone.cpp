@@ -2221,7 +2221,7 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
       if (!n.rest && n.tongue) starts.push_back(n.startSec);
     return std::make_pair(samples, starts);
   };
-  auto play_trumpet = [&](const auto& score, const std::string& stem) {
+  auto play_trumpet = [&](const auto& score, const std::string& stem, bool measured = false) {
     const auto song = ensureLeadIn(score);
     using Finger = BrassFinger;
     const auto& finger = kTrumpetFingers;
@@ -2244,7 +2244,13 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     // Bach #37 mouth. The cone apex stays 0.26 m. The horn's travel is
     // not stacked on the sounding length.
     applyBach37Bell(lip);
+    if (measured) { lip.brassiness = 0.0; lip.reedTurbulence = 0.0; }
     auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
+    if (measured) {
+      REQUIRE(voice.useMeasuredTrumpetBore());
+      REQUIRE(voice.setMeasuredBoreSteepening(true));
+      REQUIRE(voice.useAdachiSatoLip(mmathen::brass_bore::adachiSatoLipHz(233.08), 1.0e-4));
+    }
     std::vector<PhraseNote> notes;
     double start = 0.0;
     Finger held = finger[0];
@@ -2252,7 +2258,12 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
       const Finger row = src.hertz > 0.0 ? find(src.hertz) : held;
       const double lipHz =
           row.mode == 0 ? 0.75 * speed / row.length : 0.80 * conePartial(row.length, 0.26, row.mode);
-      push(notes, src, start, row.length, lipHz, 2800.0, 0.0, 25.0, 0.01);
+      if (measured)
+        push(notes, src, start, row.length,
+             mmathen::brass_bore::adachiSatoLipHz(src.hertz > 0.0 ? src.hertz : row.hertz),
+             mmathen::brass_bore::kMeasuredTrumpetPressurePa, 0.0, 25.0, 0.01);
+      else
+        push(notes, src, start, row.length, lipHz, 2800.0, 0.0, 25.0, 0.01);
       notes.back().peakHz = impedancePeakHz(row.length, 0.26, row.mode, row.hertz);
       if (src.hertz > 0.0) held = row;
       start += src.seconds;
@@ -2261,7 +2272,9 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     auto samples = renderPhrase(voice, notes, total, false, 0.50, &airway);
     std::cout << "trumpet airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
     writePhraseNotes(notes, total, (stem + ".notes.csv").c_str());
-    reportPhrase(stem.c_str(), notes, samples, total, 0.12);
+    // The measured-bore Adachi-Sato option is a listening comparison; its
+    // lip rule is fitted on Bb3 only, so the YIN grade is not applied.
+    if (!measured) reportPhrase(stem.c_str(), notes, samples, total, 0.12);
     writePhrase(samples, (stem + ".wav").c_str(), kFs);
     std::vector<double> starts;
     for (const auto& n : notes)
@@ -2320,6 +2333,7 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
   play_flute(excerpts::kDayInTheLife, "mmath-song-flute-day-in-the-life");
   play_trombone(withLeadIn(excerpts::kMountain, "mf"), "mmath-song-trombone-mountain");
   play_trumpet(excerpts::kTaps, "mmath-song-trumpet-taps");
+  play_trumpet(excerpts::kTaps, "mmath-song-trumpet-taps-measured", true);
   play_flute(excerpts::kLondonBridge, "mmath-song-flute-london-bridge");
   }
   // When the Saints, Dixieland: three parts, each with its own airway, on one
