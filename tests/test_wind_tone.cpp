@@ -797,8 +797,12 @@ double writePhrase(const std::vector<double>& samples, const char* filename, dou
 // half of a note. A fixed lag is coarse once f0Â²/fs exceeds a few hertz.
 Period phrasePeriod(const std::vector<double>& x, std::size_t begin, std::size_t end,
                     double expectHz, double rate) {
-  const int n = 4096;
   const int center = std::max(8, static_cast<int>(std::llround(rate / expectHz)));
+  // 4096 samples, or what a short run note leaves (at least 1536, about
+  // 12 periods at C4).
+  const int room = end > begin ? static_cast<int>(end - begin) - (center + center / 6 + 8) : 0;
+  const int n = std::min(4096, room);
+  if (n < 1536) return {};
   // A tenth of the period is about 160 cents. An excerpt length can be
   // further off than that on the first tuning, and the lag then sits on
   // the edge of the window. A sixth still excludes the octave.
@@ -1125,7 +1129,11 @@ void reportPhrase(const char* instrument, const std::vector<PhraseNote>& notes,
       windowBegin = note.startSec + 0.030;
       windowEnd = endSec - 0.015;
     }
-    const bool fits = windowEnd > windowBegin + 0.09 &&
+    // A 0.11 s run note leaves a 0.065 s window (about 20 periods at
+    // E4). It used to fall under the 0.09 s floor and was printed as
+    // DID NOT SPEAK with rms 0 although it sounded. Notes this short are
+    // graded on what they leave; 0.05 s keeps at least 13 periods at C4.
+    const bool fits = windowEnd > windowBegin + 0.05 &&
                       static_cast<std::size_t>(windowEnd * kFs) <= samples.size() &&
                       static_cast<std::size_t>(windowBegin * kFs) < samples.size();
     Period period{};
