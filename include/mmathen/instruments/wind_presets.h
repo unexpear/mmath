@@ -79,6 +79,29 @@ inline TrumpetSpec phraseTrumpetSpec(double speed, double airPa, double tempK,
                      omega * omega * mass, 1.2e-5, 0.001};
 }
 
+// Single-note "blown winds" trumpet: the phrase spec on a 1.45 m cone, the
+// length whose second root sits near concert Bb3 (an argument, UNSOURCED).
+inline constexpr double kBlownTrumpetLengthMeters = 1.45;
+inline TrumpetSpec blownTrumpetSpec(double speed, double airPa, double tempK) {
+  const double mass = kTrumpetLipMassKg;
+  const double lip0 = 0.75 * speed / kBlownTrumpetLengthMeters;
+  const double omega = constants::twoPi * lip0;
+  return TrumpetSpec{kBlownTrumpetLengthMeters, 1.09e-4, airPa, tempK, 0.0, 8.0e-7, 1.5e-5, 1.2e-2,
+                     mass, omega * omega * mass, 1.2e-5, 0.001};
+}
+
+// Flute bore: 2.8e-4 m^2 cross-section (argument, UNSOURCED). Open-end
+// correction 0.61 radii (Levine and Schwinger, unflanged). Sounding length
+// is the open-open half wave c/(2f) less that correction.
+inline constexpr double kFluteBoreAreaM2 = 2.8e-4;
+inline double fluteEndCorrectionMeters(double areaM2 = kFluteBoreAreaM2) {
+  const double radius = std::sqrt(areaM2 / constants::pi);
+  return 0.61 * radius;
+}
+inline double fluteSoundingLengthMeters(double speed, double frequency, double endCorrectionMeters) {
+  return speed / (2.0 * frequency) - endCorrectionMeters;
+}
+
 // Phrase trombone: 3.05 m, 3.0e-4 m^2 cone, lip mass 6.0e-5 kg tuned to
 // 0.75 c / 2.75 m. Arguments, not a measured trombone (UNSOURCED).
 inline constexpr double kTromboneLipTuningLengthMeters = 2.75;
@@ -91,6 +114,20 @@ inline TromboneSpec phraseTromboneSpec(double speed, double airPa, double tempK)
                       2.5e-5, 1.5e-2, mass, omega * omega * mass,
                       2.0e-5, 0.0005};
 }
+// Single-note "blown winds" trombone: 1.65 m closed + 2 x 0.55 m slide =
+// 2.75 m, the second-register recipe near concert Bb2 (arguments,
+// UNSOURCED). Lip at 0.75 c / (closed + 2 slide).
+inline constexpr double kBlownTromboneClosedMeters = 1.65;
+inline constexpr double kBlownTromboneSlideMeters = 0.55;
+inline TromboneSpec blownTromboneSpec(double speed, double airPa, double tempK) {
+  const double length = kBlownTromboneClosedMeters + 2.0 * kBlownTromboneSlideMeters;
+  const double mass = kTromboneLipMassKg;
+  const double lip = 0.75 * speed / length;
+  const double omega = constants::twoPi * lip;
+  return TromboneSpec{kBlownTromboneClosedMeters, kBlownTromboneSlideMeters, 3.0e-4, airPa, tempK,
+                      0.0, 1.0e-6, 2.5e-5, 1.5e-2, mass, omega * omega * mass, 2.0e-5, 0.0005};
+}
+
 // Bach Stradivarius 42 tenor trombone. Conn-Selmer prints an 8-1/2 in
 // one-piece hand-hammered bell and a .547 in large bore:
 // https://connselmer.com/instruments/trombones/bach-stradivarius-tenor-trombone-in-bb-42
@@ -234,6 +271,14 @@ struct BrassFinger {
       return BrassFinger{hertz, (nearest->length + apex) * nearest->hertz / hertz - apex,
                     nearest->mode};
     }
+
+// Exact fingering row for a listed pitch (within 0.02 Hz); a zero row when
+// the pitch is not listed. The ring grade uses only listed rows.
+inline BrassFinger brassFingerExact(const BrassFinger* rows, int count, double hertz) {
+  for (int i = 0; i < count; ++i)
+    if (std::fabs(rows[i].hertz - hertz) < 0.02) return rows[i];
+  return BrassFinger{};
+}
 
 }  // namespace mmathen
 

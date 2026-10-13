@@ -72,6 +72,7 @@
 #include <mmathen/instruments/bore_valve.h>
 #include <mmathen/instruments/cone_valve.h>
 #include <mmathen/instruments/ensemble.h>
+#include <mmathen/instruments/phrase_player.h>
 #include <mmathen/math/constants.h>
 #include <mmathen/physics/medium.h>
 #include <mmathen/sink/wav.h>
@@ -1033,29 +1034,6 @@ PlaybackCensus measurePlaybackWav(const char* filename, double t0, double t1) {
   return census;
 }
 
-struct PhraseNote {
-  const char* name;
-  double startSec = 0.0;
-  double targetHz = 0.0;
-  double lengthM = 0.0;
-  double lipHz = 0.0;
-  double pressure = 0.0;
-  double jetSamples = 0.0;
-  bool tongue = false;
-  bool vibrato = false;
-  double tolCents = 40.0;
-  bool require = true;
-  double minRms = 0.01;
-  bool rest = false;
-  double gain = 1.0;
-  const char* dynamic = "";
-  // Cone resonance this fingering plays, the input-impedance peak.
-  // Zero on a reed. The free ring's wall is matched here.
-  double peakHz = 0.0;
-  // The strongest spectral peak, not the autocorrelation. An octave
-  // error has autocorrelation near 1 at twice the true period.
-  bool gradePeak = false;
-};
 
 // Note map beside the excerpt WAV: start, end, Hz, tongued, rest. For
 // the envelope and join measurements made outside the suite.
@@ -1114,138 +1092,14 @@ double strongestPeakHz(const std::vector<double>& x, std::size_t begin, std::siz
   return (static_cast<double>(kPeak) + delta) * df;
 }
 
-// 12 cents and 5.5 Hz are arguments. No stored wind-vibrato depth is
-// used. The length modulation is the pitch control this bore already has.
-constexpr double kVibratoHz = 5.5;
-constexpr double kVibratoCents = 12.0;
-
+// The phrase player is the engine's (instruments/phrase_player.h). This
+// wrapper only grades it: a failed setter or block is a test failure.
 template <typename Voice>
 std::vector<double> renderPhrase(Voice& voice, const std::vector<PhraseNote>& notes,
                                  double totalSec, bool fluteJet, double ringTailSec = 0.0,
                                  PlayerAirway* airway = nullptr) {
-  const auto scoreFrames = static_cast<std::uint64_t>(std::llround(totalSec * kFs));
-  const auto total =
-      scoreFrames + static_cast<std::uint64_t>(std::llround(std::max(0.0, ringTailSec) * kFs));
-  std::vector<double> out(static_cast<std::size_t>(total), 0.0);
-  std::vector<char> armed(notes.size(), 0);
-  constexpr std::uint64_t kHop = 64;
-  // Bertsch and Hoole, fast single tonguing, about 40â€“64 ms. The closure
-  // is that long; the release is the note. The first note keeps the
-  // blow's own tongue, if it has one.
-  constexpr std::uint64_t kTongue = 1920;
-  const double depth = std::pow(2.0, kVibratoCents / 1200.0) - 1.0;
-  // With the player's airway attached, the airway's breath feeds the
-  // valve and its tongue articulates: the tip is on the reed (or behind
-  // the teeth) for the kTongue closure before a tongued note and leaves
-  // at the note (player_airway.h, critically damped, Li et al. 2016).
-  // A slurred note keeps the tongue off: the join is the bore change
-  // under a steady breath. A woodwind note before a rest is ended by
-  // the tongue for the same closure. The voice's own tongue schedule
-  // and the flute's 20 ms pressure dip are not used then.
-  if (airway != nullptr) {
-    voice.attachAirway(airway);
-    airway->placeTongue(1.0);
-  }
-  for (std::uint64_t frame = 0; frame < total;) {
-    const std::uint64_t count = std::min<std::uint64_t>(kHop, total - frame);
-    int active = 0;
-    for (int i = 0; i < static_cast<int>(notes.size()); ++i) {
-      if (frame >= static_cast<std::uint64_t>(notes[static_cast<std::size_t>(i)].startSec * kFs))
-        active = i;
-    }
-    // A tongued brass note retunes while the tongue is shut, then
-    // releases. Setting the new lip on the open valve goes non-finite.
-    // Woodwinds do not take this branch (no lip resonance). A tongue
-    // stop at the end of a note is on hold: the breath is what ends it.
-    int sounding = active;
-    bool tongueShut = false;
-    for (int i = 1; i < static_cast<int>(notes.size()); ++i) {
-      const PhraseNote& upcoming = notes[static_cast<std::size_t>(i)];
-      if (!upcoming.tongue || upcoming.rest) continue;
-      const auto release = static_cast<std::uint64_t>(upcoming.startSec * kFs);
-      if (release < kTongue) continue;
-      if (frame >= release - kTongue && frame < release) {
-        tongueShut = true;
-        if (!armed[static_cast<std::size_t>(i)]) {
-          if (airway == nullptr) voice.scheduleTongue(release);
-          armed[static_cast<std::size_t>(i)] = 1;
-        }
-        if (upcoming.lipHz > 0.0) sounding = i;
-      }
-    }
-    const bool afterScore = frame >= scoreFrames;
-    const PhraseNote& note = notes[static_cast<std::size_t>(sounding)];
-    if (airway != nullptr) {
-      const auto next = static_cast<std::size_t>(active) + 1;
-      const PhraseNote& here = notes[static_cast<std::size_t>(active)];
-      if (here.lipHz == 0.0 && !here.rest) {
-        const std::uint64_t noteEnd =
-            next < notes.size() ? static_cast<std::uint64_t>(notes[next].startSec * kFs) : scoreFrames;
-        const bool restNext = next >= notes.size() || notes[next].rest;
-        if (restNext && noteEnd >= kTongue && frame >= noteEnd - kTongue) tongueShut = true;
-      }
-      airway->setTongueTarget(tongueShut ? 0.0 : 1.0);
-    }
-    const double time = static_cast<double>(frame) / kFs;
-    const bool breathOff = note.rest || afterScore;
-    // Once the breath is off, the lip seals and the wall is Kirchhoff
-    // at this fingering's impedance peak. The next blow restores the
-    // mild playing pole. The radiated sample is not scaled.
-    if (note.lipHz > 0.0) {
-      if constexpr (requires(Voice& probe) { probe.engageRingWall(0.0); }) {
-        if (breathOff && note.peakHz > 0.0) {
-          REQUIRE(voice.engageRingWall(note.peakHz));
-        } else {
-          REQUIRE(voice.restorePlayingWall());
-        }
-      }
-    }
-    double env = breathOff ? 0.0 : note.gain;
-    const bool dipping = airway == nullptr && fluteJet && note.tongue && sounding > 0 && !note.rest &&
-                         time < note.startSec + 0.020;
-    if (dipping) env *= 0.55;
-    double length = note.lengthM;
-    // A lip locked to one partial explodes if the bore glides through
-    // another. Brass changes length at the note. Woodwind slurs glide.
-    if (sounding > 0 && note.lipHz == 0.0 && !note.rest) {
-      const double glide = note.tongue ? 0.010 : 0.035;
-      double alpha = (time - note.startSec) / glide;
-      if (alpha < 0.0) alpha = 0.0;
-      if (alpha > 1.0) alpha = 1.0;
-      alpha = alpha * alpha * (3.0 - 2.0 * alpha);
-      const PhraseNote& prev = notes[static_cast<std::size_t>(sounding - 1)];
-      length = prev.lengthM + (note.lengthM - prev.lengthM) * alpha;
-    }
-    if (note.vibrato && !note.rest && time > note.startSec + 0.20) {
-      length *= 1.0 - depth * std::sin(constants::twoPi * kVibratoHz * time);
-    }
-    REQUIRE(voice.setSoundingLength(length));
-    REQUIRE(voice.setBlowingPressure(breathOff ? 0.0 : note.pressure * env));
-    if (note.lipHz > 0.0) REQUIRE(voice.setLipResonanceHz(note.lipHz));
-    if constexpr (requires(Voice& probe) { probe.setJetDelaySamples(0.0); }) {
-      if (!fluteJet || note.rest) {
-        if (fluteJet && note.jetSamples > 0.0) REQUIRE(voice.setJetDelaySamples(note.jetSamples));
-      } else {
-      double jetNote = note.jetSamples;
-      if (sounding > 0 && notes[static_cast<std::size_t>(sounding - 1)].jetSamples > 0.0) {
-        const double glide = note.tongue ? 0.010 : 0.035;
-        double alpha = (time - note.startSec) / glide;
-        if (alpha < 0.0) alpha = 0.0;
-        if (alpha > 1.0) alpha = 1.0;
-        alpha = alpha * alpha * (3.0 - 2.0 * alpha);
-        const double prev = notes[static_cast<std::size_t>(sounding - 1)].jetSamples;
-        jetNote = prev + (note.jetSamples - prev) * alpha;
-      }
-      REQUIRE(voice.setJetDelaySamples(jetNote / std::sqrt(std::max(env, 1.0e-3))));
-      }
-    }
-    auto stepped = voice.renderBlock(out.data() + frame, FrameCount{count});
-    if (!stepped.ok()) {
-      std::cout << "phrase render failed at " << time << " s on " << note.name << "\n";
-      REQUIRE(stepped.ok());
-    }
-    frame += count;
-  }
+  auto out = playPhrase(voice, notes, totalSec, fluteJet, ringTailSec, airway, kFs);
+  REQUIRE(!out.empty());
   for (double sample : out) REQUIRE(std::isfinite(sample));
   return out;
 }
@@ -1734,20 +1588,18 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // Length is an argument chosen so the cone's second root sits near
   // concert Bb3, 233.08 Hz at A4 = 440. The lip is 0.75 c/L, below that
   // root. The played note is the second register, not the pedal.
-  const double trumpetLength = 1.45;
-  const double lipMass = 3.0e-5;
-  const double lipHz = 0.75 * speed / trumpetLength;
-  const double lipOmega = constants::twoPi * lipHz;
-  const double lipStiffness = lipOmega * lipOmega * lipMass;
+  const double trumpetLength = kBlownTrumpetLengthMeters;
+  [[maybe_unused]] const double lipMass = kTrumpetLipMassKg;
+  [[maybe_unused]] const double lipHz = 0.75 * speed / trumpetLength;
+  [[maybe_unused]] const double lipOmega = constants::twoPi * lipHz;
+  [[maybe_unused]] const double lipStiffness = lipOmega * lipOmega * lipMass;
   // Bore 1.09e-4 mÂ² and lip damping 0.001 NÂ·s/m are arguments. At
   // 8.0e-5 mÂ² and 0.003 NÂ·s/m the fifth partial sat near âˆ’23 dB, so a
   // 20*log10(|X|^2) count found four partials inside 40 dB. The wider
   // bore is the impedance the lip works into; the lighter damping lets
   // the opening swing closer to the rails. Neither number is a measured
   // trumpet.
-  TrumpetSpec trumpetSpec{trumpetLength, 1.09e-4, kAir,       kTemp, 0.0,
-                          8.0e-7,        1.5e-5,  1.2e-2,     lipMass,
-                          lipStiffness,  1.2e-5,  0.001};
+  TrumpetSpec trumpetSpec = blownTrumpetSpec(speed, kAir, kTemp);
   auto trumpet = unwrap(makeTrumpet(trumpetSpec));
   // enableLipCollision(trumpet) is the two-lip contact; off here. At
   // this rest opening the lip never closes (0 of 1.6e5 samples), so the
@@ -1789,29 +1641,17 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // L = 1.65 + 2*0.55 = 2.75 m places the same second-register recipe
   // near concert Bb2, 116.54 Hz. The stable note on this cone is a few
   // hertz above that pitch.
-  const double slide = 0.55;
-  const double tromboneClosed = 1.65;
+  const double slide = kBlownTromboneSlideMeters;
+  const double tromboneClosed = kBlownTromboneClosedMeters;
   const double tromboneLength = tromboneClosed + 2.0 * slide;
-  const double tromboneLip = 0.75 * speed / tromboneLength;
-  const double tromboneOmega = constants::twoPi * tromboneLip;
-  const double tromboneMass = 6.0e-5;
+  [[maybe_unused]] const double tromboneLip = 0.75 * speed / tromboneLength;
+  [[maybe_unused]] const double tromboneOmega = constants::twoPi * tromboneLip;
+  [[maybe_unused]] const double tromboneMass = kTromboneLipMassKg;
   // Bore 3.0e-4 mÂ² and lip damping 0.0005 NÂ·s/m are arguments, for the
   // same reason as the trumpet: at 1.0e-4 mÂ² and 0.004 NÂ·s/m a
   // 20*log10(|X|^2) count found three partials inside 40 dB. Not a
   // measured trombone bore.
-  TromboneSpec tromboneSpec{tromboneClosed,
-                            slide,
-                            3.0e-4,
-                            kAir,
-                            kTemp,
-                            0.0,
-                            1.0e-6,
-                            2.5e-5,
-                            1.5e-2,
-                            tromboneMass,
-                            tromboneOmega * tromboneOmega * tromboneMass,
-                            2.0e-5,
-                            0.0005};
+  TromboneSpec tromboneSpec = blownTromboneSpec(speed, kAir, kTemp);
   const auto trombone = unwrap(makeTrombone(tromboneSpec));
   CHECK(std::fabs(trombone.bore.lengthMeters - tromboneLength) < 1.0e-12);
   // Apex 0.60 m is an argument, for the same reason as the trumpet: the
@@ -2090,9 +1930,8 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     const double span = 7.0e-3;
     const double sigma = 0.45;
     const double thickness = 1.0e-3;
-    const double radius = std::sqrt(2.8e-4 / constants::pi);
-    const double end = 0.61 * radius;
-    auto bore = [&](double frequency) { return speed / (2.0 * frequency) - end; };
+    const double end = fluteEndCorrectionMeters();
+    auto bore = [&](double frequency) { return fluteSoundingLengthMeters(speed, frequency, end); };
     const double total = excerpts::excerptSeconds(excerpts::kFlute);
     std::cout << "flute excerpt: Debussy, PrÃ©lude Ã  l'aprÃ¨s-midi d'un faune, "
                  "opening, bars 1â€“2, quarter = 44. Mechanism: bore length, "
@@ -2274,7 +2113,8 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
   };
 
   auto clarinetLen = [](double frequency) { return clarinetSoundingLengthMeters(frequency); };
-  auto play_clarinet = [&](const auto& song, const std::string& stem) {
+  auto play_clarinet = [&](const auto& score, const std::string& stem) {
+    const auto song = ensureLeadIn(score);
     const double total = excerpts::excerptSeconds(song);
     std::cout << "clarinet excerpt: Mozart, Clarinet Concerto K.622, Adagio "
                  "opening, concert pitch. Mechanism: sounding length. "
@@ -2309,13 +2149,13 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
       if (!n.rest && n.tongue) starts.push_back(n.startSec);
     return std::make_pair(samples, starts);
   };
-  auto play_flute = [&](const auto& song, const std::string& stem) {
+  auto play_flute = [&](const auto& score, const std::string& stem) {
+    const auto song = ensureLeadIn(score);
     const double span = 7.0e-3;
     const double sigma = 0.45;
     const double thickness = 1.0e-3;
-    const double radius = std::sqrt(2.8e-4 / constants::pi);
-    const double end = 0.61 * radius;
-    auto bore = [&](double frequency) { return speed / (2.0 * frequency) - end; };
+    const double end = fluteEndCorrectionMeters();
+    auto bore = [&](double frequency) { return fluteSoundingLengthMeters(speed, frequency, end); };
     const double total = excerpts::excerptSeconds(song);
     std::cout << "flute excerpt: Debussy, PrÃ©lude Ã  l'aprÃ¨s-midi d'un faune, "
                  "opening, bars 1â€“2, quarter = 44. Mechanism: bore length, "
@@ -2381,7 +2221,8 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
       if (!n.rest && n.tongue) starts.push_back(n.startSec);
     return std::make_pair(samples, starts);
   };
-  auto play_trumpet = [&](const auto& song, const std::string& stem) {
+  auto play_trumpet = [&](const auto& score, const std::string& stem) {
+    const auto song = ensureLeadIn(score);
     using Finger = BrassFinger;
     const auto& finger = kTrumpetFingers;
     auto find = [](double hertz) { return trumpetFinger(hertz); };
@@ -2427,7 +2268,8 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
       if (!n.rest && n.tongue) starts.push_back(n.startSec);
     return std::make_pair(samples, starts);
   };
-  auto play_trombone = [&](const auto& song, const std::string& stem) {
+  auto play_trombone = [&](const auto& score, const std::string& stem) {
+    const auto song = ensureLeadIn(score);
     using Finger = BrassFinger;
     const auto& finger = kTromboneFingers;
     auto find = [](double hertz) { return tromboneFinger(hertz); };
@@ -2688,15 +2530,9 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
                "throat stays 1.09e-4 mÂ². The radius is not reduced to enter "
                "a window.\n";
 
-  struct Finger {
-    double hertz;
-    double length;
-    int mode;
-  };
+  using Finger = BrassFinger;
   auto find = [](const Finger* rows, int count, double hertz) {
-    for (int i = 0; i < count; ++i)
-      if (std::fabs(rows[i].hertz - hertz) < 0.02) return rows[i];
-    return Finger{};
+    return brassFingerExact(rows, count, hertz);
   };
 
   auto grade = [&](ConeValveVoice& voice, const char* instrument, const char* name, double scoreSec,
@@ -2755,17 +2591,9 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
     demo.insert(demo.end(), out.begin(), out.end());
   };
 
-  const Finger trumpetRows[] = {
-      {392.00, 0.804, 0}, {349.23, 0.912, 0}, {466.16, 1.023, 3},
-      {523.25, 1.560, 5}, {698.46, 1.410, 6}, {587.33, 1.386, 5},
-        // A4 for When the Saints: the Bb4 row scaled sat 27.8 cents flat;
-        // (L + apex) shortened by that measured ratio.
-        {440.00, 1.0776, 3},
-  };
-  const Finger tromboneRows[] = {
-      {466.16, 1.331, 4}, {440.00, 1.416, 4}, {392.00, 1.596, 4}, {349.23, 1.312, 3},
-      {523.25, 1.181, 4}, {329.63, 1.394, 3}, {293.66, 1.579, 3}, {554.37, 1.732, 6},
-  };
+  // The engine fingering tables (wind_presets.h); exact rows only.
+  const auto& trumpetRows = kTrumpetFingers;
+  const auto& tromboneRows = kTromboneFingers;
 
   {
     const double mass = 3.0e-5;
