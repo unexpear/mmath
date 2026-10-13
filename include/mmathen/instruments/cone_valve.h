@@ -590,9 +590,17 @@ class ConeValveVoice final : public IVoice {
   // enters the lip equation), rest area = b y0, no threshold preload,
   // Ishizaka-Flanagan contact on. That paper prints no maximum opening;
   // the cap is lifted to 1 cm^2 (UNSOURCED; a non-binding bound).
-  bool usePublishedTrumpetLips(double lipHz) {
+  // Optional overrides: kQ (Newton, Campbell and Gilbert 2008 give 1.2-1.8
+  // for human lips), kRest (rest opening height, m) and thresholdPa (a
+  // pressed-embouchure preload, see lipPreload). Measured on the 0.1 mm
+  // rest opening the lips sit statically open (no buzz, 9-21 mm^2 at
+  // 4-8 kPa); a near-closed rest with a preload does buzz but locks to
+  // bore peak 3 (~363 Hz) for lip tunings 195-225 Hz. See [.boreexp].
+  bool usePublishedTrumpetLips(double lipHz, double kQ = 3.0, double kRest = 1.0e-4,
+                               double thresholdPa = 0.0) {
     if (!lip_ || !std::isfinite(lipHz) || !(lipHz > 0.0)) return false;
-    constexpr double kMu = 2.0, kWidth = 0.008, kRest = 1.0e-4, kQ = 3.0;
+    if (!(kQ > 0.0) || !(kRest > 0.0) || !(thresholdPa >= 0.0)) return false;
+    constexpr double kMu = 2.0, kWidth = 0.008;
     trumpet_.lipMassKg = kMu * trumpet_.lipPressureAreaM2;
     trumpet_.slitWidthMeters = kWidth;
     trumpet_.restOpeningAreaM2 = kWidth * kRest;
@@ -600,7 +608,7 @@ class ConeValveVoice final : public IVoice {
     slitWidth_ = kWidth;
     restOpening_ = kWidth * kRest;
     maximumOpening_ = 1.0e-4;
-    lipThresholdPa_ = 0.0;
+    lipThresholdPa_ = thresholdPa;
     lipQ_ = kQ;
     trumpet_.lipCollisionStiffness = 1.0;  // so setLipResonanceHz re-derives contact
     if (!setLipResonanceHz(lipHz)) return false;

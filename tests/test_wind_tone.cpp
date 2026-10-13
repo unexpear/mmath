@@ -2899,8 +2899,9 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
     pprev = prev; prev = a; pf = f;
   }
   for (int steep : {0, 1})
-  for (double p : {6000.0, 9000.0, 12000.0}) {
-    for (double lipHz : {170.0, 190.0, 205.0, 220.0}) {
+  for (int var = 2; var < 3; ++var)
+  for (double p : {3000.0, 5000.0, 7000.0}) {
+    for (double lipHz : {195.0, 205.0, 212.0, 218.0}) {
       const double lipMass = 3.0e-5, om = constants::twoPi * lipHz;
       TrumpetSpec spec{1.45, constants::pi * 0.00185 * 0.00185, kAir, kTemp, 0.0, 1.0e-8, 1.5e-5, 1.2e-2,
                        lipMass, om * om * lipMass, 1.5e-5, 0.001};
@@ -2913,13 +2914,16 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
       lip.reedTurbulence = 0.0;
       auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
       REQUIRE(voice.useMeasuredTrumpetBore());
-      REQUIRE(voice.usePublishedTrumpetLips(lipHz));
+      const double vq = (var & 1) ? 1.5 : 3.0, vr = (var & 2) ? 1.0e-6 : 1.0e-4, vt = (var & 2) ? 1631.0 : 0.0;
+      REQUIRE(voice.usePublishedTrumpetLips(lipHz, vq, vr, vt));
+      std::cout << "var q " << vq << " rest " << vr << " thr " << vt << "\n";
       if (steep) REQUIRE(voice.setMeasuredBoreSteepening(true));
       std::vector<double> out(kFrames);
-      bool ok = true; std::size_t shut = 0, cnt = 0;
+      bool ok = true; std::size_t shut = 0, cnt = 0; double omin = 1, omax = 0, osum = 0;
       for (std::uint64_t i = 0; i < kFrames; ++i) {
         if (!voice.renderBlock(out.data() + i, FrameCount{1}).ok()) { ok = false; break; }
-        if (i > kFrames / 2) { ++cnt; if (voice.lipOpeningM2() <= 0.0) ++shut; }
+        if (i > kFrames / 2) { ++cnt; if (voice.lipOpeningM2() <= 0.0) ++shut;
+          omin = std::min(omin, voice.lipOpeningM2()); omax = std::max(omax, voice.lipOpeningM2()); osum += voice.lipOpeningM2(); }
       }
       double f0 = 0;
       {
@@ -2949,12 +2953,35 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
         const double m = re * re + im * im; h[k] = m; num += k * f0 * m; den += m;
       }
       std::cout << "boreexp steep " << steep << " Leff " << voice.measuredBoreSteepeningLength()
-                << " closed " << (cnt ? double(shut) / cnt : 0) << " p " << p << " lip " << lipHz << " ok " << ok << " f0 " << f0 << " cents "
+                << " closed " << (cnt ? double(shut) / cnt : 0) << " open mm2 " << omin * 1e6 << ".." << omax * 1e6 << " mean " << (cnt ? osum / cnt * 1e6 : 0) << " p " << p << " lip " << lipHz << " ok " << ok << " f0 " << f0 << " cents "
                 << 1200 * std::log2(f0 / 233.08) << " cent " << (den > 0 ? num / den : 0) << " h2-h5 dB re h1";
       for (int k = 2; k <= 5; ++k) std::cout << " " << 10 * std::log10(h[k] / std::max(h[1], 1e-300));
       std::cout << "\n";
       std::string name = "boreexp-s" + std::to_string(steep) + "-p" + std::to_string(int(p)) + "-l" + std::to_string(int(lipHz)) + ".wav";
       writeListening(out, name.c_str(), kFs);
+    }
+  }
+}
+
+// Reflection-kernel check (hidden): impedance rebuilt from the taps the
+// voice convolves, vs the chain-matrix evaluate().
+TEST_CASE("measured bore kernel impedance", "[.kernelexp]") {
+  using namespace mmathen::brass_bore;
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  const double rho = 1.2;
+  auto k = makeKernels(kFs, rho, speed);
+  double sum0 = 0; for (double v : k.reflection) sum0 += std::fabs(v);
+  std::cout << "kernel tap0 " << k.reflection[0] << " tap1 " << k.reflection[1] << " sum|r| " << sum0
+            << " tail " << k.reflection.back() << "\n";
+  for (int skip0 : {0, 1}) {
+    double prev = 0, pprev = 0, pf = 0;
+    for (double f = 30; f < 1500; f += 0.5) {
+      std::complex<double> R(0, 0);
+      for (std::size_t t = skip0; t < k.reflection.size(); ++t)
+        R += k.reflection[t] * std::exp(std::complex<double>(0, -constants::twoPi * f * t / kFs));
+      const double a = std::abs((1.0 + R) / (1.0 - R));
+      if (prev > pprev && prev > a) std::cout << "kpeak skip0 " << skip0 << " " << pf << " " << 20 * std::log10(prev) << "\n";
+      pprev = prev; prev = a; pf = f;
     }
   }
 }
