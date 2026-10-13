@@ -349,7 +349,9 @@ namespace valve_detail {
                                                double apertureFlow, double radiated,
                                                double turbulence, double density,
                                                double listener, double tripSamples,
-                                               double sampleRate, double reedPeriodSeconds) {
+                                               double sampleRate, double reedPeriodSeconds,
+                                               bool sustain = true,
+                                               bool* lockedOut = nullptr) {
   if (!(turbulence > 0.0) || !(tripSamples > 1.0) || !(sampleRate > 0.0) ||
       !(listener > 0.0) || !(density > 0.0))
     return 0.0;
@@ -367,8 +369,9 @@ namespace valve_detail {
       density * (flowMean / correlation) / (4.0 * constants::pi * listener);
   if (!std::isfinite(breathP) || !std::isfinite(tone)) return 0.0;
   const double jet = turbulence * breathP;
-  const double sustain = turbulence * tone;
-  const double amp = tone >= breathP ? sustain : jet;
+  if (lockedOut != nullptr) *lockedOut = tone >= breathP;
+  const double locked = sustain ? turbulence * tone : 0.0;
+  const double amp = tone >= breathP ? locked : jet;
   if (!std::isfinite(amp)) return 0.0;
   return amp * breathSample(noise, smoother);
 }

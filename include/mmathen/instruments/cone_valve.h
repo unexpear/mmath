@@ -140,7 +140,7 @@ class ConeValveVoice final : public IVoice {
       const bool tongued = tongueFrames_ > 0 && frame_ < tongueFrames_;
       if (!open || tongued || breathOff) {
         if (lip_) {
-          displacement_ = -restOpening_ / slitWidth_;
+          displacement_ = lipPreload() - restOpening_ / slitWidth_;
           velocity_ = 0.0;
         } else {
           displacement_ = closing_;
@@ -158,7 +158,7 @@ class ConeValveVoice final : public IVoice {
       double pressure = 0.0;
       double opening = 0.0;
       if (lip_) {
-        opening = restOpening_ + slitWidth_ * displacement_;
+        opening = restOpening_ + slitWidth_ * (displacement_ - lipPreload());
         if (opening < 0.0) opening = 0.0;
         if (opening > maximumOpening_) opening = maximumOpening_;
         // A tongue, a finished blow, or a breath pressure of zero holds
@@ -199,8 +199,13 @@ class ConeValveVoice final : public IVoice {
             seedHz = 0.0;
           }
         }
-        outgoing += valve_detail::reedGapSeedPressure(
-            noise_, breathState_, apertureFlow_, reedTurbulence_, impedance_, seedHz, dt);
+        // A lip's seed is the breath the buzz grows from. Once the buzz
+        // is louder than that jet the seed stops, as the radiated jet
+        // does below: a seed left on under a locked brass note is the
+        // same broadband floor in the bore.
+        if (!(lip_ && lipLocked_))
+          outgoing += valve_detail::reedGapSeedPressure(
+              noise_, breathState_, apertureFlow_, reedTurbulence_, impedance_, seedHz, dt);
       }
       if (!std::isfinite(pressure) || !std::isfinite(outgoing))
         return R::failure(QuantityError::RangeError);
@@ -261,9 +266,17 @@ class ConeValveVoice final : public IVoice {
               std::sqrt(trumpet_.lipStiffnessNewtonsPerMeter / trumpet_.lipMassKg);
           if (omega > 0.0) period = constants::twoPi / omega;
         }
+        // A lip radiates the jet only while it is louder than the tone
+        // (the breath before the buzz). Once the buzz is louder, the
+        // sustained fraction is zero: the 0.20 fraction on a locked brass
+        // note was a steady broadband floor about 23 dB under the tone
+        // above 6 kHz, the fizz heard on the excerpts. Fletcher and
+        // Rossing (chap. 13) call the lip jet turbulent and print no
+        // radiated ratio, so no sustained level is claimed here.
         radiated += valve_detail::reedApertureBreath(
             flowMean_, breathEnv_, noise_, breathState_, apertureFlow_, radiated,
-            reedTurbulence_, density_, listener_, trip, rate_.value(), period);
+            reedTurbulence_, density_, listener_, trip, rate_.value(), period,
+            /*sustain=*/!lip_, &lipLocked_);
       }
       out[i] = radiated;
       if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);
@@ -292,6 +305,7 @@ class ConeValveVoice final : public IVoice {
     breathState_ = 0.0;
     flowMean_ = 0.0;
     apertureFlow_ = 0.0;
+    lipLocked_ = false;
     prevOutgoing_ = 0.0;
     std::fill(steepHist_, steepHist_ + 16, 0.0);
     steepPos_ = 0;
@@ -459,6 +473,14 @@ class ConeValveVoice final : public IVoice {
     variableRead_ = true;
     bellScale_ = scale;
     soundingLength_ = lengthMeters;
+    return true;
+  }
+
+  // Threshold blowing pressure of the pressed embouchure, Pa. Zero is a
+  // lip that rests open at the rest area. See lipPreload().
+  bool setLipThresholdPa(double pascals) {
+    if (!lip_ || !std::isfinite(pascals) || pascals < 0.0) return false;
+    lipThresholdPa_ = pascals;
     return true;
   }
 
@@ -781,10 +803,20 @@ class ConeValveVoice final : public IVoice {
     return y;
   }
 
+  // Spring displacement at which the lips meet: the embouchure presses
+  // them together, so the mouth must exceed the threshold p0 before the
+  // slit opens. y_p = A p0 / k. Fletcher and Tarnopolsky, JASA 105,
+  // 874-881 (1999), Eq. (1): p0 = K f, K about 7 Pa/Hz for their
+  // professional player GC (4 to 8 Pa/Hz across three players).
+  [[nodiscard]] double lipPreload() const {
+    if (!(lipThresholdPa_ > 0.0) || !(trumpet_.lipStiffnessNewtonsPerMeter > 0.0)) return 0.0;
+    return trumpet_.lipPressureAreaM2 * lipThresholdPa_ / trumpet_.lipStiffnessNewtonsPerMeter;
+  }
+
   void stopLip() {
     if (!(slitWidth_ > 0.0)) return;
-    const double yMin = -restOpening_ / slitWidth_;
-    const double yMax = (maximumOpening_ - restOpening_) / slitWidth_;
+    const double yMin = lipPreload() - restOpening_ / slitWidth_;
+    const double yMax = lipPreload() + (maximumOpening_ - restOpening_) / slitWidth_;
     if (displacement_ < yMin) {
       displacement_ = yMin;
       if (velocity_ < 0.0) velocity_ = 0.0;
@@ -865,6 +897,8 @@ class ConeValveVoice final : public IVoice {
   double cupPressure_ = 0.0;
   double listener_ = 1.0;
   double bellScale_ = 1.0;
+  double lipThresholdPa_ = 0.0;
+  bool lipLocked_ = false;
   double bellFlow_ = 0.0;
   double radiationState_ = 0.0;
   double radiationCorner_ = 1.0;
