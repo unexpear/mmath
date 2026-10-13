@@ -455,9 +455,11 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     const double floorDb = offHarmonicFloorDb(x, a, f0, rate);
     std::cout << tone.name << " interharmonic floor " << floorDb << " dB\n";
     // Same window and the same guard as the clarinet. Fletcher and
-    // Rossing do not print a jet noise ratio. Zero sits near −147 dB.
-    CHECK(floorDb > -54.0);
-    CHECK(floorDb < -40.0);
+    // Rossing do not print a jet noise ratio. The University of Iowa MIS
+    // flute A4 ff (measurement reference only) reads -66.8 dB on this
+    // median; +/-6 dB around it is UNSOURCED. Zero sits near -147 dB.
+    CHECK(floorDb > -73.0);
+    CHECK(floorDb < -60.0);
   } else if (tone.spectrum == Spectrum::Saxophone) {
     CHECK(above >= 6);
     CHECK(evens >= 1);
@@ -1742,6 +1744,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   jet.jetAimMeters = 0.40 * thickness;
   jet.jetNoiseMeters = 0.035 * thickness;
   jet.reedTurbulence = 0.56;
+  jet.lockedBreathFraction = 0.063;  // see the song flute: Iowa MIS reference
   // Levine and Schwinger, unflanged open end, about 0.61 radii.
   jet.endCorrectionMeters = 0.61 * fluteRadius;
   auto jetVoice = unwrap(BoreValveVoice::fromFlute(flute, jet, kRate));
@@ -2177,6 +2180,11 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     jet.jetAimMeters = 0.40 * thickness;
     jet.jetNoiseMeters = 0.035 * thickness;
     jet.reedTurbulence = 0.56;
+    // Locked breath 0.063 = 0.56 less 19 dB: at 0.56 the songs read a
+    // -47.7 dB median inter-harmonic bin and 4-10 kHz noise 18 dB under
+    // the total; the University of Iowa MIS flute A4 ff (measurement
+    // reference only) reads -66.8 dB and -36 dB. The onset jet keeps 0.56.
+    jet.lockedBreathFraction = 0.063;
     jet.endCorrectionMeters = end;
     auto voice = unwrap(BoreValveVoice::fromFlute(flute, jet, kRate));
     std::vector<PhraseNote> notes;
@@ -2474,6 +2482,11 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     jet.jetAimMeters = 0.40 * thickness;
     jet.jetNoiseMeters = 0.035 * thickness;
     jet.reedTurbulence = 0.56;
+    // Locked breath 0.063 = 0.56 less 19 dB: at 0.56 the songs read a
+    // -47.7 dB median inter-harmonic bin and 4-10 kHz noise 18 dB under
+    // the total; the University of Iowa MIS flute A4 ff (measurement
+    // reference only) reads -66.8 dB and -36 dB. The onset jet keeps 0.56.
+    jet.lockedBreathFraction = 0.063;
     jet.endCorrectionMeters = end;
     auto voice = unwrap(BoreValveVoice::fromFlute(flute, jet, kRate));
     std::vector<PhraseNote> notes;

@@ -159,6 +159,11 @@ struct ValveBlow {
   double radiationHz = 0.0;
   std::uint64_t tongueReleaseFrames = 0;
   double reedTurbulence = 0.0;
+  // Fraction of the locked tone radiated as breath once the standing
+  // wave is louder than the jet. Negative reuses reedTurbulence. The
+  // flute uses a level read off the University of Iowa MIS flute
+  // (measurement reference only); no paper prints this ratio.
+  double lockedBreathFraction = -1.0;
   double brassiness = 0.0;
   double spectrumBreakHz = 0.0;
   // When positive, Kirchhoff's round-trip loss is fitted at this
@@ -352,7 +357,8 @@ namespace valve_detail {
                                                double listener, double tripSamples,
                                                double sampleRate, double reedPeriodSeconds,
                                                bool sustain = true,
-                                               bool* lockedOut = nullptr) {
+                                               bool* lockedOut = nullptr,
+                                               double lockedTurbulence = -1.0) {
   if (!(turbulence > 0.0) || !(tripSamples > 1.0) || !(sampleRate > 0.0) ||
       !(listener > 0.0) || !(density > 0.0))
     return 0.0;
@@ -371,7 +377,8 @@ namespace valve_detail {
   if (!std::isfinite(breathP) || !std::isfinite(tone)) return 0.0;
   const double jet = turbulence * breathP;
   if (lockedOut != nullptr) *lockedOut = tone >= breathP;
-  const double locked = sustain ? turbulence * tone : 0.0;
+  const double lockedFraction = lockedTurbulence >= 0.0 ? lockedTurbulence : turbulence;
+  const double locked = sustain ? lockedFraction * tone : 0.0;
   const double amp = tone >= breathP ? locked : jet;
   if (!std::isfinite(amp)) return 0.0;
   return amp * breathSample(noise, smoother);
@@ -703,7 +710,8 @@ class BoreValveVoice final : public IVoice {
             (jetSpeed_ > 0.0 && jetThickness_ > 0.0) ? jetThickness_ / jetSpeed_ : 0.0;
         radiated += valve_detail::reedApertureBreath(
             flowMean_, breathEnv_, noise_, breathState_, apertureFlow_, radiated,
-            reedTurbulence_, density_, listener_, trip, rate_.value(), jetPeriod);
+            reedTurbulence_, density_, listener_, trip, rate_.value(), jetPeriod, true,
+            nullptr, lockedBreath_);
       } else if (reedTurbulence_ > 0.0 && law_ == ValveLaw::OutwardLip && open && mouth > 0.0 &&
                  !tongued) {
         const double trip =
@@ -981,6 +989,7 @@ class BoreValveVoice final : public IVoice {
     voice.endCorrection_ = radiating ? 0.0 : blow.endCorrectionMeters;
     voice.jetNoise_ = blow.jetNoiseMeters;
     voice.reedTurbulence_ = blow.reedTurbulence;
+  voice.lockedBreath_ = blow.lockedBreathFraction;
     voice.radiationCorner_ = speed / radius;
     // The caller's corner is the bell/embouchure radiation cutoff. It
     // replaces c/a of the bore when the bore is not the radiating mouth.
@@ -1307,6 +1316,7 @@ class BoreValveVoice final : public IVoice {
   double jetNoise_ = 0.0;
   double jetSpeed_ = 0.0;
   double reedTurbulence_ = 0.0;
+  double lockedBreath_ = -1.0;
   valve_detail::TripLoss wall_{};
   valve_detail::TripLoss cutoff_{};
   std::uint32_t noise_ = 1u;
