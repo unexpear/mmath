@@ -110,14 +110,29 @@ inline void evaluate(double f, double rho, double c, double zcRef, double cup, F
   if (zin) *zin = cup > 0 ? 1.0 / (1.0 / Z + C(0, w * cup / (rho * c * c))) : Z;
 }
 
-// Throat-referred steepening length int r_throat / r(x) dx over the
-// whole profile (see ConeValveVoice::setMeasuredBoreSteepening).
+// Steepening length int D0 / D(x) dx, from the narrowest point of the
+// mouthpipe onward (the mouthpiece backbore, 72 mm here, is excluded:
+// at playing frequencies it is a lumped volume, not a traveling-wave
+// section, so its p+ is the cup's). D0 is that narrowest diameter. This
+// is the numerator of the brassiness potential B = (1/L_ecl) int D0/D dx
+// of Myers, Pyle, Gilbert, Campbell, Chick and Logie, JASA 131, 678-688
+// (2012); trumpets in 4-1/2 ft Bb measure B about 0.58-0.76 (Myers,
+// Galpin Society / IBEW summary of the same method). The earlier
+// throat-referred integral (r_throat / r over the whole profile, 0.407 m)
+// counted the backbore's area growth as amplitude loss.
 inline double steepeningLengthMeters(Fingering fg = {}) {
-  double mouth = 0.0, acc = 0.0;
+  double mouth = 0.0, acc = 0.0, x = 0.0;
   const auto prof = bbTrumpetProfile(mouth, fg);
-  const double r0 = prof.front().radius;
-  for (const auto& sg : prof) acc += sg.length * r0 / sg.radius;
+  double r0 = 1.0;
+  for (const auto& sg : prof) { if (x >= 0.072 - 1e-9) r0 = std::min(r0, sg.radius); x += sg.length; }
+  x = 0.0;
+  for (const auto& sg : prof) { if (x >= 0.072 - 1e-9) acc += sg.length * r0 / sg.radius; x += sg.length; }
   return acc;
+}
+// Myers brassiness B with L_ecl = c / (2 f_nominal) for the Bb (116.54 Hz)
+// equivalent complete cone.
+inline double myersBrassiness(double c) {
+  return steepeningLengthMeters() / (c / (2.0 * 116.54));
 }
 
 inline Kernels makeKernels(double fs, double rho, double c, Fingering fg = {}, std::size_t taps = 2048,

@@ -2898,10 +2898,11 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
     if (prev > pprev && prev > a) std::cout << "zpeak " << pf << " " << 20 * std::log10(prev / zc) << "\n";
     pprev = prev; prev = a; pf = f;
   }
+  std::cout << "myersB " << myersBrassiness(speed) << "\n";
   for (int steep : {1})
   for (int var = 0; var < 1; ++var)
-  for (double p : {2500.0, 5000.0, 9000.0}) {
-    for (double lipHz : {220.0, 230.0, 240.0}) {
+  for (double p : {5000.0, 7000.0, 9000.0}) {
+    for (double lipHz : {215.0, 220.0, 225.0}) {
       const double lipMass = 3.0e-5, om = constants::twoPi * lipHz;
       TrumpetSpec spec{1.45, constants::pi * 0.00185 * 0.00185, kAir, kTemp, 0.0, 1.0e-8, 1.5e-5, 1.2e-2,
                        lipMass, om * om * lipMass, 1.5e-5, 0.001};
