@@ -2899,9 +2899,9 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
     pprev = prev; prev = a; pf = f;
   }
   for (int steep : {1})
-  for (int var = 2; var < 3; ++var)
-  for (double p : {15000.0, 22000.0}) {
-    for (double lipHz : {140.0, 150.0, 158.0}) {
+  for (int var = 0; var < 1; ++var)
+  for (double p : {2500.0, 5000.0, 9000.0}) {
+    for (double lipHz : {220.0, 230.0, 240.0}) {
       const double lipMass = 3.0e-5, om = constants::twoPi * lipHz;
       TrumpetSpec spec{1.45, constants::pi * 0.00185 * 0.00185, kAir, kTemp, 0.0, 1.0e-8, 1.5e-5, 1.2e-2,
                        lipMass, om * om * lipMass, 1.5e-5, 0.001};
@@ -2918,7 +2918,10 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
       // 2: inverse-problem set (L 12 mm, mu 9, Q 20, h0 0.1 mm).
       const double vq = var == 0 ? 3.0 : var == 1 ? 7.0 : 20.0, vr = var == 1 ? 5.0e-4 : 1.0e-4, vt = 0.0;
       const double vmu = var == 0 ? 2.0 : var == 1 ? 1.0 / 0.11 : 9.0, vw = var == 0 ? 0.008 : 0.012;
-      REQUIRE(voice.usePublishedTrumpetLips(lipHz, vq, vr, vt, vmu, vw));
+      (void)vq; (void)vr; (void)vt; (void)vmu; (void)vw;
+      const double eqY = var == 0 ? 0.1e-3 : var == 1 ? 0.5e-3 : 1.0e-3;
+      REQUIRE(voice.useAdachiSatoLip(lipHz, eqY));
+      std::cout << "as eqY " << eqY << "\n";
       std::cout << "var q " << vq << " rest " << vr << " thr " << vt << "\n";
       if (steep) REQUIRE(voice.setMeasuredBoreSteepening(true));
       std::vector<double> out(kFrames);

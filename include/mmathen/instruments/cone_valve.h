@@ -167,6 +167,7 @@ class ConeValveVoice final : public IVoice {
         opening = restOpening_ + slitWidth_ * (displacement_ - lipPreload());
         if (opening < 0.0) opening = 0.0;
         if (opening > maximumOpening_) opening = maximumOpening_;
+        if (as_.on) opening = std::max(2.0 * as_.b * as_.y, 0.0);
         // A tongue, a finished blow, or a breath pressure of zero holds
         // the lip on the closed stop. The stop arithmetic can leave a
         // roundoff slit, and the pressure search then fails against a
@@ -224,7 +225,9 @@ class ConeValveVoice final : public IVoice {
       if (open && mouth > 0.0 && !tongued) {
         const double delta = mouth - pressure;
         double acceleration = 0.0;
-        if (lip_) {
+        if (lip_ && as_.on) {
+          stepAdachiSato(delta, pressure, opening, dt);
+        } else if (lip_) {
           // Two-lip contact, when enabled, is measured from this voice's
           // closed stop, which carries the threshold preload.
           Trumpet lipNow = trumpet_;
@@ -244,7 +247,7 @@ class ConeValveVoice final : public IVoice {
             if (velocity_ > 0.0) velocity_ = 0.0;
           }
         }
-        if (lip_) {
+        if (lip_ && !as_.on) {
           velocity_ += acceleration * dt;
           displacement_ += velocity_ * dt;
           if (!std::isfinite(velocity_) || !std::isfinite(displacement_))
@@ -579,6 +582,27 @@ class ConeValveVoice final : public IVoice {
     return true;
   }
   [[nodiscard]] bool measuredBoreSteepeningOn() const noexcept { return steepRfOn_; }
+
+  // Two-dimensional swinging-door lip of Adachi and Sato, JASA 99,
+  // 1200-1209 (1996), eqs. 1-5 and 8, Table I (checked against the
+  // paper): b = 7 mm, d = 2 mm, joint (0, 4 mm), rest x 1 mm, rest y
+  // 0.1-2.0 mm (an embouchure argument, chosen per note in the paper),
+  // m = 1.5 / ((2 pi)^2 f_lip) kg, k = 1.5 f_lip N/m, Q 3 open and 0.5
+  // closed, contact spring 3k on y < 0, S_cup = 2.3e-4 m^2. Their Bb3
+  // optimum: f_lip 250 Hz, sounding 236 Hz at p0 2.5 kPa (Table III).
+  // Opening 2 b y. The lip-swept flow U_lip (eq. 6, small in the paper)
+  // is not added. Replaces the one-mass lip; off by default.
+  bool useAdachiSatoLip(double lipHz, double restYMeters) {
+    if (!lip_ || !(lipHz > 0.0) || !std::isfinite(restYMeters)) return false;
+    as_ = AdachiSato{};
+    as_.on = true;
+    as_.m = 1.5 / (constants::twoPi * constants::twoPi * lipHz);
+    as_.k = 1.5 * lipHz;
+    as_.eqY = restYMeters;
+    as_.x = as_.eqX; as_.y = as_.eqY;
+    return true;
+  }
+  [[nodiscard]] bool adachiSatoLipOn() const noexcept { return as_.on; }
   [[nodiscard]] double measuredBoreSteepeningLength() const noexcept { return steepLength_; }
 
   // Published trumpet embouchure, for the measured bore. One-dof
@@ -1038,6 +1062,33 @@ class ConeValveVoice final : public IVoice {
   double cupCoeff_ = 0.0;
   double cupPressure_ = 0.0;
   double listener_ = 1.0;
+  struct AdachiSato {
+    bool on = false;
+    double m = 0, k = 0, b = 7.0e-3, d = 2.0e-3, jx = 0.0, jy = 4.0e-3;
+    double eqX = 1.0e-3, eqY = 0.0, scup = 2.3e-4;
+    double x = 0, y = 0, vx = 0, vy = 0;
+  } as_;
+  // Eq. 1: (m/2) xi'' = -(sqrt(m k)/(2Q)) xi' - (k/2)(xi - xi_eq)
+  //        + b (p0 - p) (xi - xi_joint)^perp + b d p_lip e_y [- 3k y e_y].
+  void stepAdachiSato(double overpressure, double p, double opening, double dt) {
+    const bool closed = as_.y < 0.0;
+    const double q = closed ? 0.5 : 3.0;
+    const double damp = std::sqrt(as_.m * as_.k) / (2.0 * q);
+    double plip = p;
+    if (opening > 1.0e-12 && apertureFlow_ != 0.0)
+      plip = p + density_ * apertureFlow_ * apertureFlow_ *
+                     (1.0 / (as_.scup * opening) - 1.0 / (as_.scup * as_.scup));
+    const double ax = as_.x - as_.jx, ay = as_.y - as_.jy;
+    double fx = -damp * as_.vx - 0.5 * as_.k * (as_.x - as_.eqX) + as_.b * overpressure * (-ay);
+    double fy = -damp * as_.vy - 0.5 * as_.k * (as_.y - as_.eqY) + as_.b * overpressure * ax +
+                as_.b * as_.d * plip;
+    if (closed) fy -= 3.0 * as_.k * as_.y;
+    as_.vx += fx / (0.5 * as_.m) * dt;
+    as_.vy += fy / (0.5 * as_.m) * dt;
+    as_.x += as_.vx * dt;
+    as_.y += as_.vy * dt;
+    if (!std::isfinite(as_.x) || !std::isfinite(as_.y)) { as_.x = as_.eqX; as_.y = as_.eqY; as_.vx = as_.vy = 0; }
+  }
   bool rfOn_ = false;
   bool steepRfOn_ = false;
   double steepLength_ = 0.0;
