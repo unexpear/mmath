@@ -2260,7 +2260,8 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
           row.mode == 0 ? 0.75 * speed / row.length : 0.80 * conePartial(row.length, 0.26, row.mode);
       if (measured)
         push(notes, src, start, row.length,
-             mmathen::brass_bore::adachiSatoLipHz(src.hertz > 0.0 ? src.hertz : row.hertz),
+             voice.tuneAdachiSatoLipHz(src.hertz > 0.0 ? src.hertz : row.hertz, row.length,
+                                       mmathen::brass_bore::kMeasuredTrumpetPressurePa),
              mmathen::brass_bore::kMeasuredTrumpetPressurePa, 0.0, 25.0, 0.01);
       else
         push(notes, src, start, row.length, lipHz, 2800.0, 0.0, 25.0, 0.01);
@@ -2272,9 +2273,7 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     auto samples = renderPhrase(voice, notes, total, false, 0.50, &airway);
     std::cout << "trumpet airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
     writePhraseNotes(notes, total, (stem + ".notes.csv").c_str());
-    // The measured-bore Adachi-Sato option is a listening comparison; its
-    // lip rule is fitted on Bb3 only, so the YIN grade is not applied.
-    if (!measured) reportPhrase(stem.c_str(), notes, samples, total, 0.12);
+    reportPhrase(stem.c_str(), notes, samples, total, 0.12);
     writePhrase(samples, (stem + ".wav").c_str(), kFs);
     std::vector<double> starts;
     for (const auto& n : notes)
@@ -2915,8 +2914,8 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
   std::cout << "myersB " << myersBrassiness(speed) << "\n";
   for (int steep : {1})
   for (int var = 0; var < 1; ++var)
-  for (double p : {5000.0, 7000.0, 9000.0}) {
-    for (double lipHz : {215.0, 220.0, 225.0}) {
+  for (double p : {5000.0, 7000.0}) {
+    for (double lipHz : {215.0}) {
       const double lipMass = 3.0e-5, om = constants::twoPi * lipHz;
       TrumpetSpec spec{1.45, constants::pi * 0.00185 * 0.00185, kAir, kTemp, 0.0, 1.0e-8, 1.5e-5, 1.2e-2,
                        lipMass, om * om * lipMass, 1.5e-5, 0.001};
@@ -2977,6 +2976,8 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
                 << " closed " << (cnt ? double(shut) / cnt : 0) << " open mm2 " << omin * 1e6 << ".." << omax * 1e6 << " mean " << (cnt ? osum / cnt * 1e6 : 0) << " p " << p << " lip " << lipHz << " ok " << ok << " f0 " << f0 << " cents "
                 << 1200 * std::log2(f0 / 233.08) << " cent " << (den > 0 ? num / den : 0) << " h2-h5 dB re h1";
       for (int k = 2; k <= 5; ++k) std::cout << " " << 10 * std::log10(h[k] / std::max(h[1], 1e-300));
+      std::cout << " FT1999";
+      for (int k = 2; k <= 5; ++k) std::cout << " " << fletcherTarnopolskyDb(k, 233.08);
       std::cout << "\n";
       std::string name = "boreexp-s" + std::to_string(steep) + "-p" + std::to_string(int(p)) + "-l" + std::to_string(int(lipHz)) + ".wav";
       writeListening(out, name.c_str(), kFs);

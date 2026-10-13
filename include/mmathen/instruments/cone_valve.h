@@ -638,6 +638,67 @@ class ConeValveVoice final : public IVoice {
     return true;
   }
   [[nodiscard]] bool adachiSatoLipOn() const noexcept { return as_.on; }
+
+  // Per-note embouchure for the Adachi-Sato lip, chosen the way Adachi
+  // and Sato (1996, Sec. II B) chose theirs: f_lip is varied and the
+  // oscillation that sounds the wanted note is kept (they stepped 10 Hz
+  // and judged stability and amplitude; here the criterion is the
+  // target pitch, as a player tunes by ear). Each probe is a fresh copy
+  // of this voice, without the airway, at the note's fingering and
+  // pressure, rendered 0.4 s; pitch by autocorrelation near the target.
+  // Secant search from f_lip = f_note (their Table III ratios are
+  // 1.01-1.08), at most 8 probes. Returns the lip frequency, 0 if none.
+  [[nodiscard]] double tuneAdachiSatoLipHz(double noteHz, double lengthMeters,
+                                           double pressurePa) const {
+    if (!as_.on || !(noteHz > 0.0)) return 0.0;
+    const double fs = rate_.value();
+    auto probe = [&](double lipHz) -> double {
+      ConeValveVoice v = *this;
+      v.airway_ = nullptr;
+      v.reset();
+      v.frame_ = 0;
+      std::fill(v.hist_.begin(), v.hist_.end(), 0.0);
+      std::fill(v.histS_.begin(), v.histS_.end(), 0.0);
+      std::fill(v.steepRf_, v.steepRf_ + kSteepRfSize, 0.0);
+      v.as_.x = v.as_.eqX; v.as_.y = v.as_.eqY; v.as_.vx = v.as_.vy = 0.0;
+      if (!v.setSoundingLength(lengthMeters) || !v.setBlowingPressure(pressurePa) ||
+          !v.setLipResonanceHz(lipHz))
+        return 0.0;
+      const std::size_t n = static_cast<std::size_t>(0.4 * fs);
+      std::vector<double> out(n, 0.0);
+      for (std::size_t i = 0; i < n; ++i)
+        if (!v.renderBlock(out.data() + i, FrameCount{1}).ok()) return 0.0;
+      const std::size_t w = 4096, s0 = n - w - static_cast<std::size_t>(fs / 60.0);
+      const int lo = static_cast<int>(fs / (noteHz * 1.2)), hi = static_cast<int>(fs / (noteHz / 1.2));
+      double best = -2.0; int bl = 0; std::vector<double> r(hi + 2, 0.0);
+      for (int L = lo - 1; L <= hi + 1; ++L) {
+        double xy = 0, xx = 0, yy = 0;
+        for (std::size_t j = 0; j < w; ++j) { const double x = out[s0 + j], y = out[s0 + j + L]; xy += x * y; xx += x * x; yy += y * y; }
+        r[L] = xy / std::sqrt(xx * yy + 1e-300);
+        if (L >= lo && L <= hi && r[L] > best) { best = r[L]; bl = L; }
+      }
+      if (bl == 0 || best < 0.8) return 0.0;
+      const double den = r[bl - 1] - 2 * r[bl] + r[bl + 1];
+      const double d = den != 0.0 ? 0.5 * (r[bl - 1] - r[bl + 1]) / den : 0.0;
+      return fs / (bl + d);
+    };
+    auto cents = [&](double f) { return 1200.0 * std::log2(f / noteHz); };
+    double x0 = noteHz, f0 = probe(x0);
+    if (!(f0 > 0.0)) { x0 = 0.92 * noteHz; f0 = probe(x0); }
+    if (!(f0 > 0.0)) return 0.0;
+    double x1 = x0 * std::pow(2.0, -cents(f0) / 1200.0), f1 = probe(x1);
+    double bestX = x0, bestE = std::fabs(cents(f0));
+    for (int it = 0; it < 6 && f1 > 0.0; ++it) {
+      const double e0 = cents(f0), e1 = cents(f1);
+      if (std::fabs(e1) < bestE) { bestE = std::fabs(e1); bestX = x1; }
+      if (std::fabs(e1) < 5.0 || e1 == e0) break;
+      double x2 = x1 - e1 * (x1 - x0) / (e1 - e0);
+      x2 = std::max(0.7 * noteHz, std::min(1.2 * noteHz, x2));
+      x0 = x1; f0 = f1; x1 = x2; f1 = probe(x1);
+    }
+    if (f1 > 0.0 && std::fabs(cents(f1)) < bestE) bestX = x1;
+    return bestX;
+  }
   [[nodiscard]] double measuredBoreSteepeningLength() const noexcept { return steepLength_; }
 
   // Published trumpet embouchure, for the measured bore. One-dof

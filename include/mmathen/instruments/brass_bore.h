@@ -135,11 +135,22 @@ inline double myersBrassiness(double c) {
   return steepeningLengthMeters() / (c / (2.0 * 116.54));
 }
 
-// Adachi-Sato lip tuning for a note on this bore: f_lip = 0.922 f_note,
-// FITTED on Bb3 (f_lip 215 Hz sounds 231.7 Hz at 5 kPa, 220 Hz sounds
-// 233.3 Hz; UNSOURCED as a rule for other notes; Adachi and Sato's own
-// Table III ratio on their bore is 1.03-1.08).
-inline double adachiSatoLipHz(double noteHz) { return 0.922 * noteHz; }
+// Starting lip tuning for a note (Adachi and Sato 1996 Table III start
+// near f_note); the per-note value comes from
+// ConeValveVoice::tuneAdachiSatoLipHz.
+inline double adachiSatoLipHz(double noteHz) { return noteHz; }
+// Brightness target: the low-level trumpet envelope of Fletcher and
+// Tarnopolsky, JASA 105, 874-881 (1999), Fig. 5 (C4 on a Bb trumpet):
+// about +6 dB/octave below ~1 kHz, nearly level from 1 kHz to the
+// 2-3 kHz upper transition. Returned in dB of harmonic k over h1 for a
+// note at f1; above 1 kHz it is held level (the loud-playing extension
+// only adds to it). A grade target beside Iowa MIS, not a filter.
+inline double fletcherTarnopolskyDb(int k, double f1) {
+  const double f = k * f1, knee = 1000.0;
+  const double top = std::min(f, knee), base = std::min(f1, knee);
+  return 6.0 * std::log2(top / base);
+}
+
 // Blowing pressure for the measured-bore phrase trumpet: 5 kPa, inside
 // the 1.07-9.07 kPa Bb3-Bb5 range of Freour et al. 2010 (IRCAM,
 // simultaneous pressure/flow/sound in trumpet playing). The value within
