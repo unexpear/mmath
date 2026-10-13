@@ -2220,6 +2220,9 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     const Finger finger[] = {
         {392.00, 0.804, 0}, {349.23, 0.912, 0}, {466.16, 1.023, 3},
         {523.25, 1.560, 5}, {698.46, 1.410, 6}, {587.33, 1.386, 5},
+        // A4 for When the Saints: the Bb4 row scaled sat 27.8 cents flat;
+        // (L + apex) shortened by that measured ratio.
+        {440.00, 1.0776, 3},
     };
     auto find = [&](double hertz) {
       for (const Finger& row : finger)
@@ -2513,6 +2516,9 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     const Finger finger[] = {
         {392.00, 0.804, 0}, {349.23, 0.912, 0}, {466.16, 1.023, 3},
         {523.25, 1.560, 5}, {698.46, 1.410, 6}, {587.33, 1.386, 5},
+        // A4 for When the Saints: the Bb4 row scaled sat 27.8 cents flat;
+        // (L + apex) shortened by that measured ratio.
+        {440.00, 1.0776, 3},
     };
     auto find = [&](double hertz) {
       for (const Finger& row : finger)
@@ -2642,12 +2648,21 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     reportPhrase(stem.c_str(), notes, samples, total, 0.15);
     writePhrase(samples, (stem + ".wav").c_str(), kFs);
   };
+  SECTION("songs") {
   play_clarinet(excerpts::kBumblebee, "mmath-song-clarinet-bumblebee");
   play_trumpet(excerpts::kUptownFunk, "mmath-song-trumpet-uptown-funk");
   play_flute(excerpts::kDayInTheLife, "mmath-song-flute-day-in-the-life");
   play_trombone(excerpts::kMountain, "mmath-song-trombone-mountain");
   play_trumpet(excerpts::kTaps, "mmath-song-trumpet-taps");
   play_flute(excerpts::kLondonBridge, "mmath-song-flute-london-bridge");
+  }
+  // When the Saints, Dixieland: three parts, each with its own airway, on one
+  // 0.28 s beat grid. Summed off-line with level balance.
+  SECTION("ensemble") {
+    play_trumpet(excerpts::kSaintsTrumpet, "mmath-ens-saints-trumpet");
+    play_clarinet(excerpts::kSaintsClarinet, "mmath-ens-saints-clarinet");
+    play_trombone(excerpts::kSaintsTrombone, "mmath-ens-saints-trombone");
+  }
 }
 
 // Breath-stop rings. The tongue stays up: tongueReleaseFrames is 0.
@@ -2891,6 +2906,9 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
   const Finger trumpetRows[] = {
       {392.00, 0.804, 0}, {349.23, 0.912, 0}, {466.16, 1.023, 3},
       {523.25, 1.560, 5}, {698.46, 1.410, 6}, {587.33, 1.386, 5},
+        // A4 for When the Saints: the Bb4 row scaled sat 27.8 cents flat;
+        // (L + apex) shortened by that measured ratio.
+        {440.00, 1.0776, 3},
   };
   const Finger tromboneRows[] = {
       {466.16, 1.331, 4}, {440.00, 1.416, 4}, {392.00, 1.596, 4}, {349.23, 1.312, 3},
