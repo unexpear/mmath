@@ -1,0 +1,138 @@
+#pragma once
+// Measured-geometry trumpet bore as a reflection-function load (opt-in).
+//
+// Geometry (Bb trumpet), Eveno / Kergomard et al. bore-profile study,
+// HAL hal-01309223, Sec. 3.2, after Causse's measured profile: backbore
+// cone L1 = 72 mm from R1 = 1.85 mm (top angle 3.64 deg), main bore
+// L2 = 1.28 m of radius R2 = 5 mm prolongated by a Bessel horn of
+// exponent nu = 0.76 (the fitted value of the same paper). Cup radius
+// Rb = 9.1 mm (hemisphere, V0 = 2/3 pi Rb^3; the hemisphere reading is
+// UNSOURCED). Bell mouth: Bach 37 radius 61 mm (4.8 in, Conn-Selmer).
+// Bell length 0.70 m and the 50 mm leadpipe taper to R2 are UNSOURCED.
+// Wall loss: Keefe, JASA 75, 58-62 (1984), leading order in 1/r_v.
+// Radiation: unflanged pipe (Levine and Schwinger 1948) via the Silva,
+// Guillemain, Kergomard, Mallaroni and Norris rational fit, JASA 125
+// (2009). Chain matrices per stepped cylinder, inverse DFT to an input
+// pressure reflection function and a bell-flow transfer function.
+#include <cmath>
+#include <complex>
+#include <vector>
+
+namespace mmathen::brass_bore {
+
+struct Segment { double length; double radius; };
+
+struct Kernels {
+  std::vector<double> reflection;   // p- from p+ at the backbore input
+  std::vector<double> mouthFlow;    // U at the bell mouth from p+ (m^3/s per Pa)
+  double throatRadius = 0.00185;
+  double cupVolume = 0.0;
+};
+
+// Valves. Each pressed valve inserts a cylindrical loop of the main-bore
+// radius at the valve block. Loop length L_open (2^(n/12) - 1) for n = 2,
+// 1, 3 semitones (valves 1, 2, 3) is the equal-tempered first-order rule
+// (Campbell and Greated, The Musician's Guide to Acoustics); measured Bach
+// 37 slide lengths are UNSOURCED, so these are the rule, not a catalog.
+// Valve block position 0.25 m from the input is UNSOURCED.
+struct Fingering { bool v1 = false, v2 = false, v3 = false; };
+constexpr double kOpenLengthMeters = 0.072 + 0.05 + 1.28;
+constexpr double kValveBlockMeters = 0.25;
+inline double valveLoopMeters(int semitones) {
+  return kOpenLengthMeters * (std::pow(2.0, semitones / 12.0) - 1.0);
+}
+inline std::vector<Segment> bbTrumpetProfile(double& mouthRadius, Fingering fg = {}) {
+  std::vector<Segment> s;
+  const double r1 = 0.00185, l1 = 0.072;
+  const double rout = r1 + l1 * std::tan(3.64 * 0.5 * 3.14159265358979323846 / 180.0);
+  for (int i = 0; i < 40; ++i) s.push_back({l1 / 40, r1 + (rout - r1) * (i + 0.5) / 40});
+  const double r2 = 0.005;
+  for (int i = 0; i < 10; ++i) s.push_back({0.005, rout + (r2 - rout) * (i + 0.5) / 10});
+  const double bell = 0.70, nu = 0.76;
+  mouthRadius = 0.061;
+  double loop = 0.0;
+  if (fg.v1) loop += valveLoopMeters(2);
+  if (fg.v2) loop += valveLoopMeters(1);
+  if (fg.v3) loop += valveLoopMeters(3);
+  s.push_back({1.28 - bell - 0.05 + loop, r2});
+  const double x0 = bell / (std::pow(mouthRadius / r2, 1.0 / nu) - 1.0);
+  const double b = mouthRadius * std::pow(x0, nu);
+  const int m = 300;
+  for (int i = 0; i < m; ++i) {
+    const double xm = bell * (1.0 - (i + 0.5) / m);
+    s.push_back({bell / m, b * std::pow(xm + x0, -nu)});
+  }
+  return s;
+}
+
+// Input impedance (with optional cup), reflectance re zc, mouth flow per p+.
+inline void evaluate(double f, double rho, double c, double zcRef, double cup, Fingering fg,
+                     std::complex<double>* zin, std::complex<double>* refl,
+                     std::complex<double>* uMouth) {
+  using C = std::complex<double>;
+  const double eta = 1.85e-5, pr = 0.71, gam = 1.4;
+  double mouth = 0.0;
+  const auto prof = bbTrumpetProfile(mouth, fg);
+  const double w = 2.0 * 3.14159265358979323846 * f, k = w / c;
+  const double ka = k * mouth;
+  const double zm = rho * c / (3.14159265358979323846 * mouth * mouth);
+  const double rm = (1 + 0.2 * ka - 0.084 * ka * ka) / (1 + 0.2 * ka + (0.5 - 0.084) * ka * ka);
+  const double s2 = std::sin(2 * ka);
+  const double dl = mouth * (0.6133 * (1 + 0.044 * ka * ka) / (1 + 0.19 * ka * ka) - 0.02 * s2 * s2);
+  const C rc = -rm * std::exp(C(0, -2 * k * dl));
+  C Z = (f > 0) ? zm * (1.0 + rc) / (1.0 - rc) : C(0, 0);
+  C A(1, 0), B(0, 0), Cc(0, 0), D(1, 0);  // total chain, input = M * mouth
+  for (auto it = prof.rbegin(); it != prof.rend(); ++it) {
+    const double r = it->radius;
+    const double rv = r * std::sqrt(rho * std::max(w, 1e-9) / eta);
+    const double a = (1 + (gam - 1) / std::sqrt(pr)) / (std::sqrt(2.0) * rv);
+    const C G = C(k * a, k * (1 + a));
+    const C zc = rho * c / (3.14159265358979323846 * r * r) *
+                 (1.0 + C(1, -1) * (1 - (gam - 1) / std::sqrt(pr)) / (2 * std::sqrt(2.0) * rv));
+    const C ch = std::cosh(G * it->length), sh = std::sinh(G * it->length);
+    Z = (ch * Z + zc * sh) / (sh * Z / zc + ch);
+    const C nA = ch * A + zc * sh * Cc, nB = ch * B + zc * sh * D;
+    const C nC = sh / zc * A + ch * Cc, nD = sh / zc * B + ch * D;
+    A = nA; B = nB; Cc = nC; D = nD;
+  }
+  if (refl) *refl = (Z - zcRef) / (Z + zcRef);
+  if (uMouth) {
+    const C R = (Z - zcRef) / (Z + zcRef);
+    const C pin = 1.0 + R, uin = (1.0 - R) / zcRef;
+    *uMouth = -Cc * pin + A * uin;  // det M = 1
+  }
+  if (zin) *zin = cup > 0 ? 1.0 / (1.0 / Z + C(0, w * cup / (rho * c * c))) : Z;
+}
+
+inline Kernels makeKernels(double fs, double rho, double c, Fingering fg = {}, std::size_t taps = 2048,
+                           std::size_t n = 8192) {
+  using C = std::complex<double>;
+  Kernels kr;
+  kr.cupVolume = 2.0 / 3.0 * 3.14159265358979323846 * std::pow(0.0091, 3);
+  const double zcRef = rho * c / (3.14159265358979323846 * kr.throatRadius * kr.throatRadius);
+  std::vector<C> R(n / 2 + 1), U(n / 2 + 1);
+  for (std::size_t j = 0; j <= n / 2; ++j) {
+    const double f = std::max(1.0, fs * j / n);
+    evaluate(f, rho, c, zcRef, 0.0, fg, nullptr, &R[j], &U[j]);
+    // Raised-cosine taper above 0.8 Nyquist keeps the kernels causal-smooth.
+    const double x = double(j) / (n / 2);
+    const double t = x < 0.8 ? 1.0 : 0.5 * (1 + std::cos(3.14159265358979323846 * (x - 0.8) / 0.2));
+    R[j] *= t; U[j] *= t;
+  }
+  kr.reflection.assign(taps, 0.0);
+  kr.mouthFlow.assign(taps, 0.0);
+  for (std::size_t t = 0; t < taps; ++t) {
+    double sr = 0, su = 0;
+    for (std::size_t j = 0; j <= n / 2; ++j) {
+      const double wgt = (j == 0 || j == n / 2) ? 1.0 : 2.0;
+      const C e = std::exp(C(0, 2 * 3.14159265358979323846 * double(j) * t / n));
+      sr += wgt * (R[j] * e).real();
+      su += wgt * (U[j] * e).real();
+    }
+    kr.reflection[t] = sr / n;
+    kr.mouthFlow[t] = su / n;
+  }
+  return kr;
+}
+
+}  // namespace mmathen::brass_bore

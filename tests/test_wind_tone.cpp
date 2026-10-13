@@ -1,44 +1,44 @@
-#include <cstdlib>
+﻿#include <cstdlib>
 // Sustained wind tones.
 //
 // A blown wind is a limit cycle, not the ring after the player stops.
 // These renders use published shapes and example arguments:
-//   clarinet — quarter-wave cylinder, Dalmont slit, bore near 15 mm
+//   clarinet â€” quarter-wave cylinder, Dalmont slit, bore near 15 mm
 //     (Benade, Fundamentals of Musical Acoustics). The reflection corner
 //     is 1500 Hz, Benade's open-hole cutoff near 1.5 kHz. Odds dominate
 //     and several of them carry real energy; the evens are not absent;
-//   saxophone — truncated cone, tan(kL) = -k x0, small x0/L so the
+//   saxophone â€” truncated cone, tan(kL) = -k x0, small x0/L so the
 //     series is near n c/(2L) (Dalmont; saxophone.h). The reflection
 //     corner is 1500 Hz, the high end of the alto tone-hole cutoffs in
 //     Petersen, Colinot, Kergomard, and Guillemain, Acta Acustica 4
 //     (2020), and inside Chen, Smith, and Wolfe's soprano estimate
-//     1340±240 Hz (Acoustics Australia 37, 2009). The radiated pressure
-//     then passes Benade and Lutgen's envelope, JASA 83, 1900–1907
+//     1340Â±240 Hz (Acoustics Australia 37, 2009). The radiated pressure
+//     then passes Benade and Lutgen's envelope, JASA 83, 1900â€“1907
 //     (1988), with their alto break frequency 837 Hz. A turbulence
 //     fraction 0.55 is an argument, not a measured intensity. Below
 //     threshold it scales the reed-period monopole of the aperture
 //     flow, and a sample of that flow seeds the bore. Once the tone
 //     is up it scales the round-trip envelope. Wolfe's UNSW
 //     saxophone notes record breathy noise from turbulence in the
-//     reed–mouthpiece gap and print no level. The acceptance on a held
+//     reedâ€“mouthpiece gap and print no level. The acceptance on a held
 //     mid-range note is a median inter-harmonic floor no quieter than
-//     −50 dB, 200 Hz–6 kHz, re the strongest partial.
-//   flute — open pipe, embouchure release, Levine–Schwinger end
-//     correction 0.61 a, and a jet delay W/(σ U) with σ = 0.45, inside
-//     Coltman's 0.4–0.5 convection range. The jet is tanh with an aim
+//     âˆ’50 dB, 200 Hzâ€“6 kHz, re the strongest partial.
+//   flute â€” open pipe, embouchure release, Levineâ€“Schwinger end
+//     correction 0.61 a, and a jet delay W/(Ïƒ U) with Ïƒ = 0.45, inside
+//     Coltman's 0.4â€“0.5 convection range. The jet is tanh with an aim
 //     offset of 0.4 thicknesses. The reflection corner is 1800 Hz, an
-//     argument: 400 Hz left the third harmonic under −40 dB. Fletcher
-//     (JASA 57, 233–244, 1975) measured second and third partials
+//     argument: 400 Hz left the third harmonic under âˆ’40 dB. Fletcher
+//     (JASA 57, 233â€“244, 1975) measured second and third partials
 //     within about 10 dB of the fundamental in the middle octave.
 //     Jet turbulence is the unsourced fraction 0.56, on the round-trip
 //     envelope after the loop. 0.40 left the median inter-harmonic
-//     floor just under −50 dB. The saxophone fraction is 0.55 so the
+//     floor just under âˆ’50 dB. The saxophone fraction is 0.55 so the
 //     held G#4 clears that floor.
-//   trumpet and trombone — outward-striking lip below the cone's second
+//   trumpet and trombone â€” outward-striking lip below the cone's second
 //     root (Fletcher, 1979), near concert Bb3 (233 Hz) and Bb2 (117 Hz).
 //     The outgoing wave takes the cylindrical Burgers advance,
-//     β p L / (ρ c³), β = (γ+1)/2 (Hirschberg, Gilbert, Msallam, and
-//     Wijnands, JASA 99, 1754–1758, 1996). The fraction is 1; a flare
+//     Î² p L / (Ï cÂ³), Î² = (Î³+1)/2 (Hirschberg, Gilbert, Msallam, and
+//     Wijnands, JASA 99, 1754â€“1758, 1996). The fraction is 1; a flare
 //     would accumulate less, and that paper prints no waveguide gain.
 //     On these notes the advance is about two samples, short of a shock.
 //     Lip damping, mouth pressure, and apex distance are arguments.
@@ -48,11 +48,11 @@
 //
 // The sample is radiated bell pressure. Every voice uses the same
 // listener distance, 1 m, and the same compact monopole
-// ρ (dU_bell/dt) / (4 π r). A cone scales that volume flow by
+// Ï (dU_bell/dt) / (4 Ï€ r). A cone scales that volume flow by
 // x_bell / x0 before the radiator; a cylinder does not, because its
 // area does not grow. Listening files are loudness-normalized to
-// −20 LUFS (ITU-R BS.1770-4, K-weighted over 1–2 s) with a peak
-// ceiling of −1 dBFS. That gain is playback only. The assertions read
+// âˆ’20 LUFS (ITU-R BS.1770-4, K-weighted over 1â€“2 s) with a peak
+// ceiling of âˆ’1 dBFS. That gain is playback only. The assertions read
 // the unscaled samples.
 
 #include <catch2/catch_test_macros.hpp>
@@ -97,30 +97,30 @@ constexpr std::uint64_t kFrames = 96000;
 // Mouth-pressure ramps. ValveBlow::attackFrames is the performance
 // argument; these are the demo values, taken from measured players.
 //
-// Reed woodwinds — Fuks and Sundberg, KTH TMH-QPSR 3/1996, 41–56
+// Reed woodwinds â€” Fuks and Sundberg, KTH TMH-QPSR 3/1996, 41â€“56
 // (Acta Acustica united with Acustica 85, 1999, "Blowing pressures in
 // bassoon, clarinet, oboe and saxophone"): a mouth-pressure build-up
 // before the tone, then a drop onto the quasi-steady pressure, typically
-// lasting 0.35–0.60 s. Clarinet and saxophone both use 0.40 s, inside
+// lasting 0.35â€“0.60 s. Clarinet and saxophone both use 0.40 s, inside
 // that range. The saxophone blow, 4200 Pa, is about 43 cm H2O, inside
-// the alto-saxophone pressures in that paper (about 15–80 cm H2O).
+// the alto-saxophone pressures in that paper (about 15â€“80 cm H2O).
 //
-// Flute — Terrien, Blanc, and Fabre, ISMA 2014, "Experimental Study of
+// Flute â€” Terrien, Blanc, and Fabre, ISMA 2014, "Experimental Study of
 // Attack Transients in Flute-like Instruments": typical duration about
-// 10–30 ms, citing Nolle, Verge, and Castellengo, with an acoustic rise
+// 10â€“30 ms, citing Nolle, Verge, and Castellengo, with an acoustic rise
 // near 6 ms + 9.5/f0 (about 40 ms at 280 Hz). The 20 ms ramp is that
-// typical duration. Fletcher, Acustica 34, 224–233 (1976), is the
+// typical duration. Fletcher, Acustica 34, 224â€“233 (1976), is the
 // flue-pipe transient those measurements refer to.
 //
-// Brass mouth pressure — Bertsch and Hoole, ISMA 2014: tongue-tip
-// movement at the start of an attack about 40–128 ms, and about 40–64 ms
+// Brass mouth pressure â€” Bertsch and Hoole, ISMA 2014: tongue-tip
+// movement at the start of an attack about 40â€“128 ms, and about 40â€“64 ms
 // for faster single tonguing. Trumpet 40 ms is the fast end. Trombone
 // 128 ms is the long end, used as the pressure rise with the lip free:
 // a tongue slap at full pressure put the finished series on in one
 // cycle. tongueReleaseFrames is the moment the tongue lets the lip go;
 // the mouth-pressure ramp is separate. Zero leaves the lip free.
 // The sound that follows is compared with Luce and Clark, JASA 42,
-// 1232–1243 (1967): trumpet fundamental transient about 10 ms; trombone
+// 1232â€“1243 (1967): trumpet fundamental transient about 10 ms; trombone
 // fundamental about seven cycles, higher partials tending toward 70 ms
 // above 400 Hz; significant amplitude and frequency change about 50 ms,
 // average deviation about 20 ms.
@@ -132,7 +132,7 @@ constexpr std::uint64_t kTrumpetAttack = 1920;     // 40 ms
 // at full pressure put the finished series on in one cycle. Later
 // notes still use the 40 ms Bertsch closure in renderPhrase.
 constexpr std::uint64_t kTrumpetTongue = 0;
-// Long end of Bertsch and Hoole's 40–128 ms tongue-tip movement, used
+// Long end of Bertsch and Hoole's 40â€“128 ms tongue-tip movement, used
 // here as the pressure rise. The lip is free, so the buzz grows with
 // that rise instead of starting as a slap.
 constexpr std::uint64_t kTromboneAttack = 6144;    // 128 ms
@@ -228,7 +228,7 @@ struct Biquad {
 
 // ITU-R BS.1770-4 Annex 2. The shelf is +4 dB; the second stage is the
 // RLB high-pass. Both are normalized to a0 = 1, so the RLB numerator is
-// the published 1, −2, 1 divided by its a0.
+// the published 1, âˆ’2, 1 divided by its a0.
 Biquad kWeightShelf(double rate) {
   constexpr double kHz = 1681.974450955533;
   constexpr double kGainDb = 3.999843853973347;
@@ -262,7 +262,7 @@ Biquad kWeightHighpass(double rate) {
 
 // Ungated mean square of the K-weighted steady state. A continuous tone
 // has no block below the absolute gate, so the gated and ungated values
-// agree. The offset −0.691 LU is the mono/stereo constant in BS.1770.
+// agree. The offset âˆ’0.691 LU is the mono/stereo constant in BS.1770.
 double steadyLufs(const std::vector<double>& samples, std::size_t begin,
                   std::size_t end, double rate) {
   auto shelf = kWeightShelf(rate);
@@ -303,14 +303,14 @@ double writeListening(const std::vector<double>& samples, const char* filename,
   double peak = 0.0;
   for (double sample : samples) peak = std::max(peak, std::fabs(sample));
   REQUIRE(peak > 0.0);
-  // −1 dBFS. If the loudness gain would clip, the ceiling wins and the
-  // file sits below −20 LUFS.
+  // âˆ’1 dBFS. If the loudness gain would clip, the ceiling wins and the
+  // file sits below âˆ’20 LUFS.
   const double ceiling = std::pow(10.0, -1.0 / 20.0);
   if (peak * gain > ceiling) gain = ceiling / peak;
   const double achieved = measured + 20.0 * std::log10(gain);
   std::cout << filename << " playback " << achieved << " LUFS  gain " << gain
             << "  from " << measured << " LUFS\n";
-  // The target, or quieter when the −1 dBFS ceiling reduces the gain.
+  // The target, or quieter when the âˆ’1 dBFS ceiling reduces the gain.
   CHECK(achieved <= kTargetLufs + 0.05);
   CHECK(peak * gain <= ceiling + 1.0e-12);
   std::vector<double> scaled(samples.size());
@@ -339,11 +339,11 @@ struct Tone {
 
 // Magnitude centroid of the harmonic series, sum(n A_n)/sum(A_n).
 // The old dull trumpet, partials falling about 7 dB each from 119 Hz,
-// sits near 2.2–2.5. A flat odd square sits far above that and is
+// sits near 2.2â€“2.5. A flat odd square sits far above that and is
 // rejected separately.
-// Median Hann bin more than 20 Hz from every harmonic, 200 Hz–6 kHz,
-// relative to the strongest bin in 80 Hz–2 kHz. A deterministic bore
-// sits near −147 dB. Rectangular-window leakage is not this number.
+// Median Hann bin more than 20 Hz from every harmonic, 200 Hzâ€“6 kHz,
+// relative to the strongest bin in 80 Hzâ€“2 kHz. A deterministic bore
+// sits near âˆ’147 dB. Rectangular-window leakage is not this number.
 double offHarmonicFloorDb(const std::vector<double>& x, std::size_t origin, double f0,
                           double rate) {
   constexpr int kN = 16384;
@@ -432,16 +432,16 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     CHECK(db[6] < db[4] - 1.0);
     CHECK(db[8] < db[6] - 1.0);
     // Benade's open-hole cutoff near 1.5 kHz. A 600 Hz corner left
-    // the seventh partial near −37 dB.
+    // the seventh partial near âˆ’37 dB.
     CHECK(db[2] > -12.0);
     CHECK(db[6] > -25.0);
     const double clarFloor = offHarmonicFloorDb(x, a, f0, rate);
     std::cout << tone.name << " interharmonic floor " << clarFloor << " dB\n";
     // 20*log10(|bin|). A full-scale int16 sine in this window sits near
-    // −122 dB. The old product 0.12 sat near −59 dB, and 20*log10 of that
-    // power is about −118 dB, the reading reported as digital silence.
-    // Louder than −54 dB keeps a doubled reading past about −108 dB.
-    // Quieter than −40 dB stays under the partials that are the tone.
+    // âˆ’122 dB. The old product 0.12 sat near âˆ’59 dB, and 20*log10 of that
+    // power is about âˆ’118 dB, the reading reported as digital silence.
+    // Louder than âˆ’54 dB keeps a doubled reading past about âˆ’108 dB.
+    // Quieter than âˆ’40 dB stays under the partials that are the tone.
     // Locked breath 0.013 of the tone (lockedBreathFraction). The
     // University of Iowa MIS Bb clarinet ff A4, D4, G4, D5 (measurement
     // reference only) read -70.7, -70.8, -75.6, -74.9 dB on this median,
@@ -450,10 +450,10 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     CHECK(clarFloor > -79.0);
     CHECK(clarFloor < -66.8);
   } else if (tone.spectrum == Spectrum::Flute) {
-    // Fletcher, JASA 57, 233–244 (1975): in the middle octave the
+    // Fletcher, JASA 57, 233â€“244 (1975): in the middle octave the
     // second and third partials sit within about 10 dB of the
     // fundamental. This low-octave note stays fundamental-led. The
-    // 400 Hz corner had put the third under −40 dB.
+    // 400 Hz corner had put the third under âˆ’40 dB.
     for (int h = 1; h < 10; ++h) CHECK(db[h] < -3.0);
     CHECK(db[1] > -25.0);
     CHECK(db[2] > -30.0);
@@ -473,7 +473,7 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     // 18 dB/octave. Partials below 1 kHz against partials from 2.5 to
     // 5 kHz span more than an octave, so the means must differ by at
     // least that one-octave slope. The 8 kHz corner (harmonics still
-    // near −20 dB at 4 kHz) does not.
+    // near âˆ’20 dB at 4 kHz) does not.
     double lowSum = 0.0;
     double highSum = 0.0;
     int lowCount = 0;
@@ -495,14 +495,14 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     const double lowMean = lowSum / static_cast<double>(lowCount);
     const double highMean = highSum / static_cast<double>(highCount);
     std::cout << tone.name << " envelope below 1 kHz " << lowMean
-              << " dB  2.5–5 kHz " << highMean << " dB\n";
+              << " dB  2.5â€“5 kHz " << highMean << " dB\n";
     CHECK(highMean < lowMean - 18.0);
-    // Same 200 Hz–6 kHz median as the playback WAV. Wolfe (UNSW,
+    // Same 200 Hzâ€“6 kHz median as the playback WAV. Wolfe (UNSW,
     // Introduction to saxophone acoustics) notes breathy noise from
-    // turbulence in the reed–mouthpiece gap and prints no ratio.
-    // −50 dB re the strongest partial is the acceptance argument.
-    // Quieter than −40 dB stays under the ninth partial. A reading
-    // near −120 dB is the converter and fails.
+    // turbulence in the reedâ€“mouthpiece gap and prints no ratio.
+    // âˆ’50 dB re the strongest partial is the acceptance argument.
+    // Quieter than âˆ’40 dB stays under the ninth partial. A reading
+    // near âˆ’120 dB is the converter and fails.
     const double floorDb = offHarmonicFloorDb(x, a, f0, rate);
     std::cout << tone.name << " interharmonic floor " << floorDb << " dB\n";
     // Locked breath 0.0176 of the tone (lockedBreathFraction). The
@@ -579,7 +579,7 @@ void checkTone(const Tone& tone, double rate) {
   const BandPower band = bandPower(x, a, rate);
   const double audibleDb = 20.0 * std::log10(band.audibleRms + 1.0e-30);
   std::cout << tone.name << " level " << dbRePascal
-            << " dB re 1 Pa at 1 m (" << spl << " dB SPL)  envelope ±"
+            << " dB re 1 Pa at 1 m (" << spl << " dB SPL)  envelope Â±"
             << worstDb << " dB  attack " << attackMs
             << " ms  audible-band " << audibleDb << " dB re 1 Pa\n";
   CHECK(worstDb < 1.0);
@@ -593,9 +593,9 @@ void checkTone(const Tone& tone, double rate) {
 }
 
 Clarinet workingClarinet(double length) {
-  // Reed damping 0.11 N·s/m. stepReedTip is the exact spring, and at
-  // 0.12 N·s/m this 0.45 m bore plays about 8.2 Hz under c/(4L).
-  // 0.11 N·s/m stays inside 8 Hz and the third harmonic still leads
+  // Reed damping 0.11 NÂ·s/m. stepReedTip is the exact spring, and at
+  // 0.12 NÂ·s/m this 0.45 m bore plays about 8.2 Hz under c/(4L).
+  // 0.11 NÂ·s/m stays inside 8 Hz and the third harmonic still leads
   // the second. The value is the embouchure argument, not a measured
   // constant.
   ClarinetSpec spec{length, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0,
@@ -616,7 +616,7 @@ ValveBlow sustained(double pressure, double cutoffHz, std::uint64_t attack) {
 }
 
 // First time, in milliseconds, at which a 10 ms RMS stays within 1 dB of
-// the 1.5–2.0 s level for 40 ms. The swell is the oscillator growing
+// the 1.5â€“2.0 s level for 40 ms. The swell is the oscillator growing
 // under the mouth-pressure ramp; this is when that swell has arrived.
 double attackMilliseconds(const std::vector<double>& x, double rate) {
   const auto steadyStart = static_cast<std::size_t>(1.5 * rate);
@@ -762,8 +762,8 @@ double writePhrase(const std::vector<double>& samples, const char* filename, dou
   const std::size_t end = samples.size();
   REQUIRE(end > begin + static_cast<std::size_t>(rate));
   const double measured = steadyLufs(samples, begin, end, rate);
-  // −24, not −20: the trumpet excerpt's crest under the −1 dBFS ceiling
-  // allowed only −23.2 at ab78401. One common target keeps every phrase
+  // âˆ’24, not âˆ’20: the trumpet excerpt's crest under the âˆ’1 dBFS ceiling
+  // allowed only âˆ’23.2 at ab78401. One common target keeps every phrase
   // file within 1 LU without a limiter.
   constexpr double kTargetLufs = -24.0;
   double gain = std::pow(10.0, (kTargetLufs - measured) / 20.0);
@@ -792,7 +792,7 @@ double writePhrase(const std::vector<double>& samples, const char* filename, dou
 }
 
 // Parabolic autocorrelation around the expected period, on the second
-// half of a note. A fixed lag is coarse once f0²/fs exceeds a few hertz.
+// half of a note. A fixed lag is coarse once f0Â²/fs exceeds a few hertz.
 Period phrasePeriod(const std::vector<double>& x, std::size_t begin, std::size_t end,
                     double expectHz, double rate) {
   const int n = 4096;
@@ -840,7 +840,7 @@ Period phrasePeriod(const std::vector<double>& x, std::size_t begin, std::size_t
   return Period{rate / refined, best};
 }
 
-// YIN (de Cheveigné and Kawahara, JASA 111, 1917–1930, 2002). The lag
+// YIN (de CheveignÃ© and Kawahara, JASA 111, 1917â€“1930, 2002). The lag
 // search is not centered on the scored pitch. An autocorrelation that
 // only looks near the target period reports the octave below when the
 // tone is the octave above.
@@ -914,7 +914,7 @@ Period yinEstimate(const std::vector<double>& x, std::size_t begin, std::size_t 
 // Playback spectrum of one written WAV. The counts are this measurement,
 // not a number copied from the docs. A 16384-point Hann window is
 // centered in [t0, t1]. Level is 20*log10(|X|) of that magnitude, re the
-// strongest harmonic peak (±3 bins around h * f0). f0 is YIN on the same
+// strongest harmonic peak (Â±3 bins around h * f0). f0 is YIN on the same
 // span. A partial counts while h*f0 stays under 12 kHz. within40 is how
 // many of those peaks are within 40 dB of the strongest. total is how
 // many sit at least 10 dB above the inter-harmonic floor. evensWithin40
@@ -1068,7 +1068,7 @@ void writePhraseNotes(const std::vector<PhraseNote>& notes, double totalSec, con
   }
 }
 
-// Strongest Hann-FFT peak in 70 Hz–2.2 kHz. The search is wide enough
+// Strongest Hann-FFT peak in 70 Hzâ€“2.2 kHz. The search is wide enough
 // to see an octave lock. Parabolic interpolation is on the log magnitude.
 double strongestPeakHz(const std::vector<double>& x, std::size_t begin, std::size_t end,
                        double rate) {
@@ -1128,7 +1128,7 @@ std::vector<double> renderPhrase(Voice& voice, const std::vector<PhraseNote>& no
   std::vector<double> out(static_cast<std::size_t>(total), 0.0);
   std::vector<char> armed(notes.size(), 0);
   constexpr std::uint64_t kHop = 64;
-  // Bertsch and Hoole, fast single tonguing, about 40–64 ms. The closure
+  // Bertsch and Hoole, fast single tonguing, about 40â€“64 ms. The closure
   // is that long; the release is the note. The first note keeps the
   // blow's own tongue, if it has one.
   constexpr std::uint64_t kTongue = 1920;
@@ -1340,7 +1340,7 @@ void reportPhrase(const char* instrument, const std::vector<PhraseNote>& notes,
       CHECK(std::fabs(peakCents) < note.tolCents);
     }
     // Short notes are not graded for attack or for the narrow
-    // autocorrelation. Their YIN still has to sit inside ±50 cents.
+    // autocorrelation. Their YIN still has to sit inside Â±50 cents.
     // 50 cents is the acceptance bound for a note under 0.45 s.
     if (!note.require && fits && note.targetHz > 0.0 && !note.rest) {
       CHECK(yin.frequencyHz > 1.0);
@@ -1382,7 +1382,7 @@ void reportPhrase(const char* instrument, const std::vector<PhraseNote>& notes,
   }
 }
 
-// 20 log10(e) π. Amplitude exp(−π Δf t) falls at this many dB/s per hertz
+// 20 log10(e) Ï€. Amplitude exp(âˆ’Ï€ Î”f t) falls at this many dB/s per hertz
 // of half-power bandwidth. Li, Almeida, Smith, and Wolfe, JASA 139:825
 // (2016), Eq. 3. 27.29 is that product.
 constexpr double kDecayDbPerHz = 27.29;
@@ -1405,12 +1405,12 @@ constexpr double kBach42BellRadiusMeters = 0.5 * 8.5 * 0.0254;
 constexpr double kBach37BellRadiusMeters = 0.5 * (4.0 + 13.0 / 16.0) * 0.0254;
 
 // Bach 42 large bore, the same Conn-Selmer page. Kirchhoff's ring uses
-// this radius. The cone area stays 3.0e-4 m².
+// this radius. The cone area stays 3.0e-4 mÂ².
 constexpr double kBach42BoreRadiusMeters = 0.5 * 0.547 * 0.0254;
 
 // Scott, Measurement and Synthesis of the Trombone (SFU M.Sc., 2012),
-// Table 2.2. a(x) = b (x + x0)^{−γ}, x from the mouth. The table prints
-// a 0.108 m mouth; the Bach 42 mouth is the Levine–Schwinger termination.
+// Table 2.2. a(x) = b (x + x0)^{âˆ’Î³}, x from the mouth. The table prints
+// a 0.108 m mouth; the Bach 42 mouth is the Levineâ€“Schwinger termination.
 void applyScottBell(ValveBlow& blow) {
   blow.radiusMeters = kBach42BellRadiusMeters;
   blow.bellLengthMeters = 0.502;
@@ -1438,7 +1438,7 @@ void applyBach37Bell(ValveBlow& blow) {
 }
 
 // Autocorrelation lag nearest the expected period. A subharmonic of the
-// played pitch is outside the ±12% search.
+// played pitch is outside the Â±12% search.
 double playedNear(const std::vector<double>& x, std::size_t origin, double expectHz,
                   double rate) {
   const int center = std::max(8, static_cast<int>(std::llround(rate / expectHz)));
@@ -1495,7 +1495,7 @@ double tailDbPerSec(const std::vector<double>& x, double stopSec, double frequen
 }
 
 // Cylinder radius whose Kirchhoff half-power bandwidth at frequencyHz
-// equals bandwidthHz. Δf = α c / π is independent of length.
+// equals bandwidthHz. Î”f = Î± c / Ï€ is independent of length.
 double radiusForBandwidth(double frequencyHz, double bandwidthHz, double speed,
                           double density) {
   constexpr double kTrial = 0.01;
@@ -1553,7 +1553,7 @@ void expectRing(const RingGrade& grade, double windowLo, double windowHi, double
   const double ringCents = 1200.0 * std::log2(grade.ringHz / grade.playedHz);
   std::cout << grade.name << " played " << grade.playedHz << " Hz (" << playedCents
             << " cents)  ring " << grade.ringHz << " Hz  Q " << q << "  df " << grade.dfNominal
-            << " Hz  window " << windowLo << "–" << windowHi << "  tail " << grade.tailDb
+            << " Hz  window " << windowLo << "â€“" << windowHi << "  tail " << grade.tailDb
             << " dB/s  model " << model << " dB/s  ratio " << ratio << "\n";
   CHECK(grade.dfNominal >= windowLo);
   CHECK(grade.dfNominal <= windowHi);
@@ -1571,7 +1571,7 @@ double conePartial(double length, double apex, int mode) {
 }
 
 // Input-impedance peak of this fingering. A named cone mode is that root
-// of tan(kL) = −k x0. Mode 0 is the open second-register recipe; its
+// of tan(kL) = âˆ’k x0. Mode 0 is the open second-register recipe; its
 // peak is the cone root nearest the written pitch.
 double impedancePeakHz(double length, double apex, int mode, double targetHz) {
   if (mode >= 1) return conePartial(length, apex, mode);
@@ -1613,7 +1613,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
             << " dB/s (Li, Almeida, Smith, and Wolfe, JASA 139, 2016: "
                "tens to hundreds on a soft note, about 1000 on an accent)\n";
   // Soft notes: Li et al. put r in the tens to hundreds of dB/s.
-  // The acceptance window is 50–500. 25 ms of residual lead is an
+  // The acceptance window is 50â€“500. 25 ms of residual lead is an
   // acceptance argument.
   const double clarinetLead = residualLeadMs(clarinetSamples, clarinetPeriod.frequencyHz, kFs);
   std::cout << "clarinet residual lead " << clarinetLead << " ms\n";
@@ -1621,7 +1621,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   CHECK(growth < 500.0);
   CHECK(clarinetLead >= 25.0);
   {
-    // 80–180 ms is still the reed-gap noise. A finished tone here is
+    // 80â€“180 ms is still the reed-gap noise. A finished tone here is
     // the theremin attack. Lag is the steady period.
     const int lag = std::max(8, static_cast<int>(std::llround(kFs / clarinetPeriod.frequencyHz)));
     const std::size_t origin = static_cast<std::size_t>(0.08 * kFs);
@@ -1680,7 +1680,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
 
   // Alto-range truncated cone: L = 0.70 m, x0 = 0.20 m. The second
   // root stays within a few percent of the octave (still under 2.15),
-  // and a light embouchure (0.09 N·s/m) lets the first mode beat instead
+  // and a light embouchure (0.09 NÂ·s/m) lets the first mode beat instead
   // of sitting on a sine. Heavier damping on a smaller apex stayed dark;
   // a tongue slap on this reed jumps to the octave, so the note is a
   // breath attack under the 0.40 s Fuks ramp. 4200 Pa is below the 7500 Pa
@@ -1690,7 +1690,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // that number is the external envelope and not the reflection pole.
   // reedTurbulence 0.55 is an argument. It scales the round-trip
   // envelope, not the instantaneous pressure. 0.40 left the held
-  // Old Castle G#4 at about −50.2 dB between partials.
+  // Old Castle G#4 at about âˆ’50.2 dB between partials.
   SaxophoneSpec saxSpec{0.70, 0.20, 1.6e-4, kAir, kTemp, 1.8e-5, 7500.0,
                         2.0e-6, 1.4e-4, 7.0e-4, 0.09};
   const auto saxophone = unwrap(makeSaxophone(saxSpec));
@@ -1742,11 +1742,11 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   CHECK(std::fabs(convection - 0.5 / pipe) / (0.5 / pipe) < 0.02);
   const double fluteRadius = std::sqrt(flute.crossSectionM2 / constants::pi);
   // Aim 0.4 thicknesses. The corner is 1800 Hz, an argument: 400 Hz
-  // left the third harmonic under −40 dB. Fletcher, JASA 57, 233–244
+  // left the third harmonic under âˆ’40 dB. Fletcher, JASA 57, 233â€“244
   // (1975), measured the second and third within about 10 dB of the
   // fundamental in the middle octave. reedTurbulence 0.56 is an
-  // argument: 0.40 left the 200 Hz–6 kHz median under −50 dB, and 0.48
-  // still read −50.4 dB on the written file once partial peaks were
+  // argument: 0.40 left the 200 Hzâ€“6 kHz median under âˆ’50 dB, and 0.48
+  // still read âˆ’50.4 dB on the written file once partial peaks were
   // interpolated. The fraction is not a measured jet-noise ratio.
   ValveBlow jet = sustained(overpressure, 1800.0, kFluteAttack);
   jet.reflectionMagnitude = 0.985;
@@ -1785,8 +1785,8 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   const double lipHz = 0.75 * speed / trumpetLength;
   const double lipOmega = constants::twoPi * lipHz;
   const double lipStiffness = lipOmega * lipOmega * lipMass;
-  // Bore 1.09e-4 m² and lip damping 0.001 N·s/m are arguments. At
-  // 8.0e-5 m² and 0.003 N·s/m the fifth partial sat near −23 dB, so a
+  // Bore 1.09e-4 mÂ² and lip damping 0.001 NÂ·s/m are arguments. At
+  // 8.0e-5 mÂ² and 0.003 NÂ·s/m the fifth partial sat near âˆ’23 dB, so a
   // 20*log10(|X|^2) count found four partials inside 40 dB. The wider
   // bore is the impedance the lip works into; the lighter damping lets
   // the opening swing closer to the rails. Neither number is a measured
@@ -1841,8 +1841,8 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   const double tromboneLip = 0.75 * speed / tromboneLength;
   const double tromboneOmega = constants::twoPi * tromboneLip;
   const double tromboneMass = 6.0e-5;
-  // Bore 3.0e-4 m² and lip damping 0.0005 N·s/m are arguments, for the
-  // same reason as the trumpet: at 1.0e-4 m² and 0.004 N·s/m a
+  // Bore 3.0e-4 mÂ² and lip damping 0.0005 NÂ·s/m are arguments, for the
+  // same reason as the trumpet: at 1.0e-4 mÂ² and 0.004 NÂ·s/m a
   // 20*log10(|X|^2) count found three partials inside 40 dB. Not a
   // measured trombone bore.
   TromboneSpec tromboneSpec{tromboneClosed,
@@ -1863,7 +1863,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // Apex 0.60 m is an argument, for the same reason as the trumpet: the
   // lip reaches the second register in a human attack instead of ~0.5 s.
   // The lip is free during the 128 ms rise. A snap to the rest opening
-  // crossed −20 dB inside the first audible hop.
+  // crossed âˆ’20 dB inside the first audible hop.
   ValveBlow bone = sustained(1600.0, 5000.0, kTromboneAttack);
   bone.reflectionMagnitude = 0.999;
   bone.initialDisplacementMeters = 0.0;
@@ -1912,8 +1912,8 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
     CHECK(tromboneWav.total >= 8);
   }
 
-  // Time to stay within 1 dB of the 1.5–2.0 s level. That hold is
-  // stricter than a 10–90% rise, so a cited "significant change" can be
+  // Time to stay within 1 dB of the 1.5â€“2.0 s level. That hold is
+  // stricter than a 10â€“90% rise, so a cited "significant change" can be
   // shorter than the number checked here. The bands are the measured
   // swells, wide enough for one sample of lag.
   const double clarinetMs = attackMilliseconds(clarinetSamples, kFs);
@@ -1922,17 +1922,17 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   const double trumpetMs = attackMilliseconds(lipSamples, kFs);
   const double tromboneMs = attackMilliseconds(boneSamples, kFs);
   std::cout << "attack vs published: clarinet " << clarinetMs
-            << " ms (Fuks & Sundberg pressure pattern 0.35–0.60 s)\n";
+            << " ms (Fuks & Sundberg pressure pattern 0.35â€“0.60 s)\n";
   std::cout << "attack vs published: saxophone " << saxMs
-            << " ms (same 0.35–0.60 s pattern; Li et al. JASA 139, 2016, "
+            << " ms (same 0.35â€“0.60 s pattern; Li et al. JASA 139, 2016, "
                "clarinet fundamental grows near 1000 dB/s once blowing "
                "pressure is above threshold)\n";
   std::cout << "attack vs published: flute " << fluteMs
-            << " ms (Terrien et al. ISMA 2014, 10–30 ms typical, acoustic "
+            << " ms (Terrien et al. ISMA 2014, 10â€“30 ms typical, acoustic "
                "rise near 6 ms + 9.5/f0)\n";
   std::cout << "attack vs published: trumpet " << trumpetMs
             << " ms (Luce & Clark JASA 42, 1967, significant change "
-               "50±20 ms; Bertsch & Hoole tongue 40–64 ms)\n";
+               "50Â±20 ms; Bertsch & Hoole tongue 40â€“64 ms)\n";
   std::cout << "attack vs published: trombone " << tromboneMs
             << " ms (Luce & Clark: fundamental about seven cycles, higher "
                "partials toward 70 ms; 1 dB hold includes the tail)\n";
@@ -1945,9 +1945,9 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   CHECK(saxMs < 1100.0);
   // The 20 ms pressure ramp is unchanged. A 400 Hz reflection is
   // inside this 1 dB band by about 50 ms and leaves the third partial
-  // under −30 dB. The 1800 Hz corner reaches a limit cycle about 21 dB
+  // under âˆ’30 dB. The 1800 Hz corner reaches a limit cycle about 21 dB
   // louder; the last decibel of that growth lands near 300 ms.
-  // Terrien's 10–30 ms is the significant rise, not this hold.
+  // Terrien's 10â€“30 ms is the significant rise, not this hold.
   CHECK(fluteMs > 20.0);
   CHECK(fluteMs < 420.0);
   // The 1 dB hold is later than the pressure rise. Trumpet measured
@@ -1977,27 +1977,27 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
 // not a valve chart, and not a sampled waveform. The melodies are in
 // wind_excerpts.h.
 //
-// Clarinet — air-column length. The 2 s demo and this excerpt both use
+// Clarinet â€” air-column length. The 2 s demo and this excerpt both use
 // 1500 Hz, Benade's open-hole cutoff. The exact reed spring plays flat
 // of c/(4L), and the flatness grows with frequency, so one cents
 // factor does not put A3 and A4 on the same grid. Each length below is
 // the tube on which this reed's autocorrelation is that concert pitch
 // at 4000 Pa. The offset is this voice, not a published correction.
 //
-// Saxophone — truncated-cone length, apex fixed. Each concert pitch is
+// Saxophone â€” truncated-cone length, apex fixed. Each concert pitch is
 // the length at which this reed's YIN on the phrase is that pitch under
 // 4200 Pa. The old scale factors lengthened G#4 onto a second-mode tube
 // and the autocorrelation then reported the octave below. Loop corner
 // 1500 Hz, Benade and Lutgen envelope 837 Hz, turbulence 0.55. Vibrato
 // is a length modulation, arguments 5.5 Hz and 12 cents. Graded notes
-// (at least 0.45 s) stay inside ±25 cents, including the vibrato crest.
-// Shorter notes stay inside ±50 cents.
+// (at least 0.45 s) stay inside Â±25 cents, including the vibrato crest.
+// Shorter notes stay inside Â±50 cents.
 //
-// Flute — bore length, jet delay, and blowing pressure together. The
+// Flute â€” bore length, jet delay, and blowing pressure together. The
 // corner is 1800 Hz, the same argument as the two-second note. 400 Hz
-// left the third harmonic under −40 dB.
+// left the third harmonic under âˆ’40 dB.
 //
-// Trumpet and trombone — sounding length plus lip resonance. Brass
+// Trumpet and trombone â€” sounding length plus lip resonance. Brass
 // length changes at the note. A tongued attack retunes while the tongue
 // is shut. There is no slide glissando, and no tongue stop: the breath
 // is what ends a note. The file continues 0.50 s after the score so the
@@ -2026,7 +2026,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     // Speech and the narrow autocorrelation are graded only when a
     // window can sit inside the note. Shorter notes are still printed,
     // including a DID NOT SPEAK. Their end-of-window YIN is checked
-    // separately, at ±50 cents.
+    // separately, at Â±50 cents.
     note.require = src.hertz > 0.0 && src.seconds >= 0.45;
     notes.push_back(note);
   };
@@ -2096,12 +2096,12 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     // then puts the crest near +19 cents, and that crest's CMNDF valley
     // includes the 127-sample lag, 48000/127 Hz, +37 cents of 369.99 Hz.
     // 0.3315 m centers the carrier: the crest is about +12 cents, the
-    // trough about −13, and the selected lag is no longer 127.
-    // C#4 at 0.52 m is first mode near 256 Hz, about −140 cents. 0.471 m
+    // trough about âˆ’13, and the selected lag is no longer 127.
+    // C#4 at 0.52 m is first mode near 256 Hz, about âˆ’140 cents. 0.471 m
     // is where this 0.4 s slur, arriving from D#4, speaks the first mode
     // at 277 Hz. A note started from silence near 0.47 m can lock the
     // octave; this slur does not, and the D#4 and G#3 after it stay on
-    // the first mode. E4 stays 0.390 m, about −28 cents, inside the
+    // the first mode. E4 stays 0.390 m, about âˆ’28 cents, inside the
     // short-note bound. The line keeps one pressure.
     auto saxLength = [&](double frequency) {
       struct Length { double hertz; double meters; };
@@ -2152,9 +2152,9 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     writePhrase(samples, "mmath-excerpt-saxophone.wav", kFs);
     // Held G#4: the note starts at 0.4 s and lasts 2.8 s. The window
     // sits after the 0.40 s ramp. Median inter-harmonic level, 200 Hz
-    // to 6 kHz, re the strongest partial. −50 dB is the acceptance
+    // to 6 kHz, re the strongest partial. âˆ’50 dB is the acceptance
     // argument. Wolfe's UNSW saxophone page records the breathy noise
-    // and does not print this level. −120 dB is digital silence.
+    // and does not print this level. âˆ’120 dB is digital silence.
     const PlaybackCensus heldNote =
         measurePlaybackWav("mmath-excerpt-saxophone.wav", 1.20, 2.80);
     CHECK(heldNote.fundamentalHz > 400.0);
@@ -2173,8 +2173,8 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     const double end = 0.61 * radius;
     auto bore = [&](double frequency) { return speed / (2.0 * frequency) - end; };
     const double total = excerpts::excerptSeconds(excerpts::kFlute);
-    std::cout << "flute excerpt: Debussy, Prélude à l'après-midi d'un faune, "
-                 "opening, bars 1–2, quarter = 44. Mechanism: bore length, "
+    std::cout << "flute excerpt: Debussy, PrÃ©lude Ã  l'aprÃ¨s-midi d'un faune, "
+                 "opening, bars 1â€“2, quarter = 44. Mechanism: bore length, "
                  "jet delay, and pressure. Corner 1800 Hz, the 2 s demo.\n";
     double longest = 0.0;
     double lowest = 1.0e9;
@@ -2284,7 +2284,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     lip.tongueReleaseFrames = kTrumpetTongue;
     lip.brassiness = 1.0;
     lip.reedTurbulence = 0.20;
-    // Bessel flare of the natural-trumpet horn, Levine–Schwinger at the
+    // Bessel flare of the natural-trumpet horn, Levineâ€“Schwinger at the
     // Bach #37 mouth. The cone apex stays 0.26 m. The horn's travel is
     // not stacked on the sounding length.
     applyBach37Bell(lip);
@@ -2316,9 +2316,9 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
       int mode;
     };
     const Finger finger[] = {
-        // Lengths are the tubes the previous 3.0e-4 m² bore played on pitch.
+        // Lengths are the tubes the previous 3.0e-4 mÂ² bore played on pitch.
         // The throat is now the Bach 42 .547 in bore. The fingers tuned
-        // for 1.0e-4 m² sat flat on the wider bore.
+        // for 1.0e-4 mÂ² sat flat on the wider bore.
         {466.16, 1.331, 4}, {440.00, 1.416, 4}, {392.00, 1.596, 4}, {349.23, 1.312, 3},
         {523.25, 1.181, 4}, {329.63, 1.394, 3}, {293.66, 1.579, 3}, {554.37, 1.732, 6},
     };
@@ -2337,7 +2337,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
                     nearest->mode};
     };
     const double total = excerpts::excerptSeconds(excerpts::kTrombone);
-    std::cout << "trombone excerpt: Ravel, Boléro, trombone solo, through the "
+    std::cout << "trombone excerpt: Ravel, BolÃ©ro, trombone solo, through the "
                  "high Db. Quarter = 72. Mechanism: slide length and lip "
                  "resonance. No glissando.\n";
     const double mass = 6.0e-5;
@@ -2354,9 +2354,9 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     bone.tongueReleaseFrames = kTromboneTongue;
     bone.brassiness = 1.0;
     bone.reedTurbulence = 0.20;
-    // Scott's Bessel bell, Levine–Schwinger at the Bach 42 mouth.
+    // Scott's Bessel bell, Levineâ€“Schwinger at the Bach 42 mouth.
     // The cone apex stays 0.60 m. Kirchhoff's ring uses the .547 in
-    // slide; the cone area stays 3.0e-4 m², the area these lengths play.
+    // slide; the cone area stays 3.0e-4 mÂ², the area these lengths play.
     applyScottBell(bone);
     bone.wallRadiusMeters = kBach42BoreRadiusMeters;
     auto voice = unwrap(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate));
@@ -2407,7 +2407,7 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     // Speech and the narrow autocorrelation are graded only when a
     // window can sit inside the note. Shorter notes are still printed,
     // including a DID NOT SPEAK. Their end-of-window YIN is checked
-    // separately, at ±50 cents.
+    // separately, at Â±50 cents.
     note.require = src.hertz > 0.0 && src.seconds >= 0.45;
     notes.push_back(note);
   };
@@ -2476,8 +2476,8 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     const double end = 0.61 * radius;
     auto bore = [&](double frequency) { return speed / (2.0 * frequency) - end; };
     const double total = excerpts::excerptSeconds(song);
-    std::cout << "flute excerpt: Debussy, Prélude à l'après-midi d'un faune, "
-                 "opening, bars 1–2, quarter = 44. Mechanism: bore length, "
+    std::cout << "flute excerpt: Debussy, PrÃ©lude Ã  l'aprÃ¨s-midi d'un faune, "
+                 "opening, bars 1â€“2, quarter = 44. Mechanism: bore length, "
                  "jet delay, and pressure. Corner 1800 Hz, the 2 s demo.\n";
     double longest = 0.0;
     double lowest = 1.0e9;
@@ -2586,7 +2586,7 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     lip.tongueReleaseFrames = kTrumpetTongue;
     lip.brassiness = 1.0;
     lip.reedTurbulence = 0.20;
-    // Bessel flare of the natural-trumpet horn, Levine–Schwinger at the
+    // Bessel flare of the natural-trumpet horn, Levineâ€“Schwinger at the
     // Bach #37 mouth. The cone apex stays 0.26 m. The horn's travel is
     // not stacked on the sounding length.
     applyBach37Bell(lip);
@@ -2617,9 +2617,9 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
       int mode;
     };
     const Finger finger[] = {
-        // Lengths are the tubes the previous 3.0e-4 m² bore played on pitch.
+        // Lengths are the tubes the previous 3.0e-4 mÂ² bore played on pitch.
         // The throat is now the Bach 42 .547 in bore. The fingers tuned
-        // for 1.0e-4 m² sat flat on the wider bore.
+        // for 1.0e-4 mÂ² sat flat on the wider bore.
         {466.16, 1.331, 4}, {440.00, 1.416, 4}, {392.00, 1.596, 4}, {349.23, 1.312, 3},
         {523.25, 1.181, 4}, {329.63, 1.394, 3}, {293.66, 1.579, 3}, {554.37, 1.732, 6},
         // D5 for the song passages: the Db5 row scaled, then lengthened by the
@@ -2641,7 +2641,7 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
                     nearest->mode};
     };
     const double total = excerpts::excerptSeconds(song);
-    std::cout << "trombone excerpt: Ravel, Boléro, trombone solo, through the "
+    std::cout << "trombone excerpt: Ravel, BolÃ©ro, trombone solo, through the "
                  "high Db. Quarter = 72. Mechanism: slide length and lip "
                  "resonance. No glissando.\n";
     const double mass = 6.0e-5;
@@ -2658,9 +2658,9 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     bone.tongueReleaseFrames = kTromboneTongue;
     bone.brassiness = 1.0;
     bone.reedTurbulence = 0.20;
-    // Scott's Bessel bell, Levine–Schwinger at the Bach 42 mouth.
+    // Scott's Bessel bell, Levineâ€“Schwinger at the Bach 42 mouth.
     // The cone apex stays 0.60 m. Kirchhoff's ring uses the .547 in
-    // slide; the cone area stays 3.0e-4 m², the area these lengths play.
+    // slide; the cone area stays 3.0e-4 mÂ², the area these lengths play.
     applyScottBell(bone);
     bone.wallRadiusMeters = kBach42BoreRadiusMeters;
     auto voice = unwrap(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate));
@@ -2700,9 +2700,9 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
 }
 
 // Breath-stop rings. The tongue stays up: tongueReleaseFrames is 0.
-// Δf = f/Q. The rendered partial has to fall within ±20% of 27.29·Δf,
-// using Δf at the frequency that is actually ringing. Graded excerpt
-// notes, below, use Δf at the input-impedance peak.
+// Î”f = f/Q. The rendered partial has to fall within Â±20% of 27.29Â·Î”f,
+// using Î”f at the frequency that is actually ringing. Graded excerpt
+// notes, below, use Î”f at the input-impedance peak.
 TEST_CASE("brass breath stops ring at the published bandwidth", "[contact][wind]") {
   const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
   const double density =
@@ -2725,8 +2725,8 @@ TEST_CASE("brass breath stops ring at the published bandwidth", "[contact][wind]
   {
     // Mode 4, about 465 Hz, is the excerpt Bb4 fingering. The note is
     // played on the mild log-mean wall. Kirchhoff on the existing
-    // 1.09e-4 m² throat is fitted when the breath stops. The bell radius
-    // is the Bach #37 mouth, not a radius solved onto 10.9–13.9 Hz.
+    // 1.09e-4 mÂ² throat is fitted when the breath stops. The bell radius
+    // is the Bach #37 mouth, not a radius solved onto 10.9â€“13.9 Hz.
     const double mass = 3.0e-5;
     const double lip0 = 0.75 * speed / 1.45;
     const double omega = constants::twoPi * lip0;
@@ -2740,15 +2740,15 @@ TEST_CASE("brass breath stops ring at the published bandwidth", "[contact][wind]
     const double lip = 0.80 * conePartial(1.023, 0.26, 3);
     const RingGrade grade =
         measureRing(voice, "trumpet mode 4", lip, 466.16, 466.16, 1.00, true, 466.16);
-    // Fréour et al., JASA 148:748 (2020), eight-horn mean Q 42.6;
-    // Petiot, Poirson, and Gilbert (2004), single horn Q 32–38.
+    // FrÃ©our et al., JASA 148:748 (2020), eight-horn mean Q 42.6;
+    // Petiot, Poirson, and Gilbert (2004), single horn Q 32â€“38.
     expectRing(grade, 10.9, 13.9, 80.0);
   }
 
   {
     // Mode 8, about 929 Hz. The length is the cone whose eighth root is
     // 929 Hz. The bell radius is that cone's geometric bell, not a
-    // radius solved against 21.6–35.7 Hz.
+    // radius solved against 21.6â€“35.7 Hz.
     double lo = 0.80;
     double hi = 2.20;
     for (int i = 0; i < 48; ++i) {
@@ -2770,18 +2770,18 @@ TEST_CASE("brass breath stops ring at the published bandwidth", "[contact][wind]
         trumpet, 0.26, lipBlow(2800.0, 10000.0, 0.70, partial, bell, 0.0), kRate));
     const RingGrade grade =
         measureRing(voice, "trumpet mode 8", partial, 929.0, partial, 0.70, false, 0.0);
-    // Petiot, Poirson, and Gilbert (2004), Q 26–43 at about 929 Hz.
+    // Petiot, Poirson, and Gilbert (2004), Q 26â€“43 at about 929 Hz.
     expectRing(grade, 21.6, 35.7, 80.0);
   }
 
   {
-    // Ablitzer, Acta Acustica 5:53 (2021), Tables 1–2, Courtois bass
-    // trombone, first position. Δf = 2ξf, min–max of the complex-mode
-    // and real-mode fits. The ±20% band around that range is UNSOURCED.
+    // Ablitzer, Acta Acustica 5:53 (2021), Tables 1â€“2, Courtois bass
+    // trombone, first position. Î”f = 2Î¾f, minâ€“max of the complex-mode
+    // and real-mode fits. The Â±20% band around that range is UNSOURCED.
     // No tenor per-mode table was found; this bass trombone is a proxy.
-    // Modes 2–9 only. The radius is not in those tables: it is the
-    // cylinder whose Kirchhoff Δf at 115.6 Hz equals 4.84 Hz, the center
-    // of 4.83–4.85. Modes 3–9 use that same cylinder.
+    // Modes 2â€“9 only. The radius is not in those tables: it is the
+    // cylinder whose Kirchhoff Î”f at 115.6 Hz equals 4.84 Hz, the center
+    // of 4.83â€“4.85. Modes 3â€“9 use that same cylinder.
     struct Published {
       int mode;
       double frequency;
@@ -2801,7 +2801,7 @@ TEST_CASE("brass breath stops ring at the published bandwidth", "[contact][wind]
     const double pressureArea = 2.0e-5;
     // 2.70 m, apex 0.60 m: the excerpt's apex on one reference cone.
     // Not a Courtois length, and not a length solved onto each published
-    // frequency. The excerpt bore 3.0e-4 m² is a different argument.
+    // frequency. The excerpt bore 3.0e-4 mÂ² is a different argument.
     constexpr double kLength = 2.70;
     constexpr double kApex = 0.60;
     const double lip0 = 0.75 * speed / kLength;
@@ -2812,7 +2812,7 @@ TEST_CASE("brass breath stops ring at the published bandwidth", "[contact][wind]
     for (const Published& mode : published) {
       const double partial = conePartial(kLength, kApex, mode.mode);
       // 0.75 keeps modes 2 and 3 on that root. 0.80 is the excerpt's
-      // fraction and locks modes 4–9. Both are arguments.
+      // fraction and locks modes 4â€“9. Both are arguments.
       const double scale = mode.mode <= 3 ? 0.75 : 0.80;
       const double lip = scale * partial;
       const double omega = constants::twoPi * lip;
@@ -2844,30 +2844,30 @@ TEST_CASE("brass breath stops ring at the published bandwidth", "[contact][wind]
 
 // Each graded excerpt note (at least 0.45 s), ended by stopping the breath.
 // The tail is the bore after the lip is sealed. No output envelope and no
-// tongue stop. Δf is the loop's half-power bandwidth at that fingering's
+// tongue stop. Î”f is the loop's half-power bandwidth at that fingering's
 // input-impedance peak, after Kirchhoff is fitted on the throat there.
-// The WAV slope has to sit within ±20% of −27.29·Δf. The ±20% is UNSOURCED.
+// The WAV slope has to sit within Â±20% of âˆ’27.29Â·Î”f. The Â±20% is UNSOURCED.
 TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
   const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
   constexpr double kTail = 0.55;
-  std::cout << "graded brass rings, breath stop. Free decay = 27.29·Δf dB/s "
+  std::cout << "graded brass rings, breath stop. Free decay = 27.29Â·Î”f dB/s "
                "(Li, Almeida, Smith & Wolfe, JASA 139:825, 2016, Eq. 3). "
-               "Δf and Q are the model at the input-impedance peak. "
-               "Fréour et al., JASA 148:748 (2020): Bb trumpet mode 4, 464.7 Hz, "
-               "Q 42.6, Δf 10.9 Hz, about 298 dB/s. Petiot, Poirson & Gilbert "
-               "(2004): single horn Q 32–38, and mode 8 Q 26–43. Ablitzer, "
-               "Acta Acustica 5:53 (2021): bass-trombone peaks 2–9, Q 24–40. "
-               "The windows below are per mode, ±20% of each Ablitzer range "
-               "(that ±20% is UNSOURCED), not the 4.8–14 Hz span. "
+               "Î”f and Q are the model at the input-impedance peak. "
+               "FrÃ©our et al., JASA 148:748 (2020): Bb trumpet mode 4, 464.7 Hz, "
+               "Q 42.6, Î”f 10.9 Hz, about 298 dB/s. Petiot, Poirson & Gilbert "
+               "(2004): single horn Q 32â€“38, and mode 8 Q 26â€“43. Ablitzer, "
+               "Acta Acustica 5:53 (2021): bass-trombone peaks 2â€“9, Q 24â€“40. "
+               "The windows below are per mode, Â±20% of each Ablitzer range "
+               "(that Â±20% is UNSOURCED), not the 4.8â€“14 Hz span. "
                "Trumpet mouth is the Bach #37 bell, 4 13/16 in, on the Thibault "
                "and Chabassier Bessel horn (exponent 0.7, length 0.619 m, "
                "throat 6 mm). Trombone mouth is the Bach 42 bell, 8-1/2 in, "
                "on Scott's Table 2.2 horn (exponent 0.7, length 0.502 m). "
-               "Levine–Schwinger ends that horn. It is not the straight-pipe "
+               "Levineâ€“Schwinger ends that horn. It is not the straight-pipe "
                "load of the mouth on the unflared cone. The trombone ring "
                "uses Kirchhoff on the Bach 42 .547 in slide. The cone area "
-               "stays 3.0e-4 m², the area these lengths play. The trumpet "
-               "throat stays 1.09e-4 m². The radius is not reduced to enter "
+               "stays 3.0e-4 mÂ², the area these lengths play. The trumpet "
+               "throat stays 1.09e-4 mÂ². The radius is not reduced to enter "
                "a window.\n";
 
   struct Finger {
@@ -2916,7 +2916,7 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
               << "  mode " << acousticMode << "  peak " << peakHz << " Hz  Q " << q << "  df "
               << df << " Hz";
     if (windowHi > windowLo)
-      std::cout << "  window " << windowLo << "–" << windowHi;
+      std::cout << "  window " << windowLo << "â€“" << windowHi;
     else
       std::cout << "  window none";
     std::cout << "  played " << played << " Hz (" << playedCents << " cents)  ring " << ring
@@ -2981,7 +2981,7 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
         double windowHi = 0.0;
         // Ordinary Bb-trumpet valves. Written pitch is a major second
         // above concert. The chart itself is UNSOURCED. Mode 4 is the
-        // open Bb4 (Fréour 464.7 Hz), window 10.9–13.9 Hz. Mode 8 is
+        // open Bb4 (FrÃ©our 464.7 Hz), window 10.9â€“13.9 Hz. Mode 8 is
         // about 929 Hz and is not in this excerpt.
         if (std::fabs(src.hertz - 392.00) < 0.02) place = "1+2";
         else if (std::fabs(src.hertz - 349.23) < 0.02) place = "open";
@@ -2998,7 +2998,7 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
       start += src.seconds;
     }
     writePhrase(demo, "mmath-trumpet-breath-release.wav", kFs);
-    std::cout << "trumpet excerpt has no mode 8 note (Petiot window 21.6–35.7 Hz "
+    std::cout << "trumpet excerpt has no mode 8 note (Petiot window 21.6â€“35.7 Hz "
                  "is about 929 Hz). Graded notes are G4, F4, Bb4, D5, and C5.\n";
   }
 
@@ -3028,13 +3028,13 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
         applyScottBell(blow);
         blow.wallRadiusMeters = kBach42BoreRadiusMeters;
         auto voice = unwrap(ConeValveVoice::fromTrombone(horn, 0.60, blow, kRate));
-        const char* place = "position not a mode 2–9";
+        const char* place = "position not a mode 2â€“9";
         int acoustic = 0;
         double windowLo = 0.0;
         double windowHi = 0.0;
         // Bb tenor slide. Bb4 is 1st position, Ablitzer mode 8. G4 and E4
-        // are 2nd position, modes 7 and 6. The ±20% windows are the ones
-        // already used for Tables 1–2. Db5 is not a mode 2–9 partial.
+        // are 2nd position, modes 7 and 6. The Â±20% windows are the ones
+        // already used for Tables 1â€“2. Db5 is not a mode 2â€“9 partial.
         if (std::fabs(src.hertz - 466.16) < 0.02) {
           place = "1st";
           acoustic = 8;
@@ -3235,5 +3235,64 @@ TEST_CASE("lip closure experiment", "[.lipexp]") {
               << (counted ? double(closed) / counted : 0.0) << " open " << omin << ".." << omax << "\n";
     std::string name = std::string("lipexp-") + v.tag + ".wav";
     writeListening(out, name.c_str(), kFs);
+  }
+}
+
+// Measured-bore experiment (hidden). Engine bore: brass_bore.h.
+TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
+  using namespace mmathen::brass_bore;
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  const double rho = 1.2;  // printed only for the impedance table
+  const double zc = rho * speed / (constants::pi * 0.00185 * 0.00185);
+  const double V = 2.0 / 3.0 * constants::pi * std::pow(0.0091, 3);
+  double prev = 0, pprev = 0, pf = 0;
+  for (double f = 30; f < 2500; f += 0.5) {
+    std::complex<double> z; evaluate(f, rho, speed, zc, V, {}, &z, nullptr, nullptr);
+    const double a = std::abs(z);
+    if (prev > pprev && prev > a) std::cout << "zpeak " << pf << " " << 20 * std::log10(prev / zc) << "\n";
+    pprev = prev; prev = a; pf = f;
+  }
+  for (double p : {7000.0, 8500.0, 10000.0}) {
+    for (double lipHz : {220.0, 233.0, 245.0}) {
+      const double lipMass = 3.0e-5, om = constants::twoPi * lipHz;
+      TrumpetSpec spec{1.45, constants::pi * 0.00185 * 0.00185, kAir, kTemp, 0.0, 1.0e-8, 1.5e-5, 1.2e-2,
+                       lipMass, om * om * lipMass, 1.2e-5, 0.001};
+      spec.maximumOpeningAreaM2 = 4.0e-5;
+      auto trumpet = unwrap(makeTrumpet(spec));
+      ValveBlow lip = sustained(p, 10000.0, kTrumpetAttack);
+      lip.reflectionMagnitude = 0.999;
+      lip.initialDisplacementMeters = 0.0;
+      lip.tongueReleaseFrames = kTrumpetTongue;
+      lip.brassiness = 0.0;
+      lip.reedTurbulence = 0.0;
+      auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
+      REQUIRE(voice.useMeasuredTrumpetBore());
+      REQUIRE(voice.setLipQualityFactor(1.5));
+      REQUIRE(voice.setLipCollision(true));
+      REQUIRE(voice.setLipThresholdPa(1631));
+      std::vector<double> out(kFrames);
+      bool ok = true;
+      for (std::uint64_t i = 0; i < kFrames; ++i)
+        if (!voice.renderBlock(out.data() + i, FrameCount{1}).ok()) { ok = false; break; }
+      const Period per = periodNear(out, 70000, 233.0, kFs);
+      const double f0 = per.frequencyHz;
+      double h[9] = {0}; double num = 0, den = 0;
+      const std::size_t a0 = kFrames / 2, n = 16384;
+      for (int k = 1; k <= 8 && f0 > 0; ++k) {
+        double re = 0, im = 0;
+        for (std::size_t j = 0; j < n && a0 + j < out.size(); ++j) {
+          const double w = 0.5 - 0.5 * std::cos(constants::twoPi * j / n);
+          re += w * out[a0 + j] * std::cos(constants::twoPi * k * f0 * j / kFs);
+          im += w * out[a0 + j] * std::sin(constants::twoPi * k * f0 * j / kFs);
+        }
+        const double m = re * re + im * im; h[k] = m; num += k * f0 * m; den += m;
+      }
+      std::cout << "boreexp p " << p << " lip " << lipHz << " ok " << ok << " f0 " << f0 << " cents "
+                << 1200 * std::log2(f0 / 233.08) << " cent " << (den > 0 ? num / den : 0) << " h2-h5 dB re h1";
+      for (int k = 2; k <= 5; ++k) std::cout << " " << 10 * std::log10(h[k] / std::max(h[1], 1e-300));
+      std::cout << "\n";
+      std::string name = "boreexp-p" + std::to_string(int(p)) + "-l" + std::to_string(int(lipHz)) + ".wav";
+      writeListening(out, name.c_str(), kFs);
+    }
   }
 }
