@@ -2898,12 +2898,12 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
     if (prev > pprev && prev > a) std::cout << "zpeak " << pf << " " << 20 * std::log10(prev / zc) << "\n";
     pprev = prev; prev = a; pf = f;
   }
-  for (double p : {7000.0, 8500.0, 10000.0}) {
-    for (double lipHz : {220.0, 233.0, 245.0}) {
+  for (int steep : {0, 1})
+  for (double p : {6000.0, 9000.0, 12000.0}) {
+    for (double lipHz : {170.0, 190.0, 205.0, 220.0}) {
       const double lipMass = 3.0e-5, om = constants::twoPi * lipHz;
       TrumpetSpec spec{1.45, constants::pi * 0.00185 * 0.00185, kAir, kTemp, 0.0, 1.0e-8, 1.5e-5, 1.2e-2,
-                       lipMass, om * om * lipMass, 1.2e-5, 0.001};
-      spec.maximumOpeningAreaM2 = 4.0e-5;
+                       lipMass, om * om * lipMass, 1.5e-5, 0.001};
       auto trumpet = unwrap(makeTrumpet(spec));
       ValveBlow lip = sustained(p, 10000.0, kTrumpetAttack);
       lip.reflectionMagnitude = 0.999;
@@ -2913,18 +2913,33 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
       lip.reedTurbulence = 0.0;
       auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
       REQUIRE(voice.useMeasuredTrumpetBore());
-      REQUIRE(voice.setLipQualityFactor(1.5));
-      REQUIRE(voice.setLipCollision(true));
-      REQUIRE(voice.setLipThresholdPa(1631));
+      REQUIRE(voice.usePublishedTrumpetLips(lipHz));
+      if (steep) REQUIRE(voice.setMeasuredBoreSteepening(true));
       std::vector<double> out(kFrames);
-      bool ok = true;
-      for (std::uint64_t i = 0; i < kFrames; ++i)
+      bool ok = true; std::size_t shut = 0, cnt = 0;
+      for (std::uint64_t i = 0; i < kFrames; ++i) {
         if (!voice.renderBlock(out.data() + i, FrameCount{1}).ok()) { ok = false; break; }
-      const Period per = periodNear(out, 70000, 233.0, kFs);
-      const double f0 = per.frequencyHz;
-      double h[9] = {0}; double num = 0, den = 0;
+        if (i > kFrames / 2) { ++cnt; if (voice.lipOpeningM2() <= 0.0) ++shut; }
+      }
+      double f0 = 0;
+      {
+        const std::size_t s0 = kFrames / 2, w = 8192;
+        const int lo = int(kFs / 600), hi = int(kFs / 80);
+        std::vector<double> r(hi + 2, 0.0); double best = 0;
+        for (int L = lo; L <= hi; ++L) {
+          double xy = 0, xx = 0, yy = 0;
+          for (std::size_t j = 0; j < w; ++j) { const double x = out[s0 + j], y = out[s0 + j + L]; xy += x * y; xx += x * x; yy += y * y; }
+          r[L] = xy / std::sqrt(xx * yy + 1e-300); best = std::max(best, r[L]);
+        }
+        for (int L = lo + 1; L < hi; ++L)
+          if (r[L] > 0.9 * best && r[L] >= r[L - 1] && r[L] >= r[L + 1]) {
+            const double d = (r[L - 1] - r[L + 1]) / (2 * (r[L - 1] - 2 * r[L] + r[L + 1]));
+            f0 = kFs / (L + d); break;
+          }
+      }
+      double h[41] = {0}; double num = 0, den = 0;
       const std::size_t a0 = kFrames / 2, n = 16384;
-      for (int k = 1; k <= 8 && f0 > 0; ++k) {
+      for (int k = 1; k <= 40 && f0 > 0 && k * f0 < 10000; ++k) {
         double re = 0, im = 0;
         for (std::size_t j = 0; j < n && a0 + j < out.size(); ++j) {
           const double w = 0.5 - 0.5 * std::cos(constants::twoPi * j / n);
@@ -2933,11 +2948,12 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
         }
         const double m = re * re + im * im; h[k] = m; num += k * f0 * m; den += m;
       }
-      std::cout << "boreexp p " << p << " lip " << lipHz << " ok " << ok << " f0 " << f0 << " cents "
+      std::cout << "boreexp steep " << steep << " Leff " << voice.measuredBoreSteepeningLength()
+                << " closed " << (cnt ? double(shut) / cnt : 0) << " p " << p << " lip " << lipHz << " ok " << ok << " f0 " << f0 << " cents "
                 << 1200 * std::log2(f0 / 233.08) << " cent " << (den > 0 ? num / den : 0) << " h2-h5 dB re h1";
       for (int k = 2; k <= 5; ++k) std::cout << " " << 10 * std::log10(h[k] / std::max(h[1], 1e-300));
       std::cout << "\n";
-      std::string name = "boreexp-p" + std::to_string(int(p)) + "-l" + std::to_string(int(lipHz)) + ".wav";
+      std::string name = "boreexp-s" + std::to_string(steep) + "-p" + std::to_string(int(p)) + "-l" + std::to_string(int(lipHz)) + ".wav";
       writeListening(out, name.c_str(), kFs);
     }
   }

@@ -110,6 +110,16 @@ inline void evaluate(double f, double rho, double c, double zcRef, double cup, F
   if (zin) *zin = cup > 0 ? 1.0 / (1.0 / Z + C(0, w * cup / (rho * c * c))) : Z;
 }
 
+// Throat-referred steepening length int r_throat / r(x) dx over the
+// whole profile (see ConeValveVoice::setMeasuredBoreSteepening).
+inline double steepeningLengthMeters(Fingering fg = {}) {
+  double mouth = 0.0, acc = 0.0;
+  const auto prof = bbTrumpetProfile(mouth, fg);
+  const double r0 = prof.front().radius;
+  for (const auto& sg : prof) acc += sg.length * r0 / sg.radius;
+  return acc;
+}
+
 inline Kernels makeKernels(double fs, double rho, double c, Fingering fg = {}, std::size_t taps = 2048,
                            std::size_t n = 8192) {
   using C = std::complex<double>;

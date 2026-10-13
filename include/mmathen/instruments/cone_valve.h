@@ -119,7 +119,7 @@ class ConeValveVoice final : public IVoice {
       // incident wave, not the filtered return.
       const double incident = rfOn_ ? 0.0 : readBore();
       const double reflected = rfOn_ ? 0.0 : cutoff_.step(incident);
-      const double incoming = rfOn_ ? convolveHistory(rf_)
+      const double incoming = rfOn_ ? convolveHistory(rf_, hist_)
                             : (flareOn_ ? -flareLoss_.step(reflected)
                                     : (radiating_ ? openEnd_.step(reflected) : -reflected));
       if (!std::isfinite(incoming)) return R::failure(QuantityError::RangeError);
@@ -254,6 +254,7 @@ class ConeValveVoice final : public IVoice {
       }
       if (rfOn_) {
         hist_[hpos_] = outgoing;
+        if (steepRfOn_) histS_[hpos_] = steepenMeasured(outgoing);
         hpos_ = (hpos_ + 1) % hist_.size();
       } else {
         line_[pos_] = outgoing;
@@ -265,7 +266,7 @@ class ConeValveVoice final : public IVoice {
       // tuned with. See ValveBlow::brassiness.
       double atBell = incident;
       if (!rfOn_ && lip_ && brassiness_ > 0.0) atBell = steepenAtBell(incident);
-      const double bellFlow = rfOn_ ? convolveHistory(uf_)
+      const double bellFlow = rfOn_ ? convolveHistory(uf_, steepRfOn_ ? histS_ : hist_)
                                     : (atBell - incoming) / impedance_ * bellScale_;
       double radiated = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
                                                  radiationState_, radiationCorner_, dt);
@@ -551,13 +552,63 @@ class ConeValveVoice final : public IVoice {
     rf_ = std::move(k.reflection);
     uf_ = std::move(k.mouthFlow);
     hist_.assign(rf_.size(), 0.0);
+    histS_.assign(rf_.size(), 0.0);
     hpos_ = 0;
+    steepLength_ = brass_bore::steepeningLengthMeters(fingering);
     impedance_ = zc;
     cupCoeff_ = zc * k.cupVolume / (density_ * speed_ * speed_) * fs;
     rfOn_ = true;
     return true;
   }
   [[nodiscard]] bool measuredBoreOn() const noexcept { return rfOn_; }
+
+  // Nonlinear steepening on the measured bore (off by default). The
+  // outgoing throat wave p+ advances by beta p+ L_eff / (rho c^3)
+  // seconds, beta = (gamma+1)/2 (Hirschberg, Gilbert, Msallam and
+  // Wijnands, JASA 99, 1754-1758, 1996), with the throat-referred
+  // effective length L_eff = int r_throat / r(x) dx of the profile
+  // (plane-wave amplitude ~ 1/r; the brassiness integral of Gilbert,
+  // Myers et al., Myers, Pyle, Gilbert, Campbell, Chick and Logie, JASA
+  // 131, 678-688, 2012). Wall loss along the way is not in the advance,
+  // so this is an upper bound. The steepened wave feeds only the bell
+  // flow; the lip keeps the linear return (as ValveBlow::brassiness).
+  bool setMeasuredBoreSteepening(bool on) {
+    if (!rfOn_ || !(steepLength_ > 0.0)) return false;
+    steepRfOn_ = on;
+    std::fill(steepRf_, steepRf_ + kSteepRfSize, 0.0);
+    return true;
+  }
+  [[nodiscard]] bool measuredBoreSteepeningOn() const noexcept { return steepRfOn_; }
+  [[nodiscard]] double measuredBoreSteepeningLength() const noexcept { return steepLength_; }
+
+  // Published trumpet embouchure, for the measured bore. One-dof
+  // outward-striking lip, "Numerical continuation of a physical model
+  // of brass instruments: application to trumpet comparisons" (Freour,
+  // Guillot, Masuda, Usa, Tominaga, Tohgi, Vergez, Cochelin; JASA 148,
+  // 2020; author list VERIFY), eq. 15: Q_l = 3, mu_l = 2 kg/m^2, rest opening
+  // y0 = 0.1 mm, width b = 8 mm. mu_l is m / A here (only the ratio
+  // enters the lip equation), rest area = b y0, no threshold preload,
+  // Ishizaka-Flanagan contact on. That paper prints no maximum opening;
+  // the cap is lifted to 1 cm^2 (UNSOURCED; a non-binding bound).
+  bool usePublishedTrumpetLips(double lipHz) {
+    if (!lip_ || !std::isfinite(lipHz) || !(lipHz > 0.0)) return false;
+    constexpr double kMu = 2.0, kWidth = 0.008, kRest = 1.0e-4, kQ = 3.0;
+    trumpet_.lipMassKg = kMu * trumpet_.lipPressureAreaM2;
+    trumpet_.slitWidthMeters = kWidth;
+    trumpet_.restOpeningAreaM2 = kWidth * kRest;
+    trumpet_.maximumOpeningAreaM2 = 1.0e-4;
+    slitWidth_ = kWidth;
+    restOpening_ = kWidth * kRest;
+    maximumOpening_ = 1.0e-4;
+    lipThresholdPa_ = 0.0;
+    lipQ_ = kQ;
+    trumpet_.lipCollisionStiffness = 1.0;  // so setLipResonanceHz re-derives contact
+    if (!setLipResonanceHz(lipHz)) return false;
+    enableLipCollision(trumpet_);
+    displacement_ = 0.0;
+    velocity_ = 0.0;
+    return true;
+  }
 
   bool setLipCollision(bool on) {
     if (!lip_) return false;
@@ -979,16 +1030,43 @@ class ConeValveVoice final : public IVoice {
   double cupPressure_ = 0.0;
   double listener_ = 1.0;
   bool rfOn_ = false;
-  std::vector<double> rf_, uf_, hist_;
+  bool steepRfOn_ = false;
+  double steepLength_ = 0.0;
+  static constexpr int kSteepRfSize = 64;
+  double steepRf_[kSteepRfSize] = {};
+  int steepRfPos_ = 0;
+  // Fractional-delay read at age D - adv, D = 24 samples (clamped).
+  [[nodiscard]] double steepenMeasured(double p) {
+    steepRf_[steepRfPos_] = p;
+    auto at = [&](int ago) {
+      int idx = steepRfPos_ - ago;
+      while (idx < 0) idx += kSteepRfSize;
+      return steepRf_[idx];
+    };
+    const double denom = density_ * speed_ * speed_ * speed_;
+    const double beta = 0.5 * (acoustic_constants::dryAirGamma + 1.0);
+    constexpr double kDelay = 24.0;
+    double adv = (denom > 0.0 && std::isfinite(p)) ? beta * p * steepLength_ * rate_.value() / denom : 0.0;
+    if (adv > kDelay) adv = kDelay;
+    if (adv < -kDelay) adv = -kDelay;
+    const double age = kDelay - adv;
+    const int i0 = static_cast<int>(age);
+    const double frac = age - i0;
+    const double y = at(i0) * (1.0 - frac) + at(std::min(i0 + 1, kSteepRfSize - 1)) * frac;
+    steepRfPos_ = (steepRfPos_ + 1) % kSteepRfSize;
+    return std::isfinite(y) ? y : p;
+  }
+  std::vector<double> rf_, uf_, hist_, histS_;
   std::size_t hpos_ = 0;
   // Sum over n >= 1 of kernel[n] * p+(t - n); hist_ holds past p+.
-  [[nodiscard]] double convolveHistory(const std::vector<double>& kernel) const {
-    const std::size_t n = hist_.size();
+  [[nodiscard]] double convolveHistory(const std::vector<double>& kernel,
+                                       const std::vector<double>& hist) const {
+    const std::size_t n = hist.size();
     double acc = 0.0;
     std::size_t idx = hpos_;
     for (std::size_t j = 1; j < kernel.size() && j <= n; ++j) {
       idx = (idx == 0) ? n - 1 : idx - 1;
-      acc += kernel[j] * hist_[idx];
+      acc += kernel[j] * hist[idx];
     }
     return acc;
   }
