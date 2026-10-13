@@ -2890,7 +2890,7 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
   const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
   const double rho = 1.2;  // printed only for the impedance table
   const double zc = rho * speed / (constants::pi * 0.00185 * 0.00185);
-  const double V = 2.0 / 3.0 * constants::pi * std::pow(0.0091, 3);
+  const double V = 2.0 / 3.0 * constants::pi * std::pow(0.00815, 3);
   double prev = 0, pprev = 0, pf = 0;
   for (double f = 30; f < 2500; f += 0.5) {
     std::complex<double> z; evaluate(f, rho, speed, zc, V, {}, &z, nullptr, nullptr);

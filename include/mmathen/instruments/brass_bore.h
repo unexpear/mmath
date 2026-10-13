@@ -5,10 +5,16 @@
 // HAL hal-01309223, Sec. 3.2, after Causse's measured profile: backbore
 // cone L1 = 72 mm from R1 = 1.85 mm (top angle 3.64 deg), main bore
 // L2 = 1.28 m of radius R2 = 5 mm prolongated by a Bessel horn of
-// exponent nu = 0.76 (the fitted value of the same paper). Cup radius
-// Rb = 9.1 mm (hemisphere, V0 = 2/3 pi Rb^3; the hemisphere reading is
-// UNSOURCED). Bell mouth: Bach 37 radius 61 mm (4.8 in, Conn-Selmer).
-// Bell length 0.70 m and the 50 mm leadpipe taper to R2 are UNSOURCED.
+// Bessel horn. Bach 180S37 published specs (Conn-Selmer, bachbrass.com):
+// bore .459 in (R2 = 5.83 mm), #25 leadpipe venturi .345 in (radius
+// 4.38 mm), bell diameter 4-13/16 in (mouth radius 61.1 mm). Bessel flare
+// nu = 0.60, inside the 0.5-0.65 range Benade measured for trumpet bells
+// (Benade, "The Physics of Brasses", Sci. Am. 229(1), 1973). Cup: Bach 7C
+// rim diameter 16.30 mm, hemisphere V0 = 2/3 pi Rb^3 with Rb = 8.15 mm
+// (hemisphere reading UNSOURCED). FITTED, not measured (UNSOURCED as
+// geometry): leadpipe venturi-to-bore taper 0.25 m, bell length 0.60 m,
+// main length L2 = 1.295 m, chosen so peaks 2-8 sit within 17 cents of
+// n x 116.54 Hz and the peak/trough ratio drops below 10 dB at 1.28 kHz.
 // Wall loss: Keefe, JASA 75, 58-62 (1984), leading order in 1/r_v.
 // Radiation: unflanged pipe (Levine and Schwinger 1948) via the Silva,
 // Guillemain, Kergomard, Mallaroni and Norris rational fit, JASA 125
@@ -36,7 +42,7 @@ struct Kernels {
 // 37 slide lengths are UNSOURCED, so these are the rule, not a catalog.
 // Valve block position 0.25 m from the input is UNSOURCED.
 struct Fingering { bool v1 = false, v2 = false, v3 = false; };
-constexpr double kOpenLengthMeters = 0.072 + 0.05 + 1.28;
+constexpr double kOpenLengthMeters = 0.072 + 1.295;
 constexpr double kValveBlockMeters = 0.25;
 inline double valveLoopMeters(int semitones) {
   return kOpenLengthMeters * (std::pow(2.0, semitones / 12.0) - 1.0);
@@ -46,15 +52,15 @@ inline std::vector<Segment> bbTrumpetProfile(double& mouthRadius, Fingering fg =
   const double r1 = 0.00185, l1 = 0.072;
   const double rout = r1 + l1 * std::tan(3.64 * 0.5 * 3.14159265358979323846 / 180.0);
   for (int i = 0; i < 40; ++i) s.push_back({l1 / 40, r1 + (rout - r1) * (i + 0.5) / 40});
-  const double r2 = 0.005;
-  for (int i = 0; i < 10; ++i) s.push_back({0.005, rout + (r2 - rout) * (i + 0.5) / 10});
-  const double bell = 0.70, nu = 0.76;
-  mouthRadius = 0.061;
+  const double r2 = 0.00583, venturi = 0.00438, lpl = 0.25;
+  for (int i = 0; i < 20; ++i) s.push_back({lpl / 20, venturi + (r2 - venturi) * (i + 0.5) / 20});
+  const double bell = 0.60, nu = 0.60;
+  mouthRadius = 0.0611;
   double loop = 0.0;
   if (fg.v1) loop += valveLoopMeters(2);
   if (fg.v2) loop += valveLoopMeters(1);
   if (fg.v3) loop += valveLoopMeters(3);
-  s.push_back({1.28 - bell - 0.05 + loop, r2});
+  s.push_back({1.295 - bell - lpl + loop, r2});
   const double x0 = bell / (std::pow(mouthRadius / r2, 1.0 / nu) - 1.0);
   const double b = mouthRadius * std::pow(x0, nu);
   const int m = 300;
@@ -108,7 +114,7 @@ inline Kernels makeKernels(double fs, double rho, double c, Fingering fg = {}, s
                            std::size_t n = 8192) {
   using C = std::complex<double>;
   Kernels kr;
-  kr.cupVolume = 2.0 / 3.0 * 3.14159265358979323846 * std::pow(0.0091, 3);
+  kr.cupVolume = 2.0 / 3.0 * 3.14159265358979323846 * std::pow(0.00815, 3);
   const double zcRef = rho * c / (3.14159265358979323846 * kr.throatRadius * kr.throatRadius);
   std::vector<C> R(n / 2 + 1), U(n / 2 + 1);
   for (std::size_t j = 0; j <= n / 2; ++j) {
