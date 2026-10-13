@@ -749,7 +749,10 @@ double writePhrase(const std::vector<double>& samples, const char* filename, dou
   const std::size_t end = samples.size();
   REQUIRE(end > begin + static_cast<std::size_t>(rate));
   const double measured = steadyLufs(samples, begin, end, rate);
-  constexpr double kTargetLufs = -20.0;
+  // −24, not −20: the trumpet excerpt's crest under the −1 dBFS ceiling
+  // allowed only −23.2 at ab78401. One common target keeps every phrase
+  // file within 1 LU without a limiter.
+  constexpr double kTargetLufs = -24.0;
   double gain = std::pow(10.0, (kTargetLufs - measured) / 20.0);
   double peak = 0.0;
   for (double sample : samples) peak = std::max(peak, std::fabs(sample));
@@ -2019,7 +2022,20 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     };
     for (const Length& row : table)
       if (std::fabs(row.hertz - frequency) < 0.05) return row.meters;
-    return speed / (4.0 * frequency);
+    // Unlisted pitch: the length-frequency product interpolated in log f
+    // between the measured rows, held at the end rows outside them.
+    const std::size_t n = sizeof(table) / sizeof(table[0]);
+    if (frequency <= table[0].hertz) return table[0].meters * table[0].hertz / frequency;
+    for (std::size_t i = 1; i < n; ++i) {
+      if (frequency <= table[i].hertz) {
+        const double t = std::log(frequency / table[i - 1].hertz) /
+                         std::log(table[i].hertz / table[i - 1].hertz);
+        const double product = (1.0 - t) * table[i - 1].meters * table[i - 1].hertz +
+                               t * table[i].meters * table[i].hertz;
+        return product / frequency;
+      }
+    }
+    return table[n - 1].meters * table[n - 1].hertz / frequency;
   };
   {
     const double total = excerpts::excerptSeconds(excerpts::kClarinet);
@@ -2208,7 +2224,16 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     auto find = [&](double hertz) {
       for (const Finger& row : finger)
         if (std::fabs(row.hertz - hertz) < 0.02) return row;
-      return Finger{};
+      // Unlisted pitch: the nearest tuned row, same mode, with the cone
+      // (or, for mode 0, the tube) scaled by the frequency ratio.
+      const Finger* nearest = &finger[0];
+      for (const Finger& row : finger)
+        if (std::fabs(std::log(row.hertz / hertz)) <
+            std::fabs(std::log(nearest->hertz / hertz)))
+          nearest = &row;
+      const double apex = nearest->mode == 0 ? 0.0 : 0.26;
+      return Finger{hertz, (nearest->length + apex) * nearest->hertz / hertz - apex,
+                    nearest->mode};
     };
     const double total = excerpts::excerptSeconds(excerpts::kTrumpet);
     std::cout << "trumpet excerpt: Mussorgsky/Ravel, Pictures, Promenade "
@@ -2269,7 +2294,16 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     auto find = [&](double hertz) {
       for (const Finger& row : finger)
         if (std::fabs(row.hertz - hertz) < 0.02) return row;
-      return Finger{};
+      // Unlisted pitch: the nearest tuned row, same mode, with the cone
+      // (or, for mode 0, the tube) scaled by the frequency ratio.
+      const Finger* nearest = &finger[0];
+      for (const Finger& row : finger)
+        if (std::fabs(std::log(row.hertz / hertz)) <
+            std::fabs(std::log(nearest->hertz / hertz)))
+          nearest = &row;
+      const double apex = nearest->mode == 0 ? 0.0 : 0.60;
+      return Finger{hertz, (nearest->length + apex) * nearest->hertz / hertz - apex,
+                    nearest->mode};
     };
     const double total = excerpts::excerptSeconds(excerpts::kTrombone);
     std::cout << "trombone excerpt: Ravel, Boléro, trombone solo, through the "
@@ -2313,6 +2347,307 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     reportPhrase("trombone", notes, samples, total, 0.15);
     writePhrase(samples, "mmath-excerpt-trombone.wav", kFs);
   }
+}
+
+// Song excerpts for listening (hand-written, see wind_excerpts.h). Hidden:
+// run with "[.songs]". Same voices, airway and grading as the audition
+// passages above; pitches outside the tuned rows use the fallbacks.
+TEST_CASE("wind songs are listening passages", "[.songs]") {
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+
+  auto push = [](std::vector<PhraseNote>& notes, const excerpts::Note& src, double start,
+                 double length, double lip, double pressure, double jet, double tol,
+                 double minRms) {
+    PhraseNote note;
+    note.name = src.name;
+    note.startSec = start;
+    note.targetHz = src.hertz;
+    note.lengthM = length;
+    note.lipHz = lip;
+    note.pressure = src.hertz > 0.0 ? pressure : 0.0;
+    note.jetSamples = jet;
+    note.tongue = src.tongued;
+    note.vibrato = src.vibrato;
+    note.dynamic = src.dynamic;
+    note.gain = 1.0;
+    note.rest = !(src.hertz > 0.0);
+    note.tolCents = tol;
+    note.minRms = minRms;
+    // Speech and the narrow autocorrelation are graded only when a
+    // window can sit inside the note. Shorter notes are still printed,
+    // including a DID NOT SPEAK. Their end-of-window YIN is checked
+    // separately, at ±50 cents.
+    note.require = src.hertz > 0.0 && src.seconds >= 0.45;
+    notes.push_back(note);
+  };
+
+  auto clarinetLen = [&](double frequency) {
+    struct Length { double hertz; double meters; };
+    // Shortened from c/(4f) until the autocorrelation matched. Integer
+    // lag is about 15 cents at these pitches; 25 cents is the grade.
+    const Length table[] = {
+        {220.00, 0.371149}, {293.66, 0.270847}, {329.63, 0.23842},
+        {349.23, 0.219000}, {392.00, 0.201376}, {440.00, 0.177866},
+    };
+    for (const Length& row : table)
+      if (std::fabs(row.hertz - frequency) < 0.05) return row.meters;
+    // Unlisted pitch: the length-frequency product interpolated in log f
+    // between the measured rows, held at the end rows outside them.
+    const std::size_t n = sizeof(table) / sizeof(table[0]);
+    if (frequency <= table[0].hertz) return table[0].meters * table[0].hertz / frequency;
+    for (std::size_t i = 1; i < n; ++i) {
+      if (frequency <= table[i].hertz) {
+        const double t = std::log(frequency / table[i - 1].hertz) /
+                         std::log(table[i].hertz / table[i - 1].hertz);
+        const double product = (1.0 - t) * table[i - 1].meters * table[i - 1].hertz +
+                               t * table[i].meters * table[i].hertz;
+        return product / frequency;
+      }
+    }
+    return table[n - 1].meters * table[n - 1].hertz / frequency;
+  };
+  auto play_clarinet = [&](const auto& song, const std::string& stem) {
+    const double total = excerpts::excerptSeconds(song);
+    std::cout << "clarinet excerpt: Mozart, Clarinet Concerto K.622, Adagio "
+                 "opening, concert pitch. Mechanism: sounding length. "
+                 "Corner 1500 Hz.\n";
+    double longest = 0.0;
+    for (const auto& src : song)
+      if (src.hertz > 0.0) longest = std::max(longest, clarinetLen(src.hertz));
+    auto clarinet = workingClarinet(longest * 1.04);
+    const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
+    ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack);
+    blow.frames = frames;
+    blow.reedTurbulence = 0.40;
+    auto voice = unwrap(BoreValveVoice::fromClarinet(clarinet, blow, kRate));
+    std::vector<PhraseNote> notes;
+    double start = 0.0;
+    double held = longest;
+    for (const auto& src : song) {
+      const double length = src.hertz > 0.0 ? clarinetLen(src.hertz) : held;
+      push(notes, src, start, length, 0.0, 4000.0, 0.0, 25.0, 0.01);
+      if (src.hertz > 0.0) held = length;
+      start += src.seconds;
+    }
+    PlayerAirway airway(PlayerAirwaySpec{});
+    auto samples = renderPhrase(voice, notes, total, false, 0.0, &airway);
+    std::cout << "clarinet airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
+    writePhraseNotes(notes, total, (stem + ".notes.csv").c_str());
+    reportPhrase(stem.c_str(), notes, samples, total, 0.50);
+    writePhrase(samples, (stem + ".wav").c_str(), kFs);
+  };
+  auto play_flute = [&](const auto& song, const std::string& stem) {
+    const double span = 7.0e-3;
+    const double sigma = 0.45;
+    const double thickness = 1.0e-3;
+    const double radius = std::sqrt(2.8e-4 / constants::pi);
+    const double end = 0.61 * radius;
+    auto bore = [&](double frequency) { return speed / (2.0 * frequency) - end; };
+    const double total = excerpts::excerptSeconds(song);
+    std::cout << "flute excerpt: Debussy, Prélude à l'après-midi d'un faune, "
+                 "opening, bars 1–2, quarter = 44. Mechanism: bore length, "
+                 "jet delay, and pressure. Corner 1800 Hz, the 2 s demo.\n";
+    double longest = 0.0;
+    double lowest = 1.0e9;
+    for (const auto& src : song) {
+      if (!(src.hertz > 0.0)) continue;
+      longest = std::max(longest, bore(src.hertz));
+      lowest = std::min(lowest, src.hertz);
+    }
+    FluteSpec spec{longest * 1.04, 2.8e-4, kAir, kTemp, 1.2e-5, thickness, span, sigma};
+    auto flute = unwrap(makeFlute(spec));
+    auto pressureFor = [&](double frequency) {
+      const double jetSpeed = 2.0 * span * frequency / sigma;
+      return 0.5 * flute.airDensityKgPerM3 * jetSpeed * jetSpeed;
+    };
+    // The 20 ms tongue dip divides the jet delay by sqrt(0.55). The buffer
+    // is sized from the construction pressure, so that pressure is half
+    // the lowest note's, which is a longer delay than the dip.
+    const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
+    ValveBlow jet = sustained(pressureFor(lowest) * 0.50, 1800.0, kFluteAttack);
+    jet.frames = frames;
+    jet.reflectionMagnitude = 0.985;
+    jet.initialDisplacementMeters = 0.0;
+    jet.jetAimMeters = 0.40 * thickness;
+    jet.jetNoiseMeters = 0.035 * thickness;
+    jet.reedTurbulence = 0.56;
+    jet.endCorrectionMeters = end;
+    auto voice = unwrap(BoreValveVoice::fromFlute(flute, jet, kRate));
+    std::vector<PhraseNote> notes;
+    double start = 0.0;
+    double heldL = longest;
+    double heldJ = 0.0;
+    double heldP = pressureFor(lowest);
+    for (const auto& src : song) {
+      const double pressure = src.hertz > 0.0 ? pressureFor(src.hertz) : 0.0;
+      const double length = src.hertz > 0.0 ? bore(src.hertz) : heldL;
+      const double jetSamples =
+          src.hertz > 0.0 ? kFs * unwrap(fluteConvectionTime(flute, pressure)) : heldJ;
+      push(notes, src, start, length, 0.0, pressure > 0.0 ? pressure : heldP, jetSamples, 25.0,
+           0.01);
+      if (src.hertz > 0.0) {
+        heldL = length;
+        heldJ = jetSamples;
+        heldP = pressure;
+      }
+      start += src.seconds;
+    }
+    PlayerAirway airway(PlayerAirwaySpec{});
+    auto samples = renderPhrase(voice, notes, total, true, 0.0, &airway);
+    std::cout << "flute airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
+    writePhraseNotes(notes, total, (stem + ".notes.csv").c_str());
+    reportPhrase(stem.c_str(), notes, samples, total, 0.08);
+    writePhrase(samples, (stem + ".wav").c_str(), kFs);
+  };
+  auto play_trumpet = [&](const auto& song, const std::string& stem) {
+    struct Finger {
+      double hertz;
+      double length;
+      int mode;
+    };
+    // Tuned so this lip and this length play the concert pitch, and the
+    // Promenade order stays finite. F5 at 1.39 m into D5 at 1.38 m dies
+    // on the open-valve slur; 1.410 into 1.386 completes. Mode 0 is the
+    // open second-register recipe, lip = 0.75 c/L. Any other mode sets
+    // the lip at 0.8 of that cone partial.
+    const Finger finger[] = {
+        {392.00, 0.804, 0}, {349.23, 0.912, 0}, {466.16, 1.023, 3},
+        {523.25, 1.560, 5}, {698.46, 1.410, 6}, {587.33, 1.386, 5},
+    };
+    auto find = [&](double hertz) {
+      for (const Finger& row : finger)
+        if (std::fabs(row.hertz - hertz) < 0.02) return row;
+      // Unlisted pitch: the nearest tuned row, same mode, with the cone
+      // (or, for mode 0, the tube) scaled by the frequency ratio.
+      const Finger* nearest = &finger[0];
+      for (const Finger& row : finger)
+        if (std::fabs(std::log(row.hertz / hertz)) <
+            std::fabs(std::log(nearest->hertz / hertz)))
+          nearest = &row;
+      const double apex = nearest->mode == 0 ? 0.0 : 0.26;
+      return Finger{hertz, (nearest->length + apex) * nearest->hertz / hertz - apex,
+                    nearest->mode};
+    };
+    const double total = excerpts::excerptSeconds(song);
+    std::cout << "trumpet excerpt: Mussorgsky/Ravel, Pictures, Promenade "
+                 "opening, quarter = 91. Mechanism: sounding length and lip "
+                 "resonance. Not a piston chart.\n";
+    const double mass = 3.0e-5;
+    const double lip0 = 0.75 * speed / 1.45;
+    const double omega = constants::twoPi * lip0;
+    TrumpetSpec spec{1.70, 1.09e-4, kAir, kTemp, 0.0, 8.0e-7, 1.5e-5, 1.2e-2, mass,
+                     omega * omega * mass, 1.2e-5, 0.001};
+    auto trumpet = unwrap(makeTrumpet(spec));
+    const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
+    ValveBlow lip = sustained(2800.0, 10000.0, kTrumpetAttack);
+    lip.frames = frames;
+    lip.reflectionMagnitude = 0.999;
+    lip.initialDisplacementMeters = 0.0;
+    lip.tongueReleaseFrames = kTrumpetTongue;
+    lip.brassiness = 1.0;
+    lip.reedTurbulence = 0.20;
+    // Bessel flare of the natural-trumpet horn, Levine–Schwinger at the
+    // Bach #37 mouth. The cone apex stays 0.26 m. The horn's travel is
+    // not stacked on the sounding length.
+    applyBach37Bell(lip);
+    auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
+    std::vector<PhraseNote> notes;
+    double start = 0.0;
+    Finger held = finger[0];
+    for (const auto& src : song) {
+      const Finger row = src.hertz > 0.0 ? find(src.hertz) : held;
+      const double lipHz =
+          row.mode == 0 ? 0.75 * speed / row.length : 0.80 * conePartial(row.length, 0.26, row.mode);
+      push(notes, src, start, row.length, lipHz, 2800.0, 0.0, 25.0, 0.01);
+      notes.back().peakHz = impedancePeakHz(row.length, 0.26, row.mode, row.hertz);
+      if (src.hertz > 0.0) held = row;
+      start += src.seconds;
+    }
+    PlayerAirway airway(PlayerAirwaySpec{});
+    auto samples = renderPhrase(voice, notes, total, false, 0.50, &airway);
+    std::cout << "trumpet airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
+    writePhraseNotes(notes, total, (stem + ".notes.csv").c_str());
+    reportPhrase(stem.c_str(), notes, samples, total, 0.12);
+    writePhrase(samples, (stem + ".wav").c_str(), kFs);
+  };
+  auto play_trombone = [&](const auto& song, const std::string& stem) {
+    struct Finger {
+      double hertz;
+      double length;
+      int mode;
+    };
+    const Finger finger[] = {
+        // Lengths are the tubes the previous 3.0e-4 m² bore played on pitch.
+        // The throat is now the Bach 42 .547 in bore. The fingers tuned
+        // for 1.0e-4 m² sat flat on the wider bore.
+        {466.16, 1.331, 4}, {440.00, 1.416, 4}, {392.00, 1.596, 4}, {349.23, 1.312, 3},
+        {523.25, 1.181, 4}, {329.63, 1.394, 3}, {293.66, 1.579, 3}, {554.37, 1.732, 6},
+        // D5 for the song passages: the Db5 row scaled, then lengthened by the
+        // +33 cents that scaling measured.
+        {587.33, 1.6435, 6},
+    };
+    auto find = [&](double hertz) {
+      for (const Finger& row : finger)
+        if (std::fabs(row.hertz - hertz) < 0.02) return row;
+      // Unlisted pitch: the nearest tuned row, same mode, with the cone
+      // (or, for mode 0, the tube) scaled by the frequency ratio.
+      const Finger* nearest = &finger[0];
+      for (const Finger& row : finger)
+        if (std::fabs(std::log(row.hertz / hertz)) <
+            std::fabs(std::log(nearest->hertz / hertz)))
+          nearest = &row;
+      const double apex = nearest->mode == 0 ? 0.0 : 0.60;
+      return Finger{hertz, (nearest->length + apex) * nearest->hertz / hertz - apex,
+                    nearest->mode};
+    };
+    const double total = excerpts::excerptSeconds(song);
+    std::cout << "trombone excerpt: Ravel, Boléro, trombone solo, through the "
+                 "high Db. Quarter = 72. Mechanism: slide length and lip "
+                 "resonance. No glissando.\n";
+    const double mass = 6.0e-5;
+    const double lip0 = 0.75 * speed / 2.75;
+    const double omega = constants::twoPi * lip0;
+    auto horn = unwrap(makeTrombone(TromboneSpec{3.05, 0.0, 3.0e-4, kAir, kTemp, 0.0, 1.0e-6,
+                                                 2.5e-5, 1.5e-2, mass, omega * omega * mass,
+                                                 2.0e-5, 0.0005}));
+    const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
+    ValveBlow bone = sustained(1600.0, 5000.0, kTromboneAttack);
+    bone.frames = frames;
+    bone.reflectionMagnitude = 0.999;
+    bone.initialDisplacementMeters = 0.0;
+    bone.tongueReleaseFrames = kTromboneTongue;
+    bone.brassiness = 1.0;
+    bone.reedTurbulence = 0.20;
+    // Scott's Bessel bell, Levine–Schwinger at the Bach 42 mouth.
+    // The cone apex stays 0.60 m. Kirchhoff's ring uses the .547 in
+    // slide; the cone area stays 3.0e-4 m², the area these lengths play.
+    applyScottBell(bone);
+    bone.wallRadiusMeters = kBach42BoreRadiusMeters;
+    auto voice = unwrap(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate));
+    std::vector<PhraseNote> notes;
+    double start = 0.0;
+    Finger held = finger[0];
+    for (const auto& src : song) {
+      const Finger row = src.hertz > 0.0 ? find(src.hertz) : held;
+      const double lipHz = 0.80 * conePartial(row.length, 0.60, row.mode);
+      push(notes, src, start, row.length, lipHz, 1600.0, 0.0, 25.0, 0.005);
+      notes.back().peakHz = impedancePeakHz(row.length, 0.60, row.mode, row.hertz);
+      if (src.hertz > 0.0) held = row;
+      start += src.seconds;
+    }
+    PlayerAirway airway(PlayerAirwaySpec{});
+    auto samples = renderPhrase(voice, notes, total, false, 0.50, &airway);
+    std::cout << "trombone airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
+    writePhraseNotes(notes, total, (stem + ".notes.csv").c_str());
+    reportPhrase(stem.c_str(), notes, samples, total, 0.15);
+    writePhrase(samples, (stem + ".wav").c_str(), kFs);
+  };
+  play_clarinet(excerpts::kBumblebee, "mmath-song-clarinet-bumblebee");
+  play_trumpet(excerpts::kUptownFunk, "mmath-song-trumpet-uptown-funk");
+  play_flute(excerpts::kDayInTheLife, "mmath-song-flute-day-in-the-life");
+  play_trombone(excerpts::kMountain, "mmath-song-trombone-mountain");
+  play_trumpet(excerpts::kTaps, "mmath-song-trumpet-taps");
+  play_flute(excerpts::kLondonBridge, "mmath-song-flute-london-bridge");
 }
 
 // Breath-stop rings. The tongue stays up: tongueReleaseFrames is 0.
