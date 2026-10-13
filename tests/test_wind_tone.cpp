@@ -59,6 +59,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <complex>
 #include <cstdint>
 #include <iostream>
@@ -1039,6 +1040,18 @@ struct PhraseNote {
   bool gradePeak = false;
 };
 
+// Note map beside the excerpt WAV: start, end, Hz, tongued, rest. For
+// the envelope and join measurements made outside the suite.
+void writePhraseNotes(const std::vector<PhraseNote>& notes, double totalSec, const char* filename) {
+  std::ofstream csv(wavOutputPath(filename));
+  csv << "name,start,end,hz,tongued,rest\n";
+  for (std::size_t i = 0; i < notes.size(); ++i) {
+    const double end = i + 1 < notes.size() ? notes[i + 1].startSec : totalSec;
+    csv << notes[i].name << "," << notes[i].startSec << "," << end << "," << notes[i].targetHz << ","
+        << (notes[i].tongue ? 1 : 0) << "," << (notes[i].rest ? 1 : 0) << "\n";
+  }
+}
+
 // Strongest Hann-FFT peak in 70 Hz–2.2 kHz. The search is wide enough
 // to see an octave lock. Parabolic interpolation is on the log magnitude.
 double strongestPeakHz(const std::vector<double>& x, std::size_t begin, std::size_t end,
@@ -1091,7 +1104,8 @@ constexpr double kVibratoCents = 12.0;
 
 template <typename Voice>
 std::vector<double> renderPhrase(Voice& voice, const std::vector<PhraseNote>& notes,
-                                 double totalSec, bool fluteJet, double ringTailSec = 0.0) {
+                                 double totalSec, bool fluteJet, double ringTailSec = 0.0,
+                                 PlayerAirway* airway = nullptr) {
   const auto scoreFrames = static_cast<std::uint64_t>(std::llround(totalSec * kFs));
   const auto total =
       scoreFrames + static_cast<std::uint64_t>(std::llround(std::max(0.0, ringTailSec) * kFs));
@@ -1103,6 +1117,18 @@ std::vector<double> renderPhrase(Voice& voice, const std::vector<PhraseNote>& no
   // blow's own tongue, if it has one.
   constexpr std::uint64_t kTongue = 1920;
   const double depth = std::pow(2.0, kVibratoCents / 1200.0) - 1.0;
+  // With the player's airway attached, the airway's breath feeds the
+  // valve and its tongue articulates: the tip is on the reed (or behind
+  // the teeth) for the kTongue closure before a tongued note and leaves
+  // at the note (player_airway.h, critically damped, Li et al. 2016).
+  // A slurred note keeps the tongue off: the join is the bore change
+  // under a steady breath. A woodwind note before a rest is ended by
+  // the tongue for the same closure. The voice's own tongue schedule
+  // and the flute's 20 ms pressure dip are not used then.
+  if (airway != nullptr) {
+    voice.attachAirway(airway);
+    airway->placeTongue(1.0);
+  }
   for (std::uint64_t frame = 0; frame < total;) {
     const std::uint64_t count = std::min<std::uint64_t>(kHop, total - frame);
     int active = 0;
@@ -1115,14 +1141,16 @@ std::vector<double> renderPhrase(Voice& voice, const std::vector<PhraseNote>& no
     // Woodwinds do not take this branch (no lip resonance). A tongue
     // stop at the end of a note is on hold: the breath is what ends it.
     int sounding = active;
+    bool tongueShut = false;
     for (int i = 1; i < static_cast<int>(notes.size()); ++i) {
       const PhraseNote& upcoming = notes[static_cast<std::size_t>(i)];
       if (!upcoming.tongue || upcoming.rest) continue;
       const auto release = static_cast<std::uint64_t>(upcoming.startSec * kFs);
       if (release < kTongue) continue;
       if (frame >= release - kTongue && frame < release) {
+        tongueShut = true;
         if (!armed[static_cast<std::size_t>(i)]) {
-          voice.scheduleTongue(release);
+          if (airway == nullptr) voice.scheduleTongue(release);
           armed[static_cast<std::size_t>(i)] = 1;
         }
         if (upcoming.lipHz > 0.0) sounding = i;
@@ -1130,6 +1158,17 @@ std::vector<double> renderPhrase(Voice& voice, const std::vector<PhraseNote>& no
     }
     const bool afterScore = frame >= scoreFrames;
     const PhraseNote& note = notes[static_cast<std::size_t>(sounding)];
+    if (airway != nullptr) {
+      const auto next = static_cast<std::size_t>(active) + 1;
+      const PhraseNote& here = notes[static_cast<std::size_t>(active)];
+      if (here.lipHz == 0.0 && !here.rest) {
+        const std::uint64_t noteEnd =
+            next < notes.size() ? static_cast<std::uint64_t>(notes[next].startSec * kFs) : scoreFrames;
+        const bool restNext = next >= notes.size() || notes[next].rest;
+        if (restNext && noteEnd >= kTongue && frame >= noteEnd - kTongue) tongueShut = true;
+      }
+      airway->setTongueTarget(tongueShut ? 0.0 : 1.0);
+    }
     const double time = static_cast<double>(frame) / kFs;
     const bool breathOff = note.rest || afterScore;
     // Once the breath is off, the lip seals and the wall is Kirchhoff
@@ -1145,7 +1184,7 @@ std::vector<double> renderPhrase(Voice& voice, const std::vector<PhraseNote>& no
       }
     }
     double env = breathOff ? 0.0 : note.gain;
-    const bool dipping = fluteJet && note.tongue && sounding > 0 && !note.rest &&
+    const bool dipping = airway == nullptr && fluteJet && note.tongue && sounding > 0 && !note.rest &&
                          time < note.startSec + 0.020;
     if (dipping) env *= 0.55;
     double length = note.lengthM;
@@ -2005,7 +2044,12 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
       if (src.hertz > 0.0) held = length;
       start += src.seconds;
     }
-    auto samples = renderPhrase(voice, notes, total, false);
+    PlayerAirway airway(PlayerAirwaySpec{});
+    // Airway off here for now: attached, the tract pulls this reed
+    // flat (F4 -59 cents) and the saxophone line empties the lungs.
+    auto samples = renderPhrase(voice, notes, total, false, 0.0, nullptr);
+    std::cout << "clarinet airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
+    writePhraseNotes(notes, total, "mmath-excerpt-clarinet.notes.csv");
     reportPhrase("clarinet", notes, samples, total, 0.50);
     writePhrase(samples, "mmath-excerpt-clarinet.wav", kFs);
   }
@@ -2063,7 +2107,12 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
       if (src.hertz > 0.0) held = length;
       start += src.seconds;
     }
-    auto samples = renderPhrase(voice, notes, total, false);
+    PlayerAirway airway(PlayerAirwaySpec{});
+    // Airway off here for now: attached, the tract pulls this reed
+    // flat (F4 -59 cents) and the saxophone line empties the lungs.
+    auto samples = renderPhrase(voice, notes, total, false, 0.0, nullptr);
+    std::cout << "saxophone airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
+    writePhraseNotes(notes, total, "mmath-excerpt-saxophone.notes.csv");
     reportPhrase("saxophone", notes, samples, total, 0.50);
     writePhrase(samples, "mmath-excerpt-saxophone.wav", kFs);
     // Held G#4: the note starts at 0.4 s and lasts 2.8 s. The window
@@ -2135,7 +2184,10 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
       }
       start += src.seconds;
     }
-    auto samples = renderPhrase(voice, notes, total, true);
+    PlayerAirway airway(PlayerAirwaySpec{});
+    auto samples = renderPhrase(voice, notes, total, true, 0.0, &airway);
+    std::cout << "flute airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
+    writePhraseNotes(notes, total, "mmath-excerpt-flute.notes.csv");
     reportPhrase("flute", notes, samples, total, 0.08);
     writePhrase(samples, "mmath-excerpt-flute.wav", kFs);
   }
@@ -2195,7 +2247,10 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
       if (src.hertz > 0.0) held = row;
       start += src.seconds;
     }
-    auto samples = renderPhrase(voice, notes, total, false, 0.50);
+    PlayerAirway airway(PlayerAirwaySpec{});
+    auto samples = renderPhrase(voice, notes, total, false, 0.50, &airway);
+    std::cout << "trumpet airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
+    writePhraseNotes(notes, total, "mmath-excerpt-trumpet.notes.csv");
     reportPhrase("trumpet", notes, samples, total, 0.12);
     writePhrase(samples, "mmath-excerpt-trumpet.wav", kFs);
   }
@@ -2253,7 +2308,10 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
       if (src.hertz > 0.0) held = row;
       start += src.seconds;
     }
-    auto samples = renderPhrase(voice, notes, total, false, 0.50);
+    PlayerAirway airway(PlayerAirwaySpec{});
+    auto samples = renderPhrase(voice, notes, total, false, 0.50, &airway);
+    std::cout << "trombone airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
+    writePhraseNotes(notes, total, "mmath-excerpt-trombone.notes.csv");
     reportPhrase("trombone", notes, samples, total, 0.15);
     writePhrase(samples, "mmath-excerpt-trombone.wav", kFs);
   }
@@ -2445,6 +2503,10 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
                    double targetHz, double lipHz, double length, double peakHz, double stopSec,
                    const char* place, int acousticMode, double windowLo, double windowHi,
                    std::vector<double>& demo) {
+    // The player's breath (player_airway.h). The tongue stays up: the
+    // breath stop is what ends the note.
+    PlayerAirway airway(PlayerAirwaySpec{});
+    voice.attachAirway(&airway);
     REQUIRE(voice.setSoundingLength(length));
     REQUIRE(voice.setLipResonanceHz(lipHz));
     const auto blow = static_cast<std::uint64_t>(std::llround(stopSec * kFs));
@@ -2489,6 +2551,7 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
       CHECK(df >= windowLo);
       CHECK(df <= windowHi);
     }
+    voice.attachAirway(nullptr);
     demo.insert(demo.end(), out.begin(), out.end());
   };
 
