@@ -38,8 +38,12 @@
 // tract wall is an inertance Lt = 900 kg m^-4 in series with a
 // compliance Ct = 7e-8 m^3/Pa, a shunt at the mouth (the tract is
 // compact against the wavelength there). Neither paper prints the wall
-// resistance; the default is UNSOURCED and is the critical damping of
-// that series pair scaled by wallDampingRatio (also UNSOURCED).
+// resistance. It is taken from the wall's own resistance-to-mass ratio:
+// Ishizaka, French and Flanagan (IEEE Trans. ASSP 23, 370-373, 1975),
+// relaxed cheek, per unit area Lw = 2.1 g/cm^2, Rw = 800 g cm^-2 s^-1
+// (as tabulated by Wakita and Fant, STL-QPSR 19(1), 9-29, 1978). The
+// ratio Rw/Lw = 381 s^-1 is area-free, so R = Lt Rw/Lw = 3.4e5 Pa s/m^3,
+// 1.5 times critical for the Hanna pair.
 //
 // Mouth boundary. The valve draws the volume flow U. The steady part of
 // that flow is the breath; the waveguide carries only U minus its
@@ -95,8 +99,9 @@ struct PlayerAirwaySpec {
   // Hanna et al. 2012 via Boutin et al. 2015.
   double wallInertanceKgPerM4 = 900.0;
   double wallComplianceM3PerPa = 7.0e-8;
-  // UNSOURCED: fraction of critical damping of the wall pair.
-  double wallDampingRatio = 0.5;
+  // Wall resistance over wall inertance, s^-1: Ishizaka et al. (1975),
+  // relaxed cheek, 800 / 2.1.
+  double wallResistancePerInertance = 800.0 / 2.1;
   // Kirchhoff loss is fitted at this frequency (argument).
   double lossMatchHz = 500.0;
   // Li et al. 2016: reed back at equilibrium about 8 ms after release.
@@ -279,8 +284,7 @@ class PlayerAirway {
     refreshJunctions();
     tongueOmega_ = 3.36 / spec_.tongueReleaseSeconds;
     meanAlpha_ = 1.0 - std::exp(-constants::twoPi * spec_.meanFlowCornerHz / spec_.sampleRateHz);
-    wallR_ = 2.0 * spec_.wallDampingRatio *
-             std::sqrt(spec_.wallInertanceKgPerM4 / spec_.wallComplianceM3PerPa);
+    wallR_ = spec_.wallInertanceKgPerM4 * spec_.wallResistancePerInertance;
     lungVolume_ = spec_.initialLungVolumeM3;
   }
 
