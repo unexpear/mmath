@@ -2898,10 +2898,10 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
     if (prev > pprev && prev > a) std::cout << "zpeak " << pf << " " << 20 * std::log10(prev / zc) << "\n";
     pprev = prev; prev = a; pf = f;
   }
-  for (int steep : {0, 1})
+  for (int steep : {1})
   for (int var = 2; var < 3; ++var)
-  for (double p : {6000.0, 10000.0, 15000.0}) {
-    for (double lipHz : {165.0, 180.0}) {
+  for (double p : {15000.0, 22000.0}) {
+    for (double lipHz : {140.0, 150.0, 158.0}) {
       const double lipMass = 3.0e-5, om = constants::twoPi * lipHz;
       TrumpetSpec spec{1.45, constants::pi * 0.00185 * 0.00185, kAir, kTemp, 0.0, 1.0e-8, 1.5e-5, 1.2e-2,
                        lipMass, om * om * lipMass, 1.5e-5, 0.001};
@@ -2976,6 +2976,18 @@ TEST_CASE("measured bore kernel impedance", "[.kernelexp]") {
   double sum0 = 0; for (double v : k.reflection) sum0 += std::fabs(v);
   std::cout << "kernel tap0 " << k.reflection[0] << " tap1 " << k.reflection[1] << " sum|r| " << sum0
             << " tail " << k.reflection.back() << "\n";
+  for (int hk = 1; hk <= 8; ++hk) {
+    const double f = 233.08 * hk; std::complex<double> R(0, 0), U(0, 0), Re, Ue;
+    for (std::size_t t = 0; t < k.reflection.size(); ++t) {
+      const auto e = std::exp(std::complex<double>(0, -constants::twoPi * f * t / kFs));
+      R += k.reflection[t] * e; U += k.mouthFlow[t] * e;
+    }
+    const double zc = rho * speed / (constants::pi * 0.00185 * 0.00185);
+    evaluate(f, rho, speed, zc, 0.0, {}, nullptr, &Re, &Ue);
+    const double T = constants::twoPi * f * rho / (4 * constants::pi) * std::abs(U / (1.0 + R));
+    const double Te = constants::twoPi * f * rho / (4 * constants::pi) * std::abs(Ue / (1.0 + Re));
+    std::cout << "xfer h" << hk << " kernel " << 20 * std::log10(T) << " exact " << 20 * std::log10(Te) << "\n";
+  }
   for (int skip0 : {0, 1}) {
     double prev = 0, pprev = 0, pf = 0;
     for (double f = 30; f < 1500; f += 0.5) {
