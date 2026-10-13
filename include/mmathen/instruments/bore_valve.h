@@ -63,6 +63,7 @@
 #include "../render/voice.h"
 #include "clarinet.h"
 #include "flute.h"
+#include "player_airway.h"
 #include "saxophone.h"
 #include "trombone.h"
 #include "trumpet.h"
@@ -641,6 +642,12 @@ class BoreValveVoice final : public IVoice {
     if (out == nullptr) return R::failure(QuantityError::InvalidArgument);
     const double dt = 1.0 / rate_.value();
     for (std::uint64_t i = 0; i < count; ++i) {
+      // The player's airway, when attached, turns the blowing-pressure
+      // schedule into the lung target and returns the mouth pressure
+      // with the tract's acoustic answer on it (player_airway.h).
+      if (airway_ != nullptr)
+        airMouth_ = airway_->mouthPressure(valve_detail::blowingPressure(
+            pressure_, blowFrames_, attackFrames_, releaseFrames_, frame_));
       // Wall loss is on the trip. The reflection cutoff shapes only the
       // wave that returns: an open end radiates what it does not reflect,
       // the same split ConeValveVoice uses. Filtering the incident wave
@@ -708,10 +715,15 @@ class BoreValveVoice final : public IVoice {
       }
       out[i] = radiated;
       if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);
+      if (airway_ != nullptr) airway_->step(apertureFlow_);
       ++frame_;
     }
     return R::success(n);
   }
+
+  // Couple the player's airway (not owned). Null detaches it; the mouth
+  // pressure is then the blowing-pressure schedule itself.
+  void attachAirway(PlayerAirway* airway) { airway_ = airway; }
 
   void reset() override {
     std::fill(line_.begin(), line_.end(), 0.0);
@@ -1033,8 +1045,14 @@ class BoreValveVoice final : public IVoice {
   }
 
   [[nodiscard]] double mouthNow() const {
+    if (airway_ != nullptr) return airMouth_;
     return valve_detail::blowingPressure(pressure_, blowFrames_, attackFrames_,
                                          releaseFrames_, frame_);
+  }
+
+  // Tongue contact on the valve (1 when no airway is attached).
+  [[nodiscard]] double tongueOpen() const {
+    return airway_ != nullptr ? airway_->tongueOpenFraction() : 1.0;
   }
 
   [[nodiscard]] Result<double, QuantityError> solveDelta(
@@ -1088,9 +1106,12 @@ class BoreValveVoice final : public IVoice {
       displacement_ = initialDisplacement_;
       velocity_ = 0.0;
     }
-    auto opening =
+    auto reedArea =
         reedAreaAtDisplacement(reed_.reed, reed_.inertia, displacement_);
-    if (!opening.ok()) return R::failure(opening.error());
+    if (!reedArea.ok()) return R::failure(reedArea.error());
+    // The tongue on the reed shuts part of the channel (Li et al. 2016).
+    const Result<double, QuantityError> opening =
+        Result<double, QuantityError>::success(reedArea.value() * tongueOpen());
     const double target = mouth - 2.0 * incoming;
     auto delta = solveDelta(opening.value(), target);
     if (!delta.ok()) return R::failure(delta.error());
@@ -1141,6 +1162,7 @@ class BoreValveVoice final : public IVoice {
     // Same closed stop as the cone: a tongue is a shut lip, not a
     // roundoff slit. See ConeValveVoice.
     if (tongued || !open) opening = 0.0;
+    opening *= tongueOpen();
     // Same roundoff slit as ConeValveVoice: the closed stop does not
     // multiply back to zero, and the pressure search then fails.
     if (restOpening_ > 0.0 && opening < restOpening_ * 1.0e-6) opening = 0.0;
@@ -1184,7 +1206,8 @@ class BoreValveVoice final : public IVoice {
     if (mouth > 0.0) {
       auto flow = fluteJetFlow(jetFlute(), mouth);
       if (!flow.ok()) return R::failure(flow.error());
-      jetFlow = flow.value();
+      // The tongue behind the teeth cuts the jet's supply area.
+      jetFlow = flow.value() * tongueOpen();
     }
     double yEdge = flueY_;
     if (!jetDelay_.empty()) {
@@ -1291,6 +1314,8 @@ class BoreValveVoice final : public IVoice {
   double breathState_ = 0.0;
   double flowMean_ = 0.0;
   double apertureFlow_ = 0.0;
+  PlayerAirway* airway_ = nullptr;
+  double airMouth_ = 0.0;
   double bellFlow_ = 0.0;
   double radiationState_ = 0.0;
   double radiationCorner_ = 1.0;

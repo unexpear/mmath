@@ -124,6 +124,10 @@ class ConeValveVoice final : public IVoice {
       const bool open = frame_ < blowFrames_;
       double mouth = valve_detail::blowingPressure(
           pressure_, blowFrames_, attackFrames_, releaseFrames_, frame_);
+      // The player's airway, when attached: lung target in, mouth
+      // pressure with the tract's acoustic answer out (player_airway.h).
+      if (airway_ != nullptr) mouth = airway_->mouthPressure(mouth);
+      const double tongueOpen = airway_ != nullptr ? airway_->tongueOpenFraction() : 1.0;
       // A disturbance of this blowing pressure is cancelled by the pressure
       // search, so it does not radiate, and on the shorter tubes it is
       // enough to lock the second mode. The fraction is applied to the
@@ -173,11 +177,13 @@ class ConeValveVoice final : public IVoice {
         // not change sign, and a sounding bore aborts the note. A buzz
         // is a finite fraction of the rest opening, so this cut is
         // roundoff, not a lip area.
+        opening *= tongueOpen;
         if (restOpening_ > 0.0 && opening < restOpening_ * 1.0e-6) opening = 0.0;
       } else if (open && mouth > 0.0) {
         auto area = reedAreaAtDisplacement(reed_, inertia_, displacement_);
         if (!area.ok()) return R::failure(area.error());
-        opening = area.value();
+        // The tongue on the reed shuts part of the channel (Li et al. 2016).
+        opening = area.value() * tongueOpen;
       }
       auto solved = solvePressure(opening, mouth, known, beta, cupCoeff_, cupPressure_);
       if (!solved.ok()) return R::failure(solved.error());
@@ -279,6 +285,7 @@ class ConeValveVoice final : public IVoice {
             /*sustain=*/!lip_, &lipLocked_);
       }
       out[i] = radiated;
+      if (airway_ != nullptr) airway_->step(apertureFlow_);
       if (!std::isfinite(out[i])) return R::failure(QuantityError::RangeError);
       ++frame_;
     }
@@ -475,6 +482,9 @@ class ConeValveVoice final : public IVoice {
     soundingLength_ = lengthMeters;
     return true;
   }
+
+  // Couple the player's airway (not owned). Null detaches it.
+  void attachAirway(PlayerAirway* airway) { airway_ = airway; }
 
   // Threshold blowing pressure of the pressed embouchure, Pa. Zero is a
   // lip that rests open at the rest area. See lipPreload().
@@ -898,6 +908,7 @@ class ConeValveVoice final : public IVoice {
   double listener_ = 1.0;
   double bellScale_ = 1.0;
   double lipThresholdPa_ = 0.0;
+  PlayerAirway* airway_ = nullptr;
   bool lipLocked_ = false;
   double bellFlow_ = 0.0;
   double radiationState_ = 0.0;

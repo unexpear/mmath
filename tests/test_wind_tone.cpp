@@ -2611,3 +2611,126 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
     writePhrase(demo, "mmath-trombone-breath-release.wav", kFs);
   }
 }
+
+
+namespace {
+// Block render with the airway driven between blocks.
+std::vector<double> renderAirway(IVoice& voice, PlayerAirway& airway, std::uint64_t frames,
+                                 const std::vector<std::pair<std::uint64_t, double>>& tongue) {
+  std::vector<double> samples(static_cast<std::size_t>(frames));
+  std::uint64_t at = 0;
+  std::size_t next = 0;
+  while (at < frames) {
+    while (next < tongue.size() && tongue[next].first <= at) airway.setTongueTarget(tongue[next++].second);
+    std::uint64_t end = frames;
+    if (next < tongue.size()) end = std::min(end, tongue[next].first);
+    REQUIRE(voice.renderBlock(samples.data() + at, FrameCount{end - at}).ok());
+    at = end;
+  }
+  for (double sample : samples) REQUIRE(std::isfinite(sample));
+  return samples;
+}
+// RMS level in dB over 20 ms windows from begin to end.
+std::vector<double> envelopeDb(const std::vector<double>& x, std::size_t begin, std::size_t end) {
+  std::vector<double> out;
+  const std::size_t w = 960;
+  for (std::size_t i = begin; i + w <= end; i += w / 2) {
+    double e = 0.0;
+    for (std::size_t j = i; j < i + w; ++j) e += x[j] * x[j];
+    out.push_back(10.0 * std::log10(e / static_cast<double>(w) + 1.0e-30));
+  }
+  return out;
+}
+}  // namespace
+
+TEST_CASE("player airway shapes breath and tongue", "[contact][wind][airway]") {
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  const double clarinetHz = speed / (4.0 * 0.45);
+  const std::uint64_t frames = 3 * 48000;
+  PlayerAirwaySpec spec;
+  auto blowFor = [&]() {
+    ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack);
+    blow.frames = frames;
+    return blow;
+  };
+  // Sustained note holds within 1 dB once the attack is over: the lungs
+  // drain and recoil but the delivered pressure is regulated.
+  {
+    PlayerAirway airway(spec);
+    auto voice = unwrap(BoreValveVoice::fromClarinet(workingClarinet(0.45),
+                                                     blowFor(), kRate));
+    voice.attachAirway(&airway);
+    auto x = renderAirway(voice, airway, frames, {});
+    auto env = envelopeDb(x, 24000, frames);
+    const auto [lo, hi] = std::minmax_element(env.begin(), env.end());
+    std::cout << "airway sustain spread " << (*hi - *lo) << " dB, lung "
+              << airway.lungVolumeM3() * 1e3 << " L\n";
+    CHECK(*hi - *lo < 2.0);  // +-1 dB
+    CHECK(airway.lungVolumeM3() < spec.initialLungVolumeM3);
+    // The airway must not detune the reed: compare with the bare voice.
+    auto bare = unwrap(BoreValveVoice::fromClarinet(workingClarinet(0.45), blowFor(), kRate));
+    auto y = renderOf(bare, frames);
+    const double fa = periodNear(x, 70000, clarinetHz, kFs).frequencyHz;
+    const double fb = periodNear(y, 70000, clarinetHz, kFs).frequencyHz;
+    std::cout << "airway pitch " << fa << " Hz, bare " << fb << " Hz\n";
+    CHECK(std::fabs(1200.0 * std::log2(fa / fb)) < 25.0);
+  }
+  // Legato tonguing (a light "da", tongue to 60% open) dips 3 dB or
+  // less; a full tongue stop silences the reed.
+  {
+    auto dip = [&](double depth, std::uint64_t hold) {
+      PlayerAirway airway(spec);
+      auto voice = unwrap(BoreValveVoice::fromClarinet(workingClarinet(0.45),
+                                                       blowFor(), kRate));
+      voice.attachAirway(&airway);
+      auto x = renderAirway(voice, airway, frames, {{72000, depth}, {72000 + hold, 1.0}});
+      auto before = envelopeDb(x, 48000, 70000);
+      auto join = envelopeDb(x, 72000, 72000 + 9600);
+      double ref = 0.0;
+      for (double v : before) ref += v;
+      ref /= static_cast<double>(before.size());
+      return ref - *std::min_element(join.begin(), join.end());
+    };
+    const double legato = dip(0.6, 1440);  // 30 ms touch
+    const double stop = dip(0.0, 7200);  // 150 ms stop
+    std::cout << "airway legato dip " << legato << " dB, tongue stop dip " << stop << " dB\n";
+    CHECK(legato <= 3.0);
+    CHECK(stop > 10.0);
+  }
+  // The tract shape moves the tone: an "ee" constriction against an
+  // open "ah" tract changes pitch or spectral centroid.
+  {
+    auto render = [&](bool ee) {
+      PlayerAirway airway(spec);
+      if (ee) REQUIRE(airway.setTongueBody(0.8, 3.0e-5));
+      auto voice = unwrap(BoreValveVoice::fromClarinet(workingClarinet(0.45),
+                                                       blowFor(), kRate));
+      voice.attachAirway(&airway);
+      return renderAirway(voice, airway, frames, {});
+    };
+    auto ah = render(false);
+    auto ee = render(true);
+    const double fa = periodNear(ah, 96000, clarinetHz, kFs).frequencyHz;
+    const double fe = periodNear(ee, 96000, clarinetHz, kFs).frequencyHz;
+    auto centroid = [](const std::vector<double>& x) {
+      double num = 0.0, den = 0.0;
+      for (int k = 1; k < 2000; ++k) {
+        double re = 0.0, im = 0.0;
+        const double w = 2.0 * 3.14159265358979323846 * k * 4.0 / 48000.0;  // 4 Hz bins
+        for (std::size_t n = 96000; n < 96000 + 12000; ++n) {
+          re += x[n] * std::cos(w * static_cast<double>(n));
+          im += x[n] * std::sin(w * static_cast<double>(n));
+        }
+        const double m = re * re + im * im;
+        num += m * k * 4.0;
+        den += m;
+      }
+      return num / den;
+    };
+    const double ca = centroid(ah), ce = centroid(ee);
+    const double cents = 1200.0 * std::log2(fe / fa);
+    const double shift = std::fabs(ce / ca - 1.0);
+    std::cout << "airway tract: pitch shift " << cents << " cents, centroid " << ca << " -> " << ce << "\n";
+    CHECK((std::fabs(cents) > 3.0 || shift > 0.03));
+  }
+}
