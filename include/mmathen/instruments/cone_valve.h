@@ -222,8 +222,13 @@ class ConeValveVoice final : public IVoice {
         const double delta = mouth - pressure;
         double acceleration = 0.0;
         if (lip_) {
+          // Two-lip contact, when enabled, is measured from this voice's
+          // closed stop, which carries the threshold preload.
+          Trumpet lipNow = trumpet_;
+          if (lipNow.lipCollisionStiffness > 0.0)
+            lipNow.lipClosureMeters = lipPreload() - restOpening_ / slitWidth_;
           auto stepped =
-              trumpetLipAcceleration(trumpet_, displacement_, velocity_, delta);
+              trumpetLipAcceleration(lipNow, displacement_, velocity_, delta);
           if (!stepped.ok()) return R::failure(stepped.error());
           acceleration = stepped.value();
         } else {
@@ -282,7 +287,7 @@ class ConeValveVoice final : public IVoice {
         radiated += valve_detail::reedApertureBreath(
             flowMean_, breathEnv_, noise_, breathState_, apertureFlow_, radiated,
             reedTurbulence_, density_, listener_, trip, rate_.value(), period,
-            /*sustain=*/!lip_, &lipLocked_);
+            /*sustain=*/!lip_, &lipLocked_, lockedBreath_);
       }
       out[i] = radiated;
       if (airway_ != nullptr) airway_->step(apertureFlow_);
@@ -523,6 +528,7 @@ class ConeValveVoice final : public IVoice {
         releaseFrames_(blow.releaseFrames),
         tongueFrames_(blow.tongueReleaseFrames),
         reedTurbulence_(blow.reedTurbulence),
+        lockedBreath_(blow.lockedBreathFraction),
         fundamentalHz_(fundamentalHz),
         lip_(lip),
         radiating_(radiating),
@@ -827,6 +833,15 @@ class ConeValveVoice final : public IVoice {
     if (!(slitWidth_ > 0.0)) return;
     const double yMin = lipPreload() - restOpening_ / slitWidth_;
     const double yMax = lipPreload() + (maximumOpening_ - restOpening_) / slitWidth_;
+    // With the two-lip contact the closed lips push back elastically
+    // instead of stopping dead.
+    if (trumpet_.lipCollisionStiffness > 0.0) {
+      if (displacement_ > yMax) {
+        displacement_ = yMax;
+        if (velocity_ > 0.0) velocity_ = 0.0;
+      }
+      return;
+    }
     if (displacement_ < yMin) {
       displacement_ = yMin;
       if (velocity_ < 0.0) velocity_ = 0.0;
@@ -925,6 +940,7 @@ class ConeValveVoice final : public IVoice {
   double playingWallPole_ = 0.0;
   bool playingWallSaved_ = false;
   double reedTurbulence_ = 0.0;
+  double lockedBreath_ = -1.0;
   double brassiness_ = 0.0;
   double soundingLength_ = 0.0;
   double prevOutgoing_ = 0.0;

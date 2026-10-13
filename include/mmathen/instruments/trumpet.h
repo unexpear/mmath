@@ -90,6 +90,17 @@ struct Trumpet {
   double lipPressureAreaM2 = 0.0;
   double lipDampingNewtonSecondsPerMeter = 0.0;
   double lipResonanceHz = 0.0;
+  // Two-lip closure (off by default). The opening is S0 + w y with the
+  // two lips moving symmetrically; they meet at y_c = -S0 / w. Past
+  // that they push on each other with a contact spring and damper,
+  // the collision of Ishizaka and Flanagan, BSTJ 51, 1233-1268 (1972):
+  // contact stiffness 3k and damping ratio 1.1 (0.1 open). The lip
+  // itself is the outward-striking mass of Adachi and Sato, JASA 99,
+  // 1200-1209 (1996), and Cullen, Gilbert and Campbell, Acta Acustica
+  // 86, 704-724 (2000). Zero stiffness keeps the old free lip.
+  double lipCollisionStiffness = 0.0;
+  double lipCollisionDamping = 0.0;
+  double lipClosureMeters = 0.0;
   const char* source = nullptr;
 };
 
@@ -352,9 +363,28 @@ trumpetMouthpieceImpedance(const Trumpet& trumpet, double frequencyHz) {
       trumpet.lipPressureAreaM2 * overpressurePa -
       trumpet.lipStiffnessNewtonsPerMeter * displacementMeters -
       trumpet.lipDampingNewtonSecondsPerMeter * velocityMetersPerSecond;
-  const double acceleration = force / trumpet.lipMassKg;
+  double contact = 0.0;
+  if (trumpet.lipCollisionStiffness > 0.0 &&
+      displacementMeters < trumpet.lipClosureMeters) {
+    const double pen = displacementMeters - trumpet.lipClosureMeters;
+    contact = -trumpet.lipCollisionStiffness * pen -
+              trumpet.lipCollisionDamping * velocityMetersPerSecond;
+  }
+  const double acceleration = (force + contact) / trumpet.lipMassKg;
   if (!std::isfinite(acceleration)) return R::failure(QuantityError::RangeError);
   return R::success(acceleration);
+}
+
+// Turns on the two-lip closure with the Ishizaka-Flanagan contact
+// (3k, damping ratio 1.1 while closed). See Trumpet::lipCollisionStiffness.
+inline void enableLipCollision(Trumpet& trumpet) {
+  const double k = trumpet.lipStiffnessNewtonsPerMeter;
+  const double m = trumpet.lipMassKg;
+  trumpet.lipCollisionStiffness = 3.0 * k;
+  trumpet.lipCollisionDamping =
+      2.0 * 1.1 * std::sqrt(m * 4.0 * k) - trumpet.lipDampingNewtonSecondsPerMeter;
+  if (trumpet.lipCollisionDamping < 0.0) trumpet.lipCollisionDamping = 0.0;
+  trumpet.lipClosureMeters = -trumpet.restOpeningAreaM2 / trumpet.slitWidthMeters;
 }
 
 // Far-end reflection −1. p− = −p+_delayed. Flow into the bore is

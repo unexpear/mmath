@@ -1,3 +1,4 @@
+#include <cstdlib>
 // Sustained wind tones.
 //
 // A blown wind is a limit cycle, not the ring after the player stops.
@@ -441,8 +442,13 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     // power is about −118 dB, the reading reported as digital silence.
     // Louder than −54 dB keeps a doubled reading past about −108 dB.
     // Quieter than −40 dB stays under the partials that are the tone.
-    CHECK(clarFloor > -54.0);
-    CHECK(clarFloor < -40.0);
+    // Locked breath 0.013 of the tone (lockedBreathFraction). The
+    // University of Iowa MIS Bb clarinet ff A4, D4, G4, D5 (measurement
+    // reference only) read -70.7, -70.8, -75.6, -74.9 dB on this median,
+    // median -72.8 dB; 4-10 kHz off-harmonic noise -41.3 dB re total
+    // (model -37.9). +/-6 dB around -72.8 is UNSOURCED.
+    CHECK(clarFloor > -79.0);
+    CHECK(clarFloor < -66.8);
   } else if (tone.spectrum == Spectrum::Flute) {
     // Fletcher, JASA 57, 233–244 (1975): in the middle octave the
     // second and third partials sit within about 10 dB of the
@@ -499,8 +505,13 @@ void checkSpectrum(const Tone& tone, double f0, double rate) {
     // near −120 dB is the converter and fails.
     const double floorDb = offHarmonicFloorDb(x, a, f0, rate);
     std::cout << tone.name << " interharmonic floor " << floorDb << " dB\n";
-    CHECK(floorDb >= -50.0);
-    CHECK(floorDb < -40.0);
+    // Locked breath 0.0176 of the tone (lockedBreathFraction). The
+    // University of Iowa MIS alto sax NoVib ff A4, D4, G4 (measurement
+    // reference only) read -79.3, -70.4, -77.2 dB on this median, median
+    // -77.2 dB; 4-10 kHz off-harmonic noise -45.4 dB re total (model
+    // -48.5). +/-6 dB around -77.2 is UNSOURCED.
+    CHECK(floorDb > -83.2);
+    CHECK(floorDb < -71.2);
   } else {
     CHECK(above >= 8);
     CHECK(evens >= 1);
@@ -1592,6 +1603,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // it scales the reed-period monopole; once the tone is up it scales
   // the round-trip envelope. Zero leaves a line spectrum.
   clarinetBlow.reedTurbulence = 0.40;
+  clarinetBlow.lockedBreathFraction = 0.013;  // Iowa MIS Bb clarinet ff, see lockedBreathFraction note
   auto clarinetVoice = unwrap(BoreValveVoice::fromClarinet(clarinet, clarinetBlow, kRate));
   auto clarinetSamples = renderOf(clarinetVoice, kFrames);
   checkTone(Tone{"clarinet", clarinetHz, Spectrum::Clarinet, clarinetSamples}, kFs);
@@ -1690,6 +1702,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   ValveBlow saxBlow = sustained(4200.0, 1500.0, kSaxophoneAttack);
   saxBlow.initialDisplacementMeters = 1.0e-5;
   saxBlow.reedTurbulence = 0.55;
+  saxBlow.lockedBreathFraction = 0.0176;  // Iowa MIS alto sax NoVib ff, see lockedBreathFraction note
   saxBlow.spectrumBreakHz = 837.0;
   auto saxVoice =
       unwrap(ConeValveVoice::fromSaxophone(saxophone, saxBlow, kRate));
@@ -1781,7 +1794,10 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   TrumpetSpec trumpetSpec{trumpetLength, 1.09e-4, kAir,       kTemp, 0.0,
                           8.0e-7,        1.5e-5,  1.2e-2,     lipMass,
                           lipStiffness,  1.2e-5,  0.001};
-  const auto trumpet = unwrap(makeTrumpet(trumpetSpec));
+  auto trumpet = unwrap(makeTrumpet(trumpetSpec));
+  // enableLipCollision(trumpet) is the two-lip contact; off here. At
+  // this rest opening the lip never closes (0 of 1.6e5 samples), so the
+  // contact changes nothing and the series stays dark. See the report.
   // Apex 0.26 m is an argument. A shorter apex leaves the lip growing for
   // about 0.4 s; this distance reaches a steady second-register tone on
   // the Luce and Clark timescale while the harmonic series stays bright.
@@ -2053,6 +2069,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack);
     blow.frames = frames;
     blow.reedTurbulence = 0.40;
+    blow.lockedBreathFraction = 0.013;  // Iowa MIS Bb clarinet ff, see lockedBreathFraction note
     auto voice = unwrap(BoreValveVoice::fromClarinet(clarinet, blow, kRate));
     std::vector<PhraseNote> notes;
     double start = 0.0;
@@ -2111,6 +2128,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     blow.frames = frames;
     blow.initialDisplacementMeters = 1.0e-5;
     blow.reedTurbulence = 0.55;
+    blow.lockedBreathFraction = 0.0176;  // Iowa MIS alto sax NoVib ff, see lockedBreathFraction note
     blow.spectrumBreakHz = 837.0;
     auto voice = unwrap(ConeValveVoice::fromSaxophone(sax, blow, kRate));
     std::vector<PhraseNote> notes;
@@ -2141,7 +2159,9 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
         measurePlaybackWav("mmath-excerpt-saxophone.wav", 1.20, 2.80);
     CHECK(heldNote.fundamentalHz > 400.0);
     CHECK(heldNote.fundamentalHz < 430.0);
-    CHECK(heldNote.floorDb >= -50.0);
+    // Iowa MIS alto sax median -77.2 dB, +/-6 UNSOURCED (see limit cycle).
+    CHECK(heldNote.floorDb > -83.2);
+    CHECK(heldNote.floorDb < -71.2);
     CHECK(heldNote.evensWithin40 >= 1);
   }
 
@@ -2430,6 +2450,7 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack);
     blow.frames = frames;
     blow.reedTurbulence = 0.40;
+    blow.lockedBreathFraction = 0.013;  // Iowa MIS Bb clarinet ff, see lockedBreathFraction note
     auto voice = unwrap(BoreValveVoice::fromClarinet(clarinet, blow, kRate));
     std::vector<PhraseNote> notes;
     double start = 0.0;

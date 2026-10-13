@@ -696,7 +696,8 @@ class BoreValveVoice final : public IVoice {
             reed_.inertia.resonanceHz > 0.0 ? 1.0 / reed_.inertia.resonanceHz : 0.0;
         radiated += valve_detail::reedApertureBreath(
             flowMean_, breathEnv_, noise_, breathState_, apertureFlow_, radiated,
-            reedTurbulence_, density_, listener_, trip, rate_.value(), reedPeriod);
+            reedTurbulence_, density_, listener_, trip, rate_.value(), reedPeriod, true,
+            nullptr, lockedBreath_);
       } else if (reedTurbulence_ > 0.0 && law_ == ValveLaw::Jet && open && mouth > 0.0) {
         // Fletcher, Acustica 34 (1976), and Coltman: the jet and the
         // edge-tone noise are present before the pipe locks. The
