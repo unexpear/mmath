@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // Audition excerpts as note data. Pitch is concert (A4 = 440). Duration is
 // seconds at the score tempo. A tongued note is articulated; a note under a
@@ -10,17 +10,12 @@
 // Public domain, as of 2026. No engraved edition is copied. Grace notes are
 // left out: an acciaccatura is shorter than a bore retune.
 
+#include <mmathen/instruments/wind_presets.h>
+
 namespace mmathen {
 namespace excerpts {
 
-struct Note {
-  const char* name;
-  double hertz;
-  double seconds;
-  bool tongued;
-  bool vibrato;
-  const char* dynamic;
-};
+using Note = ScoreNote;
 
 // Mozart, Clarinet Concerto K.622, second movement, opening. The clarinet
 // in A part (written, key of F) sounded a minor third down, quarter = 60.
@@ -53,7 +48,7 @@ inline const Note kSaxophone[] = {
     {"G#3", 207.65, 2.4, false, true, "p"},
 };
 
-// Debussy, Prélude à l'après-midi d'un faune, opening flute, bars 1–2.
+// Debussy, PrÃ©lude Ã  l'aprÃ¨s-midi d'un faune, opening flute, bars 1â€“2.
 // Quarter = 44, the score's metronome. The statement and its repeat. The
 // whole descent is one slur; the repeat takes a new breath.
 inline const Note kFlute[] = {
@@ -96,7 +91,7 @@ inline const Note kTrumpet[] = {
     {"F4", 349.23, 60.0 / 91.0, true, false, "f"},
 };
 
-// Ravel, Boléro, trombone theme (theme B), quarter = 72, mf sostenuto.
+// Ravel, BolÃ©ro, trombone theme (theme B), quarter = 72, mf sostenuto.
 // From the opening Bb through the repeated high Db. A glissando in the part
 // is not a slide here: brass length changes at the note. The later
 // acciaccatura is outside this cut.
@@ -137,8 +132,6 @@ inline const Note kTrombone[] = {
 // Rimsky-Korsakov, Flight of the Bumblebee: the falling chromatic figure,
 // hand-written an octave and a fourth down into the clarinet rows A3-A4.
 inline const Note kBumblebee[] = {
-    // Lead-in rest: the breath and airway settle before the first note.
-    {"rest", 0.00, 0.560, false, false, "f"},
     {"A4", 440.00, 0.110, true, false, "f"},
     {"G#4", 415.30, 0.110, false, false, "f"},
     {"G4", 392.00, 0.110, false, false, "f"},
@@ -208,8 +201,6 @@ inline const Note kBumblebee[] = {
 // Uptown Funk horn riff, hand-written D-minor hits on the tuned trumpet
 // pitches. An arrangement, not a transcription of the record.
 inline const Note kUptownFunk[] = {
-    // Lead-in rest: the breath and airway settle before the first note.
-    {"rest", 0.00, 0.560, false, false, "f"},
     {"D5", 587.33, 0.200, true, false, "f"},
     {"rest", 0.00, 0.200, false, false, "f"},
     {"D5", 587.33, 0.200, true, false, "f"},
@@ -279,8 +270,6 @@ inline const Note kDayInTheLife[] = {
 
 // She'll Be Coming 'Round the Mountain (traditional), in Bb.
 inline const Note kMountain[] = {
-    // Lead-in rest: the breath and airway settle before the first note.
-    {"rest", 0.00, 0.560, false, false, "mf"},
     {"F4", 349.23, 0.280, true, false, "mf"},
     {"G4", 392.00, 0.280, true, false, "mf"},
     {"Bb4", 466.16, 0.280, true, false, "mf"},
@@ -365,8 +354,6 @@ inline const Note kLondonBridge[] = {
 // trombone the chord bass on beats 1 and 3 from the first downbeat.
 // Lead: the plain melody.
 inline const Note kSaintsTrumpet[] = {
-    // Lead-in rest, the same 0.56 s on every part: the breath and airway settle.
-    {"rest", 0.00, 0.560, false, false, "f"},
     {"F4", 349.23, 0.280, true, false, "f"},
     {"A4", 440.00, 0.280, true, false, "f"},
     {"Bb4", 466.16, 0.280, true, false, "f"},
@@ -406,8 +393,6 @@ inline const Note kSaintsTrumpet[] = {
 
 // Harmony: a 3rd or 6th under the melody, same rhythm and tongue (A3..A4 tuned range).
 inline const Note kSaintsClarinet[] = {
-    // Lead-in rest, the same 0.56 s on every part: the breath and airway settle.
-    {"rest", 0.00, 0.560, false, false, "mf"},
     {"A3", 220.00, 0.280, true, false, "mf"},
     {"F4", 349.23, 0.280, true, false, "mf"},
     {"G4", 392.00, 0.280, true, false, "mf"},
@@ -447,8 +432,6 @@ inline const Note kSaintsClarinet[] = {
 
 // Bass: chord root on beats 1 and 3 (F4; C7 on its 3rd E4, Bb on its 5th F4: the tuned range is F4..D5, E4 lowest).
 inline const Note kSaintsTrombone[] = {
-    // Lead-in rest, the same 0.56 s on every part: the breath and airway settle.
-    {"rest", 0.00, 0.560, false, false, "mf"},
     {"rest", 0.00, 0.840, true, false, "mf"},
     {"F4", 349.23, 0.560, true, false, "mf"},
     {"F4", 349.23, 0.560, true, false, "mf"},
