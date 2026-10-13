@@ -3182,3 +3182,58 @@ TEST_CASE("player airway shapes breath and tongue", "[contact][wind][airway]") {
     CHECK((std::fabs(cents) > 3.0 || shift > 0.03));
   }
 }
+
+// Lip experiment (hidden). Bb3 note of the trumpet tone test under the
+// Newton 2008 lip Q, the two-lip contact, and blowing pressure.
+TEST_CASE("lip closure experiment", "[.lipexp]") {
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  const double trumpetLength = 1.45;
+  const double lipMass = 3.0e-5;
+  const double lipHzBase = 0.75 * speed / trumpetLength;
+  struct V { const char* tag; double q; bool coll; double p; double thr; double rest; double lipRatio; };
+  const V vs[] = {
+      {"q2-p2800", 2, true, 2800, 1631, 1.0e-8, -1.0},
+      {"q2-p4000", 2, true, 4000, 1631, 1.0e-8, -1.0},
+      {"q2-p6000", 2, true, 6000, 1631, 1.0e-8, -1.0},
+      {"q3-p2800", 3, true, 2800, 1631, 1.0e-8, -1.0},
+      {"q3-p4000", 3, true, 4000, 1631, 1.0e-8, -1.0},
+      {"q3-p6000", 3, true, 6000, 1631, 1.0e-8, -1.0},
+      {"q5-p2800", 5, true, 2800, 1631, 1.0e-8, -1.0},
+      {"q5-p4000", 5, true, 4000, 1631, 1.0e-8, -1.0},
+      {"q5-p6000", 5, true, 6000, 1631, 1.0e-8, -1.0},
+      {"q8-p2800", 8, true, 2800, 1631, 1.0e-8, -1.0},
+      {"q8-p4000", 8, true, 4000, 1631, 1.0e-8, -1.0},
+      {"q8-p6000", 8, true, 6000, 1631, 1.0e-8, -1.0},
+  };
+  for (const V& v : vs) {
+    const double lipHz = lipHzBase * std::fabs(v.lipRatio);
+    const double om = constants::twoPi * lipHz;
+    TrumpetSpec spec{trumpetLength, 1.09e-4, kAir, kTemp, 0.0, v.rest, 1.5e-5, 1.2e-2, lipMass,
+                     om * om * lipMass, 1.2e-5, 0.001};
+    if (v.lipRatio < 0.0) spec.maximumOpeningAreaM2 = 4.0e-5;
+    auto trumpet = unwrap(makeTrumpet(spec));
+    ValveBlow lip = sustained(v.p, 10000.0, kTrumpetAttack);
+    lip.reflectionMagnitude = 0.999;
+    lip.initialDisplacementMeters = 0.0;
+    lip.tongueReleaseFrames = kTrumpetTongue;
+    lip.brassiness = 1.0;
+    lip.reedTurbulence = 0.20;
+    applyBach37Bell(lip);
+    auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
+    if (v.q > 0.0) REQUIRE(voice.setLipQualityFactor(v.q));
+    if (v.coll) REQUIRE(voice.setLipCollision(true));
+    if (v.thr > 0.0) REQUIRE(voice.setLipThresholdPa(v.thr));
+    std::vector<double> out(kFrames);
+    std::uint64_t closed = 0, counted = 0; double omin = 1.0, omax = 0.0;
+    for (std::uint64_t i = 0; i < kFrames; ++i) {
+      auto s = voice.renderBlock(out.data() + i, FrameCount{1});
+      if (!s.ok()) { std::cout << v.tag << " FAILED at " << i << "\n"; break; }
+      if (i >= kFrames / 2) { ++counted; if (voice.lipOpeningM2() <= 0.0) ++closed; omin = std::min(omin, voice.lipOpeningM2()); omax = std::max(omax, voice.lipOpeningM2()); }
+    }
+    const Period per = periodNear(out, 70000, 230.0, kFs);
+    std::cout << "lipexp " << v.tag << " f0 " << per.frequencyHz << " closed "
+              << (counted ? double(closed) / counted : 0.0) << " open " << omin << ".." << omax << "\n";
+    std::string name = std::string("lipexp-") + v.tag + ".wav";
+    writeListening(out, name.c_str(), kFs);
+  }
+}

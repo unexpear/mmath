@@ -179,6 +179,7 @@ class ConeValveVoice final : public IVoice {
         // roundoff, not a lip area.
         opening *= tongueOpen;
         if (restOpening_ > 0.0 && opening < restOpening_ * 1.0e-6) opening = 0.0;
+        lastOpening_ = opening;
       } else if (open && mouth > 0.0) {
         auto area = reedAreaAtDisplacement(reed_, inertia_, displacement_);
         if (!area.ok()) return R::failure(area.error());
@@ -508,8 +509,32 @@ class ConeValveVoice final : public IVoice {
     const double stiffness = trumpet_.lipMassKg * omega * omega;
     if (!std::isfinite(stiffness) || !(stiffness > 0.0)) return false;
     trumpet_.lipStiffnessNewtonsPerMeter = stiffness;
+    if (lipQ_ > 0.0) trumpet_.lipDampingNewtonSecondsPerMeter = trumpet_.lipMassKg * omega / lipQ_;
+    if (trumpet_.lipCollisionStiffness > 0.0) enableLipCollision(trumpet_);
     return true;
   }
+
+  // Lip quality factor Q = m omega / r, held as the resonance moves.
+  // Newton, Campbell and Gilbert, JASA 123, EL14-EL20 (2008): human
+  // lips Q about 1.2-1.8 (artificial 8-10). Zero keeps the fixed r.
+  bool setLipQualityFactor(double q) {
+    if (!lip_ || !std::isfinite(q) || q < 0.0) return false;
+    lipQ_ = q;
+    if (q > 0.0 && trumpet_.lipStiffnessNewtonsPerMeter > 0.0)
+      trumpet_.lipDampingNewtonSecondsPerMeter = std::sqrt(trumpet_.lipStiffnessNewtonsPerMeter * trumpet_.lipMassKg) / q;
+    if (trumpet_.lipCollisionStiffness > 0.0) enableLipCollision(trumpet_);
+    return true;
+  }
+
+  // Two-lip contact on or off (Ishizaka-Flanagan, see enableLipCollision).
+  bool setLipCollision(bool on) {
+    if (!lip_) return false;
+    if (on) enableLipCollision(trumpet_); else { trumpet_.lipCollisionStiffness = 0.0; trumpet_.lipCollisionDamping = 0.0; }
+    return true;
+  }
+
+  // Lip opening (m^2) of the last sample; zero is closed.
+  [[nodiscard]] double lipOpeningM2() const noexcept { return lastOpening_; }
 
  private:
   ConeValveVoice(SampleRateHz rate, ValveBlow blow, double alpha, double impedance,
@@ -923,6 +948,8 @@ class ConeValveVoice final : public IVoice {
   double listener_ = 1.0;
   double bellScale_ = 1.0;
   double lipThresholdPa_ = 0.0;
+  double lipQ_ = 0.0;
+  double lastOpening_ = 0.0;
   PlayerAirway* airway_ = nullptr;
   bool lipLocked_ = false;
   double bellFlow_ = 0.0;
