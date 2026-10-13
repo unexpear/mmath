@@ -104,6 +104,15 @@ struct PlayerAirwaySpec {
   double wallResistancePerInertance = 800.0 / 2.1;
   // Kirchhoff loss is fitted at this frequency (argument).
   double lossMatchHz = 500.0;
+  // Tract loss above smooth-rigid-tube Kirchhoff. Hanna, Smith and Wolfe
+  // (JASA 139, 2924-2936, 2016) measured through the lips with the glottis
+  // closed: anti-resonance bandwidths of about 50-90 Hz for men, rising
+  // about 1 Hz per 100 Hz from 300 Hz, wider than a smooth dry rigid
+  // cylinder. At the 1048 Hz closed-tract peak that is 50 + 7.5 = 57 Hz.
+  // A multiplier of 9 gives a 58 Hz -3 dB width at 1048 Hz (1 Hz sweep of
+  // inputImpedanceMagnitude; peak 29.4 -> 7.3 MPa s m^-3). Fitted to that
+  // measurement; the single multiplier for all frequencies is UNSOURCED.
+  double tractLossScale = 9.0;
   // Li et al. 2016: reed back at equilibrium about 8 ms after release.
   double tongueReleaseSeconds = 0.008;
   // UNSOURCED numerical split of breath and acoustic flow.
@@ -307,7 +316,7 @@ class PlayerAirway {
     for (std::size_t i = 0; i < n; ++i) {
       const double radius = std::sqrt(area_[i] / constants::pi);
       const double alpha = std::sqrt(omega * nu / 2.0) * thermal / (radius * c);
-      const double g = std::exp(-alpha * sectionLength_);
+      const double g = std::exp(-spec_.tractLossScale * alpha * sectionLength_);
       loss_[i] = (std::isfinite(g) && g > 0.0 && g <= 1.0) ? g : 1.0;
     }
   }

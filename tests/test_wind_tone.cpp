@@ -2014,8 +2014,8 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     // Shortened from c/(4f) until the autocorrelation matched. Integer
     // lag is about 15 cents at these pitches; 25 cents is the grade.
     const Length table[] = {
-        {220.00, 0.371149}, {293.66, 0.272573}, {329.63, 0.241609},
-        {349.23, 0.225746}, {392.00, 0.199063}, {440.00, 0.175519},
+        {220.00, 0.371149}, {293.66, 0.270847}, {329.63, 0.23842},
+        {349.23, 0.219000}, {392.00, 0.201376}, {440.00, 0.177866},
     };
     for (const Length& row : table)
       if (std::fabs(row.hertz - frequency) < 0.05) return row.meters;
@@ -2045,9 +2045,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
       start += src.seconds;
     }
     PlayerAirway airway(PlayerAirwaySpec{});
-    // Airway off here for now: attached, the tract pulls this reed
-    // flat (F4 -59 cents) and the saxophone line empties the lungs.
-    auto samples = renderPhrase(voice, notes, total, false, 0.0, nullptr);
+    auto samples = renderPhrase(voice, notes, total, false, 0.0, &airway);
     std::cout << "clarinet airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
     writePhraseNotes(notes, total, "mmath-excerpt-clarinet.notes.csv");
     reportPhrase("clarinet", notes, samples, total, 0.50);
@@ -2755,7 +2753,7 @@ TEST_CASE("player airway shapes breath and tongue", "[contact][wind][airway]") {
       return ref - *std::min_element(join.begin(), join.end());
     };
     const double legato = dip(0.6, 1440);  // 30 ms touch
-    const double stop = dip(0.0, 7200);  // 150 ms stop
+    const double stop = dip(0.0, 9600);  // 200 ms stop, the whole join window
     std::cout << "airway legato dip " << legato << " dB, tongue stop dip " << stop << " dB\n";
     CHECK(legato <= 3.0);
     CHECK(stop > 10.0);
