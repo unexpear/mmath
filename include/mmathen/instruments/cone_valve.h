@@ -597,10 +597,11 @@ class ConeValveVoice final : public IVoice {
   // 4-8 kPa); a near-closed rest with a preload does buzz but locks to
   // bore peak 3 (~363 Hz) for lip tunings 195-225 Hz. See [.boreexp].
   bool usePublishedTrumpetLips(double lipHz, double kQ = 3.0, double kRest = 1.0e-4,
-                               double thresholdPa = 0.0) {
+                               double thresholdPa = 0.0, double kMu = 2.0,
+                               double kWidth = 0.008) {
     if (!lip_ || !std::isfinite(lipHz) || !(lipHz > 0.0)) return false;
     if (!(kQ > 0.0) || !(kRest > 0.0) || !(thresholdPa >= 0.0)) return false;
-    constexpr double kMu = 2.0, kWidth = 0.008;
+    if (!(kMu > 0.0) || !(kWidth > 0.0)) return false;
     trumpet_.lipMassKg = kMu * trumpet_.lipPressureAreaM2;
     trumpet_.slitWidthMeters = kWidth;
     trumpet_.restOpeningAreaM2 = kWidth * kRest;
