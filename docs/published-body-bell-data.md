@@ -133,3 +133,65 @@ There is also an open dataset of bridge mobility for 65 Spanish guitars
 - Trumpet bell: no numeric measured transfer function. The cutoff (1630 Hz)
   and model choice (Helie-Rodet) are sourced, so a model-based bell filter
   could be built, but not a measured one.
+
+## Addendum 2026-10-14 (2): violin per-mode damping and effective mass
+
+### Damping (FOUND)
+
+Bissinger, "Parametric plate-bridge dynamic filter model of violin
+radiativity", J. Acoust. Soc. Am. 132(1), 465-476 (2012) (title VERIFY),
+open PDF: https://strad3d.org/files/bissinger/JASA%202012%20dynamic%20filter%20model.pdf.
+
+14-violin averages used in all of its simulations:
+
+| Mode | f Hz | zeta %crit | Q = 1/(2 zeta) | Radiativity <R> Pa/N |
+|------|-----:|-----:|-----:|-----:|
+| A0  | 275 | 2.5  | 20 | - |
+| A1  | 469 | 1.0  | 50 | - |
+| B1- | 470 | 1.22 | 41 | 1.01 |
+| B1+ | 541 | 1.15 | 43 | 0.95 |
+
+The same paper's Strad-copy violin has B1- at 489 Hz with 1.2 %crit and
+B1+ at 515 Hz with 1.1 %crit. Its measured radiativity is R_B1- = 0.72 and
+R_B1+ = 0.84 Pa/N, its A0 radiativity is 0.29 Pa/N, and the violin mass is
+M = 0.41 kg (FOUND).
+
+Other damping values:
+- A0: 2.56 +/- 0.2 %crit (Bissinger, ARLO 2004; FOUND, listed above).
+- CBR: no per-mode value found (NOT FOUND).
+- Total damping falls as zeta_tot = C f^x with x = -0.40 (Plowden-Titian)
+  and -0.45 +/- 0.05 (bad violins). Source: Bissinger, JASA 124 (2008),
+  https://strad3d.org/files/bissinger/JASA%202008%20Struct%20Acoust%20good%20bad%20violins.pdf (FOUND).
+  The 2012 paper fits zeta_tot proportional to f^-0.34 (FOUND). Neither
+  paper gives a per-mode table.
+- Gough, "Violin acoustics", Acoustics Today 12(2), 2016,
+  https://acousticstoday.org/wp-content/uploads/2016/06/Gough.pdf, gives
+  typical body-mode Q of 25-50 (FOUND, generic, not per mode).
+
+### Effective or modal mass at the bridge (NOT FOUND)
+
+- No open source found gives bridge effective masses for A0, CBR, B1- or B1+.
+- Bissinger reports radiativity (Pa/N) and total violin mass, not modal
+  mass at the bridge.
+- Gough says effective masses come from measured mobility. Gough, "A violin
+  shell model", JASA 137, 1210-1225 (2015) computes effective mass at the
+  bridge per mode from finite-element results. That paper is paywalled and
+  was not read (VERIFY: it may tabulate them).
+- Woodhouse's Euphonics 7.5 gives only a bridge-rocking effective mass
+  (about 0.5-0.6 g), which is not a body mode.
+- Malvermi et al., "A statistical approach to violin evaluation", Appl. Sci.
+  12, 7313 (2022), fitted f, amplitude and Q for A0, CBR, B1- and B1+ on 25
+  violins. The open PDF prints only correlations and PCA loadings, not the
+  values (VERIFY: supplementary data).
+- Saitis 2012 (Acoustics 2012 Nantes) gives frequencies only.
+
+### Is this enough for a modal violin body like the guitar's?
+
+No. Frequencies are FOUND for all five signature modes, and damping is
+FOUND for A0, A1, B1- and B1+. CBR damping is missing, and so is every
+bridge effective mass, which the modal admittance needs. The radiativities
+(Pa/N) could set relative radiation weights, but they cannot replace
+masses in the bridge admittance. The next step is to read Gough JASA 2015
+(shell model) and Zhang & Woodhouse 2014 for tables, or to get the
+Strad3D/VIOCADEAS mobility data and fit masses ourselves (fitting is not
+"published numbers").
