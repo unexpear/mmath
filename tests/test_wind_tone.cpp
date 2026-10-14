@@ -1913,7 +1913,8 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     }
     PlayerAirway airway(PlayerAirwaySpec{});
     // Airway off here for now: attached, the tract pulls this reed
-    // flat (F4 -59 cents) and the saxophone line empties the lungs.
+    // flat (F4 -59 cents) and the saxophone line empties the lungs. At 2c7833e,
+    // attached it reads F#4 -21, closing D#4 -23, opening D#4 octave-locked, lung 1.8 L.
     auto samples = renderPhrase(voice, notes, total, false, 0.0, nullptr);
     std::cout << "saxophone airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
     writePhraseNotes(notes, total, "mmath-excerpt-saxophone.notes.csv");
