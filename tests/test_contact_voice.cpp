@@ -966,3 +966,62 @@ TEST_CASE("held bowed violin notes sit on pitch at moderate force", "[contact]")
     CHECK(std::fabs(cents) < 5.0);
   }
 }
+
+// Bow expression: Seashore-range vibrato (6 Hz, +/-15 cents, delayed) keeps
+// the mean pitch within 5 cents, and a soft raised-cosine bow onset lowers
+// the attack peak. Values are this test's arguments (see BowExpression).
+TEST_CASE("bow expression keeps mean pitch and softens the attack", "[contact]") {
+  const StringCourse course = unwrap(violin()).courses[2];
+  const double target = course.tuning.frequency.value();
+  const double mu = course.material.linearDensity.value();
+  const double impedance = mu * std::sqrt(course.tension.value() / mu);
+  const double maximum = 2.0 * impedance * 0.2 / (0.125 * 0.5);
+  const BowStroke stroke{0.125, 0.2, 0.05 * maximum, BowFriction{0.8, 0.3}};
+  auto make = [&](const BowExpression* e) {
+    auto voice = unwrap(BowedStringVoice::create(course, stroke, courseLoss(course, 2.0, 0.25),
+                                                0.0, 4, 0, kRate, 96000));
+    if (e != nullptr) REQUIRE(voice.setExpression(*e));
+    return renderOf(voice, 96000);
+  };
+  const BowExpression vib{6.0, 15.0, 0.3, 0.3, 0.0, 1.0, 0.0};
+  const BowExpression soft{0.0, 0.0, 0.0, 0.0, 0.08, 0.2, 0.0};
+  const auto plain = make(nullptr);
+  const auto wobble = make(&vib);
+  const auto gentle = make(&soft);
+  // Mean over 1.0-2.0 s, six vibrato cycles.
+  // Mean period: autocorrelation over 1.0-2.0 s (six vibrato cycles),
+  // lag searched in 0.01-sample steps by linear interpolation.
+  double bestLag = 0.0, best = -2.0;
+  for (double lag = kFs / (target * 1.03); lag <= kFs / (target * 0.97); lag += 0.01) {
+    const auto whole = static_cast<std::size_t>(lag);
+    const double frac = lag - static_cast<double>(whole);
+    double xy = 0.0, xx = 0.0, yy = 0.0;
+    for (std::size_t n = 48000; n < 96000 - 200; ++n) {
+      const double y = (1.0 - frac) * wobble[n + whole] + frac * wobble[n + whole + 1];
+      xy += wobble[n] * y; xx += wobble[n] * wobble[n]; yy += y * y;
+    }
+    const double r = xy / std::sqrt(xx * yy + 1e-300);
+    if (r > best) { best = r; bestLag = lag; }
+  }
+  const double heard = kFs / bestLag;
+  const double cents = 1200.0 * std::log2(heard / target);
+  WARN("vibrato mean " << cents << " cents");
+  CHECK(std::fabs(cents) < 5.0);
+  double diff = 0.0;
+  for (std::size_t i = 48000; i < 60000; ++i) diff = std::max(diff, std::fabs(wobble[i] - plain[i]));
+  CHECK(diff > 1.0e-3 * peakOf(plain, 48000, 60000));
+  const double hard = peakOf(plain, 0, 2400);
+  const double softPeak = peakOf(gentle, 0, 2400);
+  WARN("attack peak " << hard << " -> " << softPeak);
+  CHECK(softPeak < hard);
+  auto voice = unwrap(BowedStringVoice::create(course, stroke, courseLoss(course, 2.0, 0.25),
+                                              0.0, 4, 0, kRate, 96000));
+  BowExpression bad = vib;
+  bad.vibratoCents = -1.0;
+  CHECK_FALSE(voice.setExpression(bad));
+  BowStroke louder = stroke;
+  louder.normalForceNewtons *= 1.5;
+  CHECK(voice.setStroke(louder));
+  louder.bridgeFraction = 0.2;
+  CHECK_FALSE(voice.setStroke(louder));
+}

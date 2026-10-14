@@ -56,6 +56,29 @@ struct BowBodyDrive {
   double temperatureKelvin = 0.0;
 };
 
+// Player expression on one bow stroke. Zero fields switch a feature off.
+// Vibrato is a finger rocking along the string: the loop length moves
+// sinusoidally, realized as a short linearly interpolated delay taken
+// from the nut segment, so the mean loop length is unchanged.
+//   Rate: violinists' vibrato sits near 5.5-7 Hz (Seashore, Psychology
+//   of Music, 1938; Mellody and Wakefield, JASA 107, 2000). Extent about
+//   +/-0.1-0.2 semitone, i.e. +/-10-20 cents (same sources; VERIFY exact
+//   figure). Onset delay and ramp time are arguments (UNSOURCED).
+// Bow envelope: normal force and bow speed rise on a raised cosine from
+// attackFraction to 1 over attackSeconds, and fall to zero over
+// releaseSeconds before the bow lifts. Shape and times are arguments
+// (UNSOURCED); Guettler (Acta Acustica 88, 2002) shows a gentle force and
+// acceleration onset is what gives a clean Helmholtz attack.
+struct BowExpression {
+  double vibratoRateHz = 0.0;
+  double vibratoCents = 0.0;
+  double vibratoOnsetSeconds = 0.0;
+  double vibratoRampSeconds = 0.0;
+  double attackSeconds = 0.0;
+  double attackFraction = 1.0;
+  double releaseSeconds = 0.0;
+};
+
 class BowedStringVoice final : public IVoice {
  public:
   // sustainFrames is how long the bow stays down. Zero lifts it before
@@ -129,7 +152,38 @@ class BowedStringVoice final : public IVoice {
     const double fs = rate_.value();
     for (std::uint64_t i = 0; i < count; ++i) {
       const double delayedBridge = bridge_[bridgePos_];
-      const double delayedNut = nut_[nutPos_];
+      double delayedNut = nut_[nutPos_];
+      const double t = static_cast<double>(frame_) / fs;
+      if (!vib_.empty()) {
+        vib_[vibPos_] = delayedNut;
+        double depth = 0.0;
+        if (t > expression_.vibratoOnsetSeconds) {
+          const double since = t - expression_.vibratoOnsetSeconds;
+          const double ramp = expression_.vibratoRampSeconds > 0.0
+                                  ? std::min(1.0, since / expression_.vibratoRampSeconds)
+                                  : 1.0;
+          depth = vibSamples_ * ramp *
+                  std::sin(constants::twoPi * expression_.vibratoRateHz * since);
+        }
+        const double d = static_cast<double>(vibMean_) + depth;
+        const auto whole = static_cast<std::size_t>(std::floor(d));
+        const double frac = d - std::floor(d);
+        const std::size_t size = vib_.size();
+        const double a = vib_[(vibPos_ + size - whole) % size];
+        const double b = vib_[(vibPos_ + size - whole - 1) % size];
+        delayedNut = (1.0 - frac) * a + frac * b;
+        vibPos_ = (vibPos_ + 1) % size;
+      }
+      double envelope = 1.0;
+      if (expression_.attackSeconds > 0.0 && t < expression_.attackSeconds)
+        envelope = expression_.attackFraction +
+                   (1.0 - expression_.attackFraction) * 0.5 *
+                       (1.0 - std::cos(constants::pi * t / expression_.attackSeconds));
+      if (expression_.releaseSeconds > 0.0 && frame_ < sustainFrames_) {
+        const double left = static_cast<double>(sustainFrames_ - frame_) / fs;
+        if (left < expression_.releaseSeconds)
+          envelope *= std::max(left / expression_.releaseSeconds, 1.0e-3);
+      }
       const double filtered = applyFilter(delayedBridge);
       if (!std::isfinite(filtered)) return R::failure(QuantityError::RangeError);
       const double incomingBridge =
@@ -141,8 +195,8 @@ class BowedStringVoice final : public IVoice {
       double velocity = 0.0;
       if (frame_ < sustainFrames_) {
         auto junction = stickSlipJunction(
-            history, incomingBridge, incomingNut, stroke_.speedMetersPerSecond,
-            impedance_, stroke_.normalForceNewtons, stroke_.friction, wasStuck_);
+            history, incomingBridge, incomingNut, stroke_.speedMetersPerSecond * envelope,
+            impedance_, stroke_.normalForceNewtons * envelope, stroke_.friction, wasStuck_);
         if (!junction.ok()) return R::failure(junction.error());
         const double force = junction.value().frictionForce;
         outgoingBridge = incomingNut + force / twoZ;
@@ -203,6 +257,50 @@ class BowedStringVoice final : public IVoice {
     for (BodyMode& mode : modes_) mode.state = {};
     std::fill(radiation_.begin(), radiation_.end(), 0.0);
     radiationPos_ = 0;
+    std::fill(vib_.begin(), vib_.end(), 0.0);
+    vibPos_ = 0;
+  }
+
+  // Replace the stroke between blocks (crescendo, bow speed). The bridge
+  // fraction is fixed at create; a different one returns false.
+  [[nodiscard]] bool setStroke(const BowStroke& stroke) {
+    if (stroke.bridgeFraction != stroke_.bridgeFraction ||
+        !std::isfinite(stroke.speedMetersPerSecond) || stroke.speedMetersPerSecond == 0.0 ||
+        !std::isfinite(stroke.normalForceNewtons) || !(stroke.normalForceNewtons > 0.0) ||
+        !(stroke.friction.staticCoefficient > stroke.friction.slidingCoefficient))
+      return false;
+    stroke_ = stroke;
+    return true;
+  }
+
+  // Set the player expression before rendering. False (and no change) on
+  // a negative or non-finite field, an attack fraction outside (0, 1], or
+  // vibrato deeper than the nut segment can lend.
+  [[nodiscard]] bool setExpression(const BowExpression& e) {
+    const double fields[] = {e.vibratoRateHz, e.vibratoCents, e.vibratoOnsetSeconds,
+                             e.vibratoRampSeconds, e.attackSeconds, e.releaseSeconds};
+    for (double v : fields)
+      if (!std::isfinite(v) || v < 0.0) return false;
+    if (!std::isfinite(e.attackFraction) || !(e.attackFraction > 0.0) || e.attackFraction > 1.0)
+      return false;
+    const double period = rate_.value() / fundamentalHz_;
+    const double swing = period * (std::pow(2.0, e.vibratoCents / 1200.0) - 1.0);
+    if (e.vibratoRateHz > 0.0 && e.vibratoCents > 0.0) {
+      const int mean = static_cast<int>(std::ceil(swing)) + 2;
+      if (vib_.empty()) {
+        if (static_cast<int>(nut_.size()) - mean < 1) return false;
+        nut_.assign(nut_.size() - static_cast<std::size_t>(mean), 0.0);
+        nutPos_ = 0;
+        vibMean_ = mean;
+        vib_.assign(static_cast<std::size_t>(mean) + 3, 0.0);
+        vibPos_ = 0;
+      } else if (mean > vibMean_) {
+        return false;
+      }
+      vibSamples_ = swing;
+    }
+    expression_ = e;
+    return true;
   }
 
   [[nodiscard]] double fundamentalHz() const noexcept { return fundamentalHz_; }
@@ -344,6 +442,11 @@ class BowedStringVoice final : public IVoice {
   std::vector<BodyMode> modes_;
   std::vector<double> radiation_;
   std::size_t radiationPos_ = 0;
+  BowExpression expression_{};
+  std::vector<double> vib_;
+  std::size_t vibPos_ = 0;
+  int vibMean_ = 0;
+  double vibSamples_ = 0.0;
 };
 
 }  // namespace mmathen
