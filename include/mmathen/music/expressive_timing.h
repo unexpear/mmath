@@ -66,6 +66,13 @@ struct TimingRules {
   // Variability (seeded): onset jitter sd as a fraction of the IOI (Repp
   // 1992 reports timing variability of a few percent between repeats;
   // VERIFY) and intonation sd in cents (UNSOURCED).
+  // Per-phrase dynamic variation: each phrase's level arch is scaled by
+  // max(0, 1 + phraseVariation * N(0,1)) and offset by phraseLevelSdDb * N(0,1)
+  // (seeded; UNSOURCED). Meyer (Acoustics and the Performance of Music)
+  // gives a violin pp-ff range of roughly 30 dB (VERIFY), the ceiling for
+  // the sum of these terms.
+  double phraseVariation = 0.0;
+  double phraseLevelSdDb = 0.0;
   double timingJitterFraction = 0.0;
   double intonationSdCents = 0.0;
   std::uint32_t seed = 1;
@@ -80,6 +87,9 @@ struct TimingRules {
   double t = notes.empty() ? 0.0 : notes.front().onsetSeconds * r.tempoScale;
   std::mt19937 rng(r.seed);
   std::normal_distribution<double> gauss(0.0, 1.0);
+  std::mt19937 prng(r.seed ^ 0x9e3779b9u);
+  long curPhrase = -1;
+  double phraseScale = 1.0, phraseOffsetDb = 0.0;
   for (const ScoreNote& n : notes) {
     const double mid = n.onsetSeconds + 0.5 * n.ioiSeconds;
     double m = r.tempoScale;
@@ -88,7 +98,14 @@ struct TimingRules {
       const double x = std::fmod(mid, r.phraseScoreSeconds) / r.phraseScoreSeconds;
       const double arch = (2.0 * x - 1.0) * (2.0 * x - 1.0) - 1.0 / 3.0;
       m *= 1.0 + r.phraseArchDepth * arch;
-      levelDb -= r.levelArchDb * 1.5 * arch;  // arch in [-1/3, 2/3]: ends soft, middle loud
+      const long ph = static_cast<long>(std::floor(mid / r.phraseScoreSeconds));
+      if (ph != curPhrase) {
+        curPhrase = ph;
+        phraseScale = std::max(0.0, 1.0 + r.phraseVariation * gauss(prng));
+        phraseOffsetDb = r.phraseLevelSdDb * gauss(prng);
+      }
+      levelDb -= r.levelArchDb * phraseScale * 1.5 * arch;
+      levelDb += phraseOffsetDb;  // arch in [-1/3, 2/3]: ends soft, middle loud
     }
     if (r.finalRitardScoreSeconds > 0.0 && r.finalTempoRatio > 0.0 &&
         mid > end - r.finalRitardScoreSeconds) {

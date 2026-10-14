@@ -217,7 +217,11 @@ class BowedStringVoice final : public IVoice {
           const double ramp = expression_.vibratoRampSeconds > 0.0
                                   ? std::min(1.0, since / expression_.vibratoRampSeconds)
                                   : 1.0;
-          depth = vibSamples_ * ramp *
+          // vibSamples_ is the swing for the open-string period; a stopped
+          // note's loop is shorter, so scale to keep the depth in cents.
+          const double stopScale =
+              stoppedHz_ > fundamentalHz_ ? fundamentalHz_ / stoppedHz_ : 1.0;
+          depth = vibSamples_ * stopScale * ramp *
                   std::sin(constants::twoPi * expression_.vibratoRateHz * since);
         }
         const double d = static_cast<double>(vibMean_) + fingerShift_ + depth;
