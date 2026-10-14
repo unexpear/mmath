@@ -3029,3 +3029,76 @@ TEST_CASE("measured bore kernel impedance", "[.kernelexp]") {
     }
   }
 }
+
+// Measured trombone bore experiment (hidden). Engine bore: brass_bore.h.
+TEST_CASE("measured trombone bore experiment", "[.tromboneexp]") {
+  using namespace mmathen::brass_bore;
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  const double rho = 1.2;
+  Fingering fg; fg.trombone = true;
+  const double zc = rho * speed / (constants::pi * kTromboneThroatRadius * kTromboneThroatRadius);
+  const double V = 2.0 / 3.0 * constants::pi * std::pow(kTromboneRimRadius, 3);
+  double prev = 0, pprev = 0, pf = 0; int np = 0;
+  for (double f = 30; f < 1200 && np < 8; f += 0.25) {
+    std::complex<double> z; evaluate(f, rho, speed, zc, V, fg, &z, nullptr, nullptr);
+    const double a = std::abs(z);
+    if (prev > pprev && prev > a) { std::cout << "tbzpeak " << pf << " " << 20 * std::log10(prev / zc) << "\n"; ++np; }
+    pprev = prev; prev = a; pf = f;
+  }
+  std::cout << "tb myersB " << myersTromboneBrassiness(speed) << "\n";
+  const std::uint64_t frames = 96000;
+  for (double note : {116.54, 174.61})
+  for (double p : {3000.0, 5000.0}) {
+    TromboneSpec spec = blownTromboneSpec(speed, kAir, kTemp);
+    auto trombone = unwrap(makeTrombone(spec));
+    ValveBlow lip = sustained(p, 5000.0, kTromboneAttack);
+    lip.frames = frames;
+    lip.reflectionMagnitude = 0.999;
+    lip.initialDisplacementMeters = 0.0;
+    lip.tongueReleaseFrames = kTromboneTongue;
+    lip.brassiness = 0.0;
+    lip.reedTurbulence = 0.0;
+    auto voice = unwrap(ConeValveVoice::fromTrombone(trombone, 0.60, lip, kRate));
+    REQUIRE(voice.useMeasuredTromboneBore());
+    REQUIRE(voice.setMeasuredBoreSteepening(true));
+    REQUIRE(voice.useAdachiSatoLip(note, 1.0e-4));
+    const double tuned = voice.tuneAdachiSatoLipHz(note, kTromboneClosedMeters, p);
+    if (tuned > 0.0) REQUIRE(voice.useAdachiSatoLip(tuned, 1.0e-4));
+    std::vector<double> out(frames);
+    bool ok = voice.renderBlock(out.data(), FrameCount{frames}).ok();
+    double f0 = 0;
+    {
+      const std::size_t s0 = frames / 2, w = 8192;
+      const int lo = int(kFs / 400), hi = int(kFs / 50);
+      std::vector<double> r(hi + 2, 0.0); double best = 0;
+      for (int L = lo; L <= hi; ++L) {
+        double xy = 0, xx = 0, yy = 0;
+        for (std::size_t j = 0; j < w; ++j) { const double x = out[s0 + j], y = out[s0 + j + L]; xy += x * y; xx += x * x; yy += y * y; }
+        r[L] = xy / std::sqrt(xx * yy + 1e-300); best = std::max(best, r[L]);
+      }
+      for (int L = lo + 1; L < hi; ++L)
+        if (r[L] > 0.9 * best && r[L] >= r[L - 1] && r[L] >= r[L + 1]) {
+          const double d = (r[L - 1] - r[L + 1]) / (2 * (r[L - 1] - 2 * r[L] + r[L + 1]));
+          f0 = kFs / (L + d); break;
+        }
+    }
+    double h[41] = {0}; double num = 0, den = 0;
+    const std::size_t a0 = frames / 2, n = 16384;
+    for (int k = 1; k <= 40 && f0 > 0 && k * f0 < 10000; ++k) {
+      double re = 0, im = 0;
+      for (std::size_t j = 0; j < n; ++j) {
+        const double wv = 0.5 - 0.5 * std::cos(constants::twoPi * j / n);
+        re += wv * out[a0 + j] * std::cos(constants::twoPi * k * f0 * j / kFs);
+        im += wv * out[a0 + j] * std::sin(constants::twoPi * k * f0 * j / kFs);
+      }
+      const double m = re * re + im * im; h[k] = m; num += k * f0 * m; den += m;
+    }
+    std::cout << "tbexp note " << note << " p " << p << " lip " << tuned << " ok " << ok << " f0 " << f0
+              << " cents " << (f0 > 0 ? 1200 * std::log2(f0 / note) : 0) << " cent " << (den > 0 ? num / den : 0)
+              << " h2-h5";
+    for (int k = 2; k <= 5; ++k) std::cout << " " << 10 * std::log10(h[k] / std::max(h[1], 1e-300));
+    std::cout << " FTshape";
+    for (int k = 2; k <= 5; ++k) std::cout << " " << fletcherTarnopolskyDb(k, note);
+    std::cout << "\n";
+  }
+}

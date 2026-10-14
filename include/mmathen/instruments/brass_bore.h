@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // Measured-geometry trumpet bore as a reflection-function load (opt-in).
 //
 // Geometry (Bb trumpet), Eveno / Kergomard et al. bore-profile study,
@@ -41,13 +41,58 @@ struct Kernels {
 // (Campbell and Greated, The Musician's Guide to Acoustics); measured Bach
 // 37 slide lengths are UNSOURCED, so these are the rule, not a catalog.
 // Valve block position 0.25 m from the input is UNSOURCED.
-struct Fingering { bool v1 = false, v2 = false, v3 = false; };
+struct Fingering {
+  bool v1 = false, v2 = false, v3 = false;
+  bool trombone = false;     // Bb tenor trombone profile instead of the trumpet
+  double slideMeters = 0.0;  // trombone slide extension x; adds 2x of slide-bore tube
+};
+
+// Bb tenor trombone (opt-in). Bell: Scott, "Measurement and Synthesis of
+// the Trombone", SFU M.Sc. (2012), Table 2.2, Bessel horn
+// a(x) = b (x + x0)^-0.7, b = 0.0063, x0 = 0.0174, length 0.502 m, mouth
+// 0.108 m (as quoted in docs/48). Slide bore: Bach 42 .547 in (radius
+// 6.95 mm, Conn-Selmer published spec; VERIFY). Mouthpiece: Bach 6-1/2AL
+// rim 25.5 mm, throat .281 in (radius 3.57 mm) (VERIFY), cup read as a
+// hemisphere of the rim radius (UNSOURCED, as for the trumpet). Backbore
+// cone 3.57 to 5.5 mm over 80 mm, bell-neck taper 6.95 mm to the bell's
+// 9.96 mm throat over 0.60 m: UNSOURCED. The closed-slide cylinder length
+// is FITTED so impedance peak 2 sits at Bb2 116.54 Hz. Slide positions add
+// 2x of the slide bore: a real tube length, x = L0 (2^(n/12) - 1) / 2.
+constexpr double kTromboneThroatRadius = 0.00357;
+constexpr double kTromboneBackboreMeters = 0.080;
+constexpr double kTromboneRimRadius = 0.01275;
+constexpr double kTromboneCylinderMeters = 1.39;  // FITTED (see above)
+constexpr double kTromboneNeckMeters = 0.60;
+constexpr double kTromboneBellMeters = 0.502;
+constexpr double kTromboneClosedMeters =
+    kTromboneBackboreMeters + kTromboneCylinderMeters + kTromboneNeckMeters + kTromboneBellMeters;
+inline double tromboneSlideMeters(int semitones) {
+  return 0.5 * kTromboneClosedMeters * (std::pow(2.0, semitones / 12.0) - 1.0);
+}
+inline std::vector<Segment> bbTromboneProfile(double& mouthRadius, double slide) {
+  std::vector<Segment> s;
+  const double r1 = kTromboneThroatRadius, r2 = 0.0055, rb = 0.00695, rn = 0.00996;
+  for (int i = 0; i < 40; ++i)
+    s.push_back({kTromboneBackboreMeters / 40, r1 + (r2 - r1) * (i + 0.5) / 40});
+  s.push_back({kTromboneCylinderMeters + 2.0 * slide, rb});
+  for (int i = 0; i < 40; ++i)
+    s.push_back({kTromboneNeckMeters / 40, rb + (rn - rb) * (i + 0.5) / 40});
+  const double b = 0.0063, x0 = 0.0174, L = kTromboneBellMeters;
+  const int m = 300;
+  for (int i = 0; i < m; ++i) {
+    const double x = L * (1.0 - (i + 0.5) / m);
+    s.push_back({L / m, b * std::pow(x + x0, -0.7)});
+  }
+  mouthRadius = b * std::pow(x0, -0.7);
+  return s;
+}
 constexpr double kOpenLengthMeters = 0.072 + 1.295;
 constexpr double kValveBlockMeters = 0.25;
 inline double valveLoopMeters(int semitones) {
   return kOpenLengthMeters * (std::pow(2.0, semitones / 12.0) - 1.0);
 }
 inline std::vector<Segment> bbTrumpetProfile(double& mouthRadius, Fingering fg = {}) {
+  if (fg.trombone) return bbTromboneProfile(mouthRadius, fg.slideMeters);
   std::vector<Segment> s;
   const double r1 = 0.00185, l1 = 0.072;
   const double rout = r1 + l1 * std::tan(3.64 * 0.5 * 3.14159265358979323846 / 180.0);
@@ -160,15 +205,20 @@ inline double steepeningLengthMeters(Fingering fg = {}) {
   double mouth = 0.0, acc = 0.0, x = 0.0;
   const auto prof = bbTrumpetProfile(mouth, fg);
   double r0 = 1.0;
-  for (const auto& sg : prof) { if (x >= 0.072 - 1e-9) r0 = std::min(r0, sg.radius); x += sg.length; }
+  for (const auto& sg : prof) { if (x >= (fg.trombone ? kTromboneBackboreMeters : 0.072) - 1e-9) r0 = std::min(r0, sg.radius); x += sg.length; }
   x = 0.0;
-  for (const auto& sg : prof) { if (x >= 0.072 - 1e-9) acc += sg.length * r0 / sg.radius; x += sg.length; }
+  for (const auto& sg : prof) { if (x >= (fg.trombone ? kTromboneBackboreMeters : 0.072) - 1e-9) acc += sg.length * r0 / sg.radius; x += sg.length; }
   return acc;
 }
 // Myers brassiness B with L_ecl = c / (2 f_nominal) for the Bb (116.54 Hz)
 // equivalent complete cone.
 inline double myersBrassiness(double c) {
   return steepeningLengthMeters() / (c / (2.0 * 116.54));
+}
+// Trombone: L_ecl = c / (2 x 58.27 Hz), the Bb1 complete cone.
+inline double myersTromboneBrassiness(double c) {
+  Fingering fg; fg.trombone = true;
+  return steepeningLengthMeters(fg) / (c / (2.0 * 58.27));
 }
 
 // Starting lip tuning for a note (Adachi and Sato 1996 Table III start
@@ -198,7 +248,8 @@ inline Kernels makeKernels(double fs, double rho, double c, Fingering fg = {}, s
                            BellRadiation bell = BellRadiation::LevineSchwinger) {
   using C = std::complex<double>;
   Kernels kr;
-  kr.cupVolume = 2.0 / 3.0 * 3.14159265358979323846 * std::pow(0.00815, 3);
+  kr.cupVolume = 2.0 / 3.0 * 3.14159265358979323846 * std::pow(fg.trombone ? kTromboneRimRadius : 0.00815, 3);
+  if (fg.trombone) kr.throatRadius = kTromboneThroatRadius;
   const double zcRef = rho * c / (3.14159265358979323846 * kr.throatRadius * kr.throatRadius);
   std::vector<C> R(n / 2 + 1), U(n / 2 + 1);
   for (std::size_t j = 0; j <= n / 2; ++j) {

@@ -552,6 +552,14 @@ class ConeValveVoice final : public IVoice {
   // impedance with Keefe wall loss and Levine-Schwinger radiation. The
   // lip sees the throat characteristic impedance; the cup is the bore's
   // own V0. Fingering inserts the valve loops. Off by default.
+  // Opt-in measured Bb tenor trombone bore (brass_bore::bbTromboneProfile).
+  // Sounding lengths select slide positions 1-7 as real added tube.
+  bool useMeasuredTromboneBore() {
+    measuredTrombone_ = true;
+    for (auto& slot : kernelCache_) slot = {};
+    brass_bore::Fingering fg; fg.trombone = true;
+    return useMeasuredTrumpetBore(fg);
+  }
   bool useMeasuredTrumpetBore(brass_bore::Fingering fingering = {}) {
     if (!lip_) return false;
     if (!rfOn_) measuredBase_ = soundingLength_;
@@ -591,11 +599,12 @@ class ConeValveVoice final : public IVoice {
     int n = static_cast<int>(std::lround(12.0 * std::log2(lengthMeters / measuredBase_)));
     n = std::max(0, std::min(6, n));
     static constexpr int kMask[7] = {0, 2, 1, 3, 6, 5, 7};
-    const int mask = kMask[n];
+    const int mask = measuredTrombone_ ? n : kMask[n];
     if (mask == measuredMask_) return true;
     auto& slot = kernelCache_[mask];
     if (slot.first.empty()) {
       brass_bore::Fingering fg{(mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0};
+      if (measuredTrombone_) fg = brass_bore::Fingering{false, false, false, true, brass_bore::tromboneSlideMeters(n)};
       auto k = brass_bore::makeKernels(rate_.value(), density_, speed_, fg, 2048, 8192, measuredBell_);
       slot = {std::move(k.reflection), std::move(k.mouthFlow)};
     }
@@ -1222,6 +1231,7 @@ class ConeValveVoice final : public IVoice {
     steepRfPos_ = (steepRfPos_ + 1) % kSteepRfSize;
     return std::isfinite(y) ? y : p;
   }
+  bool measuredTrombone_ = false;
   brass_bore::BellRadiation measuredBell_ = brass_bore::BellRadiation::LevineSchwinger;
   std::vector<double> rf_, uf_, hist_, histS_;
   std::size_t hpos_ = 0;
