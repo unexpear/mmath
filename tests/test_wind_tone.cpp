@@ -1,4 +1,4 @@
-﻿#include <cstdlib>
+#include <cstdlib>
 // Sustained wind tones.
 //
 // A blown wind is a limit cycle, not the ring after the player stops.
@@ -1879,8 +1879,8 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     // is where this 0.4 s slur, arriving from D#4, speaks the first mode
     // at 277 Hz. A note started from silence near 0.47 m can lock the
     // octave; this slur does not, and the D#4 and G#3 after it stay on
-    // the first mode. E4 stays 0.390 m, about âˆ’28 cents, inside the
-    // short-note bound. The line keeps one pressure.
+    // the first mode. E4 at 0.390 m sat 28.9 cents flat; 0.380 m read
+    // +8.0, and 0.3822 m, the linear interpolation, reads about 0. The line keeps one pressure.
     auto saxLength = [](double frequency) { return saxophoneSoundingLengthMeters(frequency); };
     const double total = excerpts::excerptSeconds(excerpts::kSaxophone);
     std::cout << "saxophone excerpt: Mussorgsky/Ravel, Pictures at an Exhibition, "
@@ -1918,6 +1918,21 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     std::cout << "saxophone airway lung " << airway.lungVolumeM3() * 1e3 << " L\n";
     writePhraseNotes(notes, total, "mmath-excerpt-saxophone.notes.csv");
     reportPhrase("saxophone", notes, samples, total, 0.50);
+    // E4 and its neighbours on the cone table: autocorrelation over the
+    // note, 45 ms in from each join. F#4 carries the 12-cent vibrato, so
+    // its whole-note carrier is graded, not a crest.
+    // The opening D#4 starts from silence; its 0.4 s is the attack.
+    for (std::size_t i = 1; i < notes.size(); ++i) {
+      const PhraseNote& n = notes[i];
+      if (n.rest || !(n.targetHz > 300.0 && n.targetHz < 380.0)) continue;
+      const double endSec = i + 1 < notes.size() ? notes[i + 1].startSec : total;
+      const Period p = phrasePeriod(samples, static_cast<std::size_t>((n.startSec + 0.045) * kFs),
+                                    static_cast<std::size_t>((endSec - 0.045) * kFs),
+                                    n.targetHz, kFs);
+      const double c = 1200.0 * std::log2(p.frequencyHz / n.targetHz);
+      std::cout << "saxophone tuning " << n.name << " " << c << " cents\n";
+      CHECK(std::fabs(c) < 10.0);
+    }
     writePhrase(samples, "mmath-excerpt-saxophone.wav", kFs);
     // Held G#4: the note starts at 0.4 s and lasts 2.8 s. The window
     // sits after the 0.40 s ramp. Median inter-harmonic level, 200 Hz

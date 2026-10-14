@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // Wind presets that define the instruments of the wind excerpts and songs:
 // the Bach 37 / Bach 42 bells, the phrase trumpet and trombone bores and
@@ -203,10 +203,13 @@ inline double clarinetSoundingLengthMeters(double frequency) {
     return table[n - 1].meters * table[n - 1].hertz / frequency;
   }
 
+// Saxophone cone lengths tuned by rendering the Old Castle excerpt at
+// 4200 Pa and reading the autocorrelation pitch; not published lengths.
+// E4: 0.390 m read -28.9 cents, 0.380 m +8.0; 0.3822 m reads about 0.
 inline double saxophoneSoundingLengthMeters(double frequency) {
       struct Length { double hertz; double meters; };
       const Length table[] = {
-          {207.65, 0.670}, {277.18, 0.471}, {311.13, 0.410}, {329.63, 0.390},
+          {207.65, 0.670}, {277.18, 0.471}, {311.13, 0.410}, {329.63, 0.3822},
           {369.99, 0.3315}, {415.30, 0.288}, {466.16, 0.2486}, {493.88, 0.230},
       };
       for (const Length& row : table)
