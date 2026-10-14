@@ -301,3 +301,27 @@ TEST_CASE("valve slides and an F attachment lengthen the cone", "[bore]") {
   CHECK(std::strstr(statusNamed("trumpet")->gap, "flare") != nullptr);
   CHECK_FALSE(statusNamed("trombone")->fullInstrumentComplete);
 }
+
+TEST_CASE("a long plain-bore note keeps the bore pitch", "[bore]") {
+  // Fractional far-end delay (Thiran allpass): a 3 s flute note must sit
+  // at c/(2L) and not drift between an early and a late window.
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  const double length = 0.5537;  // not a whole number of samples
+  const double pipe = speed / (2.0 * length);
+  const double density =
+      unwrap(airDensity(PressurePascals{kAir}, TemperatureKelvin{kTemp})).value();
+  const double span = 8.0e-3;
+  const double sigma = 0.4;
+  const double jetSpeed = span / (sigma * (0.5 / pipe));
+  const double overpressure = 0.5 * density * jetSpeed * jetSpeed;
+  const auto flute =
+      unwrap(makeFlute(FluteSpec{length, 2.8e-4, kAir, kTemp, 1.2e-5, 1.2e-3, span, sigma}));
+  const ValveBlow jet{overpressure, 150000, 0.99, 0.25 * 1.2e-3};
+  auto voice = unwrap(BoreLatticeVoice::fromFlute(flute, jet, {}, kRate));
+  CHECK(std::fabs(voice.fundamentalHz() - pipe) / pipe < 0.002);
+  const auto samples = renderOf(voice, 144000);
+  const double early = pitchNear(samples, 16000, pipe - 40.0, pipe + 40.0);
+  const double late = pitchNear(samples, 130000, pipe - 40.0, pipe + 40.0);
+  CHECK(std::fabs(late - early) < 0.5);
+  CHECK(std::fabs(late - pipe) / pipe < 0.005);
+}
