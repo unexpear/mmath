@@ -21,7 +21,14 @@
 namespace mmathen {
 
 inline constexpr double kViolinBridgeRockingHz = 2900.0;  // Woodhouse euphonics 7.5 fit (one violin)
-inline constexpr double kViolinBridgeHillQ = 1.5;         // UNSOURCED (body loading; chosen so 2-3 kHz band ~ real)
+// Hill damping from Woodhouse 2005 eq. (19): zeta_b = Re(R_inf) * I * Omega_b / 2, with the rotational body admittance Re(R_inf) ~ 100 rad m^-1 s^-1 N^-1 (Woodhouse 2005, value used for a ~2.5 kHz hill) and bridge moment of inertia I = 4.3e-7 kg m^2 (euphonics 7.5 fit). Q = 1/(2 zeta_b) ~ 1.28.
+inline constexpr double kWoodhouseRotationalAdmittance = 100.0;   // Woodhouse 2005 (Acta Acustica 91)
+inline constexpr double kViolinBridgeInertiaKgM2 = 4.3e-7;          // euphonics 7.5 fit
+[[nodiscard]] inline double violinBridgeHillQ(double rockingHz = kViolinBridgeRockingHz) {
+  const double zeta = kWoodhouseRotationalAdmittance * kViolinBridgeInertiaKgM2 * constants::twoPi * rockingHz / 2.0;
+  return 1.0 / (2.0 * zeta);
+}
+inline const double kViolinBridgeHillQ = violinBridgeHillQ();
 inline constexpr double kViolinBridgeEffectiveMassKg = 1.2e-3;  // Jansson bridge-tuning paper (estimate)
 
 // Rayleigh Helmholtz frequency with end-corrected neck length.
@@ -52,6 +59,42 @@ class BridgeHillFilter {
   void processInPlace(std::vector<double>& v) noexcept { for (double& x : v) x = process(x); }
  private:
   double b0_ = 1, b1_ = 0, b2_ = 0, a1_ = 0, a2_ = 0, s1_ = 0, s2_ = 0;
+};
+
+// Low-mid signature modes. Stage 2 tried to derive them from construction
+// (orthotropic shallow shell + soundpost + Helmholtz coupling, see
+// mmath-violin-construction.md): it lands at ~1.1-1.5 kHz, 2-3x too high,
+// so the frequencies here are the MEASURED means of Bissinger 2008 (JASA 124,
+// 17 violins), not derived. Q and gain are TUNED (chosen against the real
+// recording's 400-500 Hz band), not sourced.
+inline constexpr double kViolinSignatureHz[4] = {275.0, 407.0, 475.0, 541.0};  // A0, CBR, B1-, B1+ (Bissinger 2008)
+inline constexpr double kViolinSignatureQ = 15.0;    // TUNED
+inline constexpr double kViolinSignatureGain = 2.0;  // TUNED
+class SignatureModeFilter {
+ public:
+  explicit SignatureModeFilter(double sampleRate, double q = kViolinSignatureQ, double gain = kViolinSignatureGain) : g_(gain) {
+    for (int m = 0; m < 4; ++m) {
+      const double w = constants::twoPi * kViolinSignatureHz[m];
+      const double k = w / std::tan(w / (2.0 * sampleRate));
+      const double a0 = k * k + k * w / q + w * w;
+      b0_[m] = k * w / q / a0; b2_[m] = -b0_[m];
+      a1_[m] = (2.0 * w * w - 2.0 * k * k) / a0; a2_[m] = (k * k - k * w / q + w * w) / a0;
+    }
+  }
+  double process(double x) noexcept {
+    double y = x;
+    for (int m = 0; m < 4; ++m) {
+      const double v = b0_[m] * x + s1_[m];
+      s1_[m] = -a1_[m] * v + s2_[m];
+      s2_[m] = b2_[m] * x - a2_[m] * v;
+      y += g_ * v;
+    }
+    return y;
+  }
+  void processInPlace(std::vector<double>& v) noexcept { for (double& x : v) x = process(x); }
+ private:
+  double g_;
+  double b0_[4]{}, b2_[4]{}, a1_[4]{}, a2_[4]{}, s1_[4]{}, s2_[4]{};
 };
 
 }  // namespace mmathen

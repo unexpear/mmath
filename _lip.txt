@@ -1,0 +1,29 @@
+Filters: [.lipexp] [.lipexp]
+Randomness seeded to: 2921734084
+lipexp q2-p2800 f0 217.195 closed 0.25525 open 0..1.50397e-05
+lipexp-q2-p2800.wav playback -20 LUFS  gain 0.0808801  from 1.84317 LUFS
+lipexp q2-p4000 f0 218.182 closed 0.236167 open 0..2.77801e-05
+lipexp-q2-p4000.wav playback -20 LUFS  gain 0.0395195  from 8.06377 LUFS
+lipexp q2-p6000 f0 243.655 closed 0.137667 open 0..4e-05
+lipexp-q2-p6000.wav playback -20 LUFS  gain 0.028636  from 10.8617 LUFS
+lipexp q3-p2800 f0 217.195 closed 0.290646 open 0..1.80333e-05
+lipexp-q3-p2800.wav playback -20 LUFS  gain 0.0673589  from 3.4321 LUFS
+lipexp q3-p4000 f0 218.182 closed 0.273625 open 0..3.29205e-05
+lipexp-q3-p4000.wav playback -20 LUFS  gain 0.0331329  from 9.59481 LUFS
+lipexp q3-p6000 f0 243.655 closed 0.165271 open 0..4e-05
+lipexp-q3-p6000.wav playback -20 LUFS  gain 0.0279215  from 11.0812 LUFS
+lipexp q5-p2800 f0 217.195 closed 0.315021 open 0..2.14924e-05
+lipexp-q5-p2800.wav playback -20 LUFS  gain 0.0570332  from 4.87744 LUFS
+lipexp q5-p4000 f0 217.195 closed 0.301604 open 0..3.81681e-05
+lipexp-q5-p4000.wav playback -20 LUFS  gain 0.0287098  from 10.8394 LUFS
+lipexp q5-p6000 f0 243.655 closed 0.183292 open 0..4e-05
+lipexp-q5-p6000.wav playback -20 LUFS  gain 0.0277635  from 11.1305 LUFS
+lipexp q8-p2800 f0 217.195 closed 0.329479 open 0..2.39529e-05
+lipexp-q8-p2800.wav playback -20 LUFS  gain 0.0506749  from 5.90414 LUFS
+lipexp q8-p4000 f0 218.182 closed 0.315792 open 0..4e-05
+lipexp-q8-p4000.wav playback -20 LUFS  gain 0.029787  from 10.5195 LUFS
+lipexp q8-p6000 f0 243.655 closed 0.190333 open 0..4e-05
+lipexp-q8-p6000.wav playback -20 LUFS  gain 0.0280491  from 11.0416 LUFS
+===============================================================================
+All tests passed (169 assertions in 1 test case)
+

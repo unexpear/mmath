@@ -1,0 +1,43 @@
+Filters: [.boreexp] [.boreexp]
+Randomness seeded to: 3470502271
+zpeak 90 9.3241
+zpeak 234 4.38338
+zpeak 354 6.45916
+zpeak 477.5 7.90268
+zpeak 589.5 10.9573
+zpeak 697.5 10.6364
+zpeak 803 7.51247
+zpeak 920.5 1.90928
+zpeak 1040.5 -2.18424
+zpeak 1167 -5.62883
+zpeak 1291.5 -7.65183
+zpeak 1418.5 -9.48226
+zpeak 1544 -10.5998
+zpeak 1671 -11.7253
+zpeak 1798 -12.4978
+zpeak 1924.5 -13.3434
+zpeak 2053.5 -14.0139
+zpeak 2180 -14.7374
+zpeak 2312.5 -15.3431
+zpeak 2442 -15.9543
+boreexp p 7000 lip 220 ok 1 f0 247.423 cents 103.383 cent 247.423 h2-h5 dB re h1 -71.2621 -80.2494 -88.0288 -92.2484
+boreexp-p7000-l220.wav playback -160.434 LUFS  gain 13.5584  from -183.078 LUFS
+boreexp p 7000 lip 233 ok 1 f0 247.423 cents 103.383 cent 247.428 h2-h5 dB re h1 -48.1822 -57.6271 -66.2053 -70.6488
+boreexp-p7000-l233.wav playback -180.98 LUFS  gain 14.6007  from -204.268 LUFS
+boreexp p 7000 lip 245 ok 1 f0 220.183 cents -98.5427 cent 228.62 h2-h5 dB re h1 -14.4841 -28.3673 -35.7104 -42.2036
+boreexp-p7000-l245.wav playback -181.704 LUFS  gain 15.5057  from -205.514 LUFS
+boreexp p 8500 lip 220 ok 1 f0 247.423 cents 103.383 cent 247.423 h2-h5 dB re h1 -58.9784 -69.0414 -76.7863 -82.8143
+boreexp-p8500-l220.wav playback -168.341 LUFS  gain 10.9795  from -189.153 LUFS
+boreexp p 8500 lip 233 ok 1 f0 247.423 cents 103.383 cent 247.46 h2-h5 dB re h1 -39.1745 -49.5389 -57.5518 -63.2828
+boreexp-p8500-l233.wav playback -183.041 LUFS  gain 11.6865  from -204.395 LUFS
+boreexp p 8500 lip 245 ok 1 f0 220.183 cents -98.5427 cent 225.353 h2-h5 dB re h1 -17.1694 -27.5713 -35.404 -41.9507
+boreexp-p8500-l245.wav playback -184.567 LUFS  gain 12.5495  from -206.54 LUFS
+boreexp p 10000 lip 220 ok 1 f0 247.423 cents 103.383 cent 247.426 h2-h5 dB re h1 -50.2458 -60.2009 -69.1005 -73.0621
+boreexp-p10000-l220.wav playback -174.561 LUFS  gain 9.22744  from -193.862 LUFS
+boreexp p 10000 lip 233 ok 1 f0 247.423 cents 103.383 cent 247.709 h2-h5 dB re h1 -30.4274 -40.4519 -48.4394 -53.6963
+boreexp-p10000-l233.wav playback -182.697 LUFS  gain 9.94163  from -202.646 LUFS
+boreexp p 10000 lip 245 ok 1 f0 246.154 cents 94.4821 cent 264.579 h2-h5 dB re h1 -11.9454 -22.4515 -29.7862 -35.6963
+boreexp-p10000-l245.wav playback -183.544 LUFS  gain 10.575  from -204.03 LUFS
+===============================================================================
+All tests passed (136 assertions in 1 test case)
+

@@ -1,0 +1,3 @@
+build exit=0
+songs exit=42
+phrase exit=0

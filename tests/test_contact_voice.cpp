@@ -1421,11 +1421,23 @@ TEST_CASE("violin bridge hill: peak near rocking frequency, -12 dB/oct above", "
     return 20 * std::log10(2.0 * std::hypot(re, im) / (n / 2));
   };
   CHECK(std::abs(mag(100.0)) < 0.1);
-  CHECK(mag(2900.0) > 2.5);                     // Q 1.5 -> +3.5 dB
-  CHECK(std::abs(mag(2900.0) - 20 * std::log10(1.5)) < 0.5);
+  CHECK(std::abs(kViolinBridgeHillQ - 1.28) < 0.02);  // Woodhouse 2005 eq. 19
+  CHECK(std::abs(mag(2900.0) - 20 * std::log10(kViolinBridgeHillQ)) < 0.5);
   const double d = mag(8000.0) - mag(16000.0);
   CHECK(d > 9.0);                               // ~12 dB/octave rolloff
   // Rayleigh A0 for a 2 l cavity, 2 x 6 cm^2 holes, 2.5 cm effective length -> a few hundred Hz
   const double a0 = helmholtzFrequencyHz(2.0e-3, 12e-4, 0.025);
   CHECK(a0 > 200.0); CHECK(a0 < 350.0);  // measured A0 253-282 Hz (Bissinger 2008)
+}
+
+TEST_CASE("signature modes boost 400-550 Hz, not low or high", "[contact]") {
+  auto gainAt = [](double f) {
+    SignatureModeFilter h(48000.0);
+    const int n = 96000; double re = 0, im = 0;
+    for (int i = 0; i < n; ++i) { const double ph = 2 * 3.141592653589793 * f * i / 48000.0; const double y = h.process(std::sin(ph)); if (i >= n / 2) { re += y * std::sin(ph); im += y * std::cos(ph); } }
+    return 20 * std::log10(2.0 * std::hypot(re, im) / (n / 2));
+  };
+  CHECK(gainAt(475.0) > 6.0);
+  CHECK(std::abs(gainAt(60.0)) < 1.0);
+  CHECK(std::abs(gainAt(4000.0)) < 1.0);
 }

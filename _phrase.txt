@@ -1,0 +1,149 @@
+Filters: "wind excerpts are audition passages","brass graded notes ring when the breath stops"
+Randomness seeded to: 222199909
+graded brass rings, breath stop. Free decay = 27.29·Δf dB/s (Li, Almeida, Smith & Wolfe, JASA 139:825, 2016, Eq. 3). Δf and Q are the model at the input-impedance peak. Fréour et al., JASA 148:748 (2020): Bb trumpet mode 4, 464.7 Hz, Q 42.6, Δf 10.9 Hz, about 298 dB/s. Petiot, Poirson & Gilbert (2004): single horn Q 32–38, and mode 8 Q 26–43. Ablitzer, Acta Acustica 5:53 (2021): bass-trombone peaks 2–9, Q 24–40. The windows below are per mode, ±20% of each Ablitzer range (that ±20% is UNSOURCED), not the 4.8–14 Hz span. Trumpet mouth is the Bach #37 bell, 4 13/16 in, on the Thibault and Chabassier Bessel horn (exponent 0.7, length 0.619 m, throat 6 mm). Trombone mouth is the Bach 42 bell, 8-1/2 in, on Scott's Table 2.2 horn (exponent 0.7, length 0.502 m). Levine–Schwinger ends that horn. It is not the straight-pipe load of the mouth on the unflared cone. The trombone ring uses Kirchhoff on the Bach 42 .547 in slide. The cone area stays 3.0e-4 m², the area these lengths play. The trumpet throat stays 1.09e-4 m². The radius is not reduced to enter a window.
+trumpet G4 score 0 s  1+2  mode 0  peak 356.378 Hz  Q 32.4622  df 10.9783 Hz  window none  played 390.244 Hz (-7.77308 cents)  ring 360.902 Hz (-135.322 cents)  tail -292.148 dB/s  model -299.596 dB/s  ratio 0.975137
+trumpet F4 score 0.659341 s  open  mode 0  peak 317.301 Hz  Q 31.1037  df 10.2014 Hz  window none  played 350.365 Hz (5.61722 cents)  ring 322.148 Hz (-145.364 cents)  tail -255.95 dB/s  model -278.396 dB/s  ratio 0.919373
+trumpet Bb4 score 1.31868 s  open  mode 4  peak 443.046 Hz  Q 35.6761  df 12.4186 Hz  window 10.9–13.9  played 461.538 Hz (-17.2492 cents)  ring 448.598 Hz (-49.2327 cents)  tail -324.883 dB/s  model -338.902 dB/s  ratio 0.958631
+trumpet D5 score 2.63736 s  open  mode 0  peak 571.097 Hz  Q 38.2358  df 14.9362 Hz  window none  played 585.366 Hz (-5.79929 cents)  ring 571.429 Hz (-41.7185 cents)  tail -406.041 dB/s  model -407.609 dB/s  ratio 0.996153
+trumpet D5 score 3.95604 s  open  mode 0  peak 571.097 Hz  Q 38.2358  df 14.9362 Hz  window none  played 585.366 Hz (-5.79929 cents)  ring 571.429 Hz (-41.7185 cents)  tail -406.041 dB/s  model -407.609 dB/s  ratio 0.996153
+trumpet Bb4 score 4.61538 s  open  mode 4  peak 443.046 Hz  Q 35.6761  df 12.4186 Hz  window 10.9–13.9  played 461.538 Hz (-17.2492 cents)  ring 448.598 Hz (-49.2327 cents)  tail -324.883 dB/s  model -338.902 dB/s  ratio 0.958631
+trumpet C5 score 5.27473 s  1  mode 0  peak 508.767 Hz  Q 37.9431  df 13.4087 Hz  window none  played 521.739 Hz (-5.00612 cents)  ring 510.638 Hz (-37.2323 cents)  tail -349.542 dB/s  model -365.923 dB/s  ratio 0.955233
+trumpet G4 score 5.93407 s  1+2  mode 0  peak 356.378 Hz  Q 32.4622  df 10.9783 Hz  window none  played 390.244 Hz (-7.77308 cents)  ring 360.902 Hz (-135.322 cents)  tail -292.148 dB/s  model -299.596 dB/s  ratio 0.975137
+trumpet F4 score 6.59341 s  open  mode 0  peak 317.301 Hz  Q 31.1037  df 10.2014 Hz  window none  played 350.365 Hz (5.61722 cents)  ring 322.148 Hz (-145.364 cents)  tail -255.95 dB/s  model -278.396 dB/s  ratio 0.919373
+mmath-trumpet-breath-release.wav playback -24 LUFS  gain 0.147503  from -7.376 LUFS over 0.5 s to the end
+trumpet excerpt has no mode 8 note (Petiot window 21.6–35.7 Hz is about 929 Hz). Graded notes are G4, F4, Bb4, D5, and C5.
+trombone Bb4 score 0 s  1st  mode 8  peak 459.319 Hz  Q 38.9039  df 11.8065 Hz  window 8.9–14.24  played 466.019 Hz (-0.522177 cents)  ring 461.538 Hz (-16.727 cents)  tail -318.804 dB/s  model -322.2 dB/s  ratio 0.989461
+trombone Bb4 score 3.33333 s  1st  mode 8  peak 459.319 Hz  Q 38.9039  df 11.8065 Hz  window 8.9–14.24  played 466.019 Hz (-0.522177 cents)  ring 461.538 Hz (-16.727 cents)  tail -317.945 dB/s  model -322.2 dB/s  ratio 0.986796
+trombone G4 score 4.79167 s  2nd  mode 7  peak 384.318 Hz  Q 37.7838  df 10.1715 Hz  window 7.54–12.1  played 393.443 Hz (6.35952 cents)  ring 390.244 Hz (-14.1326 cents)  tail -270.082 dB/s  model -277.58 dB/s  ratio 0.972987
+trombone E4 score 6.66667 s  2nd  mode 6  peak 318.686 Hz  Q 35.6628  df 8.93609 Hz  window 6.96–10.79  played 331.034 Hz (7.36075 cents)  ring 320 Hz (-58.6915 cents)  tail -241.598 dB/s  model -243.866 dB/s  ratio 0.9907
+trombone Db5 score 9.58333 s  position not a mode 2–9  mode 0  peak 550.15 Hz  Q 41.543  df 13.2429 Hz  window none  played 551.724 Hz (-8.28251 cents)  ring 558.14 Hz (20.0145 cents)  tail -371.612 dB/s  model -361.4 dB/s  ratio 1.02826
+trombone Db5 score 10.4167 s  position not a mode 2–9  mode 0  peak 550.15 Hz  Q 41.543  df 13.2429 Hz  window none  played 551.724 Hz (-8.28251 cents)  ring 558.14 Hz (20.0145 cents)  tail -371.612 dB/s  model -361.4 dB/s  ratio 1.02826
+mmath-trombone-breath-release.wav playback -24 LUFS  gain 0.205534  from -10.2577 LUFS over 0.5 s to the end
+clarinet excerpt: Mozart, Clarinet Concerto K.622, Adagio opening, concert pitch. Mechanism: sounding length. Corner 1500 Hz.
+clarinet airway lung 4.9597 L
+clarinet notes
+  A3 p 1 s target 220 yin 219.503 yin-cents -5.80179 acf 219.416 acf-cents -4.59881 peak 219.332 peak-cents -5.26763 ac 0.96946 rms 0.321976
+  D4 p 1.5 s target 293.66 yin 293.668 yin-cents 1.6703 acf 293.725 acf-cents 0.385421 peak 293.75 peak-cents 0.533316 ac 0.971193 rms 0.371642
+  F4 p 0.5 s target 349.23 yin 345.417 yin-cents -19.0467 acf 345.438 acf-cents -18.9009 peak 345.377 peak-cents -19.2049 ac 0.970859 rms 0.376143
+  F4 p 0.5 s target 349.23 yin 344.986 yin-cents -21.1652 acf 345.173 acf-cents -20.2316 peak 345.385 peak-cents -19.1642 ac 0.970883 rms 0.375921
+  E4 p 0.5 s target 329.63 yin 328.163 yin-cents -7.72124 acf 328.01 acf-cents -8.5308 peak 327.972 peak-cents -8.73205 ac 0.970768 rms 0.376813
+  D4 p 1 s target 293.66 yin 294.926 yin-cents 7.44847 acf 294.961 acf-cents 7.65188 peak 293.776 peak-cents 0.685963 ac 0.942975 rms 0.37017
+  rest 1 s
+  A3 p 1.5 s target 220 yin 219.376 yin-cents -6.16055 acf 219.344 acf-cents -5.16711 peak 219.339 peak-cents -5.21312 ac 0.9705 rms 0.321054
+  D4 p 0.5 s target 293.66 yin 293.58 yin-cents -0.768706 acf 293.424 acf-cents -1.3908 peak 293.761 peak-cents 0.59798 ac 0.969889 rms 0.371096
+  F4 p 0.5 s target 349.23 yin 345.309 yin-cents -19.547 acf 345.505 acf-cents -18.5631 peak 345.386 peak-cents -19.1604 ac 0.971607 rms 0.376265
+  A4 p 0.5 s target 440 yin 439.411 yin-cents -2.31856 acf 439.428 acf-cents -2.25271 peak 439.615 peak-cents -1.5154 ac 0.971407 rms 0.476927
+  A4 p 0.5 s target 440 yin 439.672 yin-cents -1.28966 acf 439.822 acf-cents -0.700674 peak 439.557 peak-cents -1.74247 ac 0.971933 rms 0.47687
+  G4 p 0.5 s target 392 yin 392.164 yin-cents -1.44072 acf 391.757 acf-cents -1.07528 peak 391.373 peak-cents -2.77056 ac 0.969774 rms 0.458075
+  F4 p 1 s target 349.23 yin 347.423 yin-cents -19.6452 acf 348.097 acf-cents -5.62659 peak 345.406 peak-cents -19.0595 ac 0.922631 rms 0.374406
+  rest 1 s
+clarinet silent-or-unlocked 0
+clarinet held-note band above 0.4 fs 0.429936%  below 5 kHz 97.8839%
+mmath-excerpt-clarinet.wav playback -24 LUFS  gain 0.191112  from -9.62574 LUFS over 0.5 s to the end
+saxophone excerpt: Mussorgsky/Ravel, Pictures at an Exhibition, The Old Castle, alto solo, concert pitch. Mechanism: truncated-cone length. Acciaccaturas omitted.
+saxophone airway lung 5.5 L
+saxophone notes
+  D#4 p 0.4 s target 311.13 yin 311.709 yin-cents 3.21601 acf 312.261 acf-cents 6.27976 peak 307.576 peak-cents -19.887 ac 0.931582 rms 0.464631
+  G#4 p 2.8 s target 415.3 yin 416.221 yin-cents -19.5642 acf 415.33 acf-cents 0.125979 peak 413.536 peak-cents -7.36973 ac 0.946665 rms 1.02123
+  B4 p 0.4 s target 493.88 yin 493.692 yin-cents -0.660432 acf 492.189 acf-cents -5.9381 peak 492.137 peak-cents -6.12023 ac 0.944884 rms 0.923966
+  A#4 p 0.4 s target 466.16 yin 462.769 yin-cents -12.6398 acf 463.389 acf-cents -10.3226 peak 463.88 peak-cents -8.48812 ac 0.947287 rms 0.951101
+  G#4 p 0.4 s target 415.3 yin 413.796 yin-cents -6.28149 acf 414.362 acf-cents -3.91401 peak 413.625 peak-cents -6.99734 ac 0.946572 rms 1.02278
+  E4 p 0.4 s target 329.63 yin 324.822 yin-cents -25.4361 acf 324.87 acf-cents -25.1806 peak 324.25 peak-cents -28.4897 ac 0.946046 rms 1.19295
+  G#4 p 0.4 s target 415.3 yin 414.229 yin-cents -4.47161 acf 413.623 acf-cents -7.00426 peak 413.581 peak-cents -7.18002 ac 0.944055 rms 1.0237
+  G#4 p 0.8 s target 415.3 yin 413.009 yin-cents -9.57672 acf 413.387 acf-cents -7.99103 peak 413.717 peak-cents -6.61112 ac 0.947397 rms 1.02289
+  D#4 p 0.4 s target 311.13 yin 311.311 yin-cents 1.00853 acf 311.141 acf-cents 0.0633945 peak 311.18 peak-cents 0.275935 ac 0.947114 rms 1.19847
+  F#4 p 1.6 s target 369.99 yin 367.588 yin-cents -12.6206 acf 369.302 acf-cents -3.2234 peak 369.966 peak-cents -0.11406 ac 0.947797 rms 1.11594
+  E4 p 0.4 s target 329.63 yin 324.053 yin-cents -29.5417 acf 324.539 acf-cents -26.9451 peak 324.266 peak-cents -28.406 ac 0.947966 rms 1.19497
+  D#4 p 0.4 s target 311.13 yin 310.91 yin-cents -1.22646 acf 311.416 acf-cents 1.58995 peak 311.198 peak-cents 0.379659 ac 0.94806 rms 1.20167
+  E4 p 0.4 s target 329.63 yin 324.442 yin-cents -27.4626 acf 324.687 acf-cents -26.1595 peak 324.244 peak-cents -28.5222 ac 0.945854 rms 1.19538
+  D#4 p 0.4 s target 311.13 yin 310.66 yin-cents -2.61898 acf 310.563 acf-cents -3.15611 peak 311.162 peak-cents 0.17546 ac 0.946608 rms 1.20147
+  C#4 p 0.4 s target 277.18 yin 277.513 yin-cents 2.07939 acf 277.486 acf-cents 1.91212 peak 277.649 peak-cents 2.92413 ac 0.946537 rms 1.20635
+  D#4 p 0.4 s target 311.13 yin 312.616 yin-cents 8.24683 acf 311.331 acf-cents 1.11742 peak 311.173 peak-cents 0.239844 ac 0.945805 rms 1.20095
+  G#3 p 2.4 s target 207.65 yin 207.649 yin-cents -19.6931 acf 207.072 acf-cents -4.82613 peak 206.854 peak-cents -6.65199 ac 0.94724 rms 1.3429
+saxophone silent-or-unlocked 0
+saxophone held-note band above 0.4 fs 0.806612%  below 5 kHz 96.1004%
+mmath-excerpt-saxophone.wav playback -24 LUFS  gain 0.057694  from 0.777392 LUFS over 0.5 s to the end
+mmath-excerpt-saxophone.wav wav f0 416.477 Hz  within40 5  within20 2  total 4  evens 2  floor -48.4178 dB
+flute excerpt: Debussy, Prélude à l'après-midi d'un faune, opening, bars 1–2, quarter = 44. Mechanism: bore length, jet delay, and pressure. Corner 1800 Hz, the 2 s demo.
+flute airway lung 3.22775 L
+flute notes
+  C#5 p 3.06818 s target 554.37 yin 554.158 yin-cents -0.755268 acf 554.191 acf-cents -0.559606 peak 554.22 peak-cents -0.467108 ac 0.998744 rms 3.45667
+  B4 p 0.340909 s target 493.88 yin 493.74 yin-cents -0.49233 acf 493.773 acf-cents -0.375708 peak 493.86 peak-cents -0.0714142 ac 0.999124 rms 3.31105
+  A#4 p 0.227273 s target 466.16 yin 466.069 yin-cents -0.336624 acf 466.076 acf-cents -0.313249 peak 465.892 peak-cents -0.993802 ac 0.999234 rms 3.22058
+  A4 p 0.227273 s target 440 yin 439.965 yin-cents -0.139425 acf 439.935 acf-cents -0.25655 peak 439.859 peak-cents -0.555338 ac 0.999237 rms 3.12858
+  G#4 p 0.227273 s target 415.3 yin 415.224 yin-cents -0.31478 acf 415.234 acf-cents -0.274904 peak 415.349 peak-cents 0.20607 ac 0.998959 rms 3.04685
+  G4 p 1.02273 s target 392 yin 391.943 yin-cents -0.388778 acf 391.967 acf-cents -0.143944 peak 391.915 peak-cents -0.37718 ac 0.998898 rms 2.96534
+  A4 p 0.340909 s target 440 yin 439.933 yin-cents -0.264038 acf 439.907 acf-cents -0.367208 peak 439.961 peak-cents -0.153992 ac 0.99921 rms 3.15493
+  B4 p 0.340909 s target 493.88 yin 493.782 yin-cents -0.343985 acf 493.773 acf-cents -0.37339 peak 493.856 peak-cents -0.0824489 ac 0.999146 rms 3.33024
+  C5 p 0.340909 s target 523.25 yin 523.102 yin-cents -0.490955 acf 523.097 acf-cents -0.506366 peak 523.195 peak-cents -0.183156 ac 0.999093 rms 3.38753
+  C#5 p 3.06818 s target 554.37 yin 554.16 yin-cents -0.733576 acf 554.175 acf-cents -0.609229 peak 554.222 peak-cents -0.462291 ac 0.998783 rms 3.45826
+  B4 p 0.340909 s target 493.88 yin 493.773 yin-cents -0.376514 acf 493.767 acf-cents -0.395176 peak 493.855 peak-cents -0.0881327 ac 0.999184 rms 3.31012
+  A#4 p 0.227273 s target 466.16 yin 466.094 yin-cents -0.246247 acf 466.072 acf-cents -0.327711 peak 465.897 peak-cents -0.975254 ac 0.999298 rms 3.22197
+  A4 p 0.227273 s target 440 yin 439.937 yin-cents -0.249491 acf 439.956 acf-cents -0.173079 peak 439.866 peak-cents -0.526526 ac 0.999274 rms 3.13681
+  G#4 p 0.227273 s target 415.3 yin 415.28 yin-cents -0.0816596 acf 415.246 acf-cents -0.224505 peak 415.361 peak-cents 0.255439 ac 0.998906 rms 3.04773
+  G4 p 1.02273 s target 392 yin 391.963 yin-cents -0.415299 acf 391.959 acf-cents -0.180564 peak 391.914 peak-cents -0.37838 ac 0.998899 rms 2.96452
+  A4 p 0.340909 s target 440 yin 439.949 yin-cents -0.199472 acf 439.941 acf-cents -0.231695 peak 439.968 peak-cents -0.127294 ac 0.999238 rms 3.15563
+  B4 p 0.340909 s target 493.88 yin 493.751 yin-cents -0.450957 acf 493.748 acf-cents -0.462254 peak 493.858 peak-cents -0.0764828 ac 0.999107 rms 3.32399
+  C5 p 0.340909 s target 523.25 yin 523.147 yin-cents -0.34216 acf 523.161 acf-cents -0.295978 peak 523.196 peak-cents -0.177956 ac 0.998876 rms 3.34507
+flute silent-or-unlocked 0
+flute held-note band above 0.4 fs 0.00830245%  below 5 kHz 99.9431%
+mmath-excerpt-flute.wav playback -24 LUFS  gain 0.0205645  from 9.73765 LUFS over 0.5 s to the end
+trumpet excerpt: Mussorgsky/Ravel, Pictures, Promenade opening, quarter = 91. Mechanism: sounding length and lip resonance. Not a piston chart.
+trumpet airway lung 4.01914 L
+trumpet notes
+  G4 f 0.659341 s target 392 yin 391.284 yin-cents -3.34313 acf 391.325 acf-cents -2.98539 peak 391.278 peak-cents -3.19086 ac 0.999037 rms 0.373014
+  F4 f 0.659341 s target 349.23 yin 349.652 yin-cents 2.10773 acf 349.634 acf-cents 1.99934 peak 349.68 peak-cents 2.23151 ac 0.999601 rms 0.427041
+  Bb4 f 0.659341 s target 466.16 yin 462.502 yin-cents -13.6745 acf 462.504 acf-cents -13.6326 peak 462.476 peak-cents -13.7355 ac 0.999818 rms 0.69467
+  C5 f 0.32967 s target 523.25 yin 520.741 yin-cents -8.32125 acf 520.796 acf-cents -8.13685 peak 520.543 peak-cents -8.98035 ac 0.999427 rms 0.946658
+  F5 f 0.32967 s target 698.46 yin 690.153 yin-cents -20.7137 acf 690.098 acf-cents -20.851 peak 689.954 peak-cents -21.2115 ac 0.998202 rms 1.05594
+  D5 f 0.659341 s target 587.33 yin 582.605 yin-cents -14.0383 acf 582.61 acf-cents -13.9697 peak 582.489 peak-cents -14.3287 ac 0.99859 rms 0.94144
+  C5 f 0.32967 s target 523.25 yin 520.628 yin-cents -8.69836 acf 520.799 acf-cents -8.12997 peak 520.571 peak-cents -8.88666 ac 0.99658 rms 0.964517
+  F5 f 0.32967 s target 698.46 yin 690.168 yin-cents -20.6747 acf 690.041 acf-cents -20.9935 peak 689.943 peak-cents -21.2414 ac 0.998637 rms 1.05288
+  D5 f 0.659341 s target 587.33 yin 582.595 yin-cents -14.0132 acf 582.645 acf-cents -13.8652 peak 582.49 peak-cents -14.3267 ac 0.998618 rms 0.942763
+  Bb4 f 0.659341 s target 466.16 yin 462.5 yin-cents -13.7651 acf 462.48 acf-cents -13.7215 peak 462.444 peak-cents -13.8575 ac 0.999826 rms 0.696225
+  C5 f 0.659341 s target 523.25 yin 520.792 yin-cents -8.5471 acf 520.669 acf-cents -8.56005 peak 520.631 peak-cents -8.68585 ac 0.9996 rms 0.942359
+  G4 f 0.659341 s target 392 yin 391.274 yin-cents -3.30823 acf 391.28 acf-cents -3.18458 peak 391.278 peak-cents -3.19124 ac 0.999059 rms 0.37509
+  F4 f 0.659341 s target 349.23 yin 349.658 yin-cents 2.11868 acf 349.646 acf-cents 2.06191 peak 349.68 peak-cents 2.23145 ac 0.999616 rms 0.426436
+trumpet silent-or-unlocked 0
+trumpet held-note band above 0.4 fs 5.27925e-06%  below 5 kHz 99.9845%
+mmath-excerpt-trumpet.wav playback -24 LUFS  gain 0.0901192  from -3.09635 LUFS over 0.5 s to the end
+trombone excerpt: Ravel, Boléro, trombone solo, through the high Db. Quarter = 72. Mechanism: slide length and lip resonance. No glissando.
+trombone airway lung 4.20356 L
+trombone notes
+  Bb4 mf 1.04167 s target 466.16 yin 466.191 yin-cents 0.269302 acf 466.171 acf-cents 0.0420165 peak 466.195 peak-cents 0.130127 ac 0.999987 rms 0.459898
+  A4 mf 0.208333 s target 440 yin 440.264 yin-cents 1.04038 acf 440.147 acf-cents 0.577556 peak 439.418 peak-cents -2.29117 ac 0.989507 rms 0.495875
+  G4 mf 0.208333 s target 392 yin 395.328 yin-cents 14.6339 acf 395.403 acf-cents 14.9653 peak 392.215 peak-cents 0.948867 ac 0.956327 rms 0.481827
+  F4 mf 0.208333 s target 349.23 yin 349.261 yin-cents 0.153189 acf 349.501 acf-cents 1.34459 peak 349.048 peak-cents -0.902726 ac 0.993132 rms 0.368902
+  Bb4 mf 0.208333 s target 466.16 yin 466.216 yin-cents 0.206914 acf 464.01 acf-cents -8.00315 peak 465.16 peak-cents -3.71841 ac 0.987182 rms 0.363515
+  C5 mf 0.208333 s target 523.25 yin 523.42 yin-cents 0.561745 acf 523.521 acf-cents 0.895244 peak 522.973 peak-cents -0.916771 ac 0.996911 rms 0.548982
+  A4 mf 0.208333 s target 440 yin 447.928 yin-cents 30.9155 acf 452.067 acf-cents 46.8385 peak 439.435 peak-cents -2.22436 ac 0.875645 rms 0.551383
+  G4 mf 0.208333 s target 392 yin 395.975 yin-cents 17.4648 acf 395.722 acf-cents 16.3614 peak 392.161 peak-cents 0.710304 ac 0.949287 rms 0.485211
+  Bb4 mf 0.416667 s target 466.16 yin 466.215 yin-cents 0.206068 acf 466.173 acf-cents 0.0479676 peak 466.251 peak-cents 0.338865 ac 0.999937 rms 0.50819
+  A4 mf 0.208333 s target 440 yin 440.049 yin-cents 0.193534 acf 440.217 acf-cents 0.852768 peak 439.371 peak-cents -2.47614 ac 0.989454 rms 0.498022
+  G4 mf 0.208333 s target 392 yin 395.638 yin-cents 15.9936 acf 395.734 acf-cents 16.4124 peak 392.181 peak-cents 0.800774 ac 0.950748 rms 0.484043
+  Bb4 mf 0.833333 s target 466.16 yin 466.148 yin-cents 0.12947 acf 466.169 acf-cents 0.0316008 peak 466.195 peak-cents 0.128991 ac 0.999984 rms 0.509111
+  A4 mf 0.208333 s target 440 yin 439.825 yin-cents -0.687031 acf 440.065 acf-cents 0.25758 peak 439.357 peak-cents -2.53226 ac 0.99153 rms 0.4976
+  Bb4 mf 0.208333 s target 466.16 yin 466.202 yin-cents 0.157492 acf 466.508 acf-cents 1.29108 peak 466.097 peak-cents -0.233244 ac 0.997933 rms 0.50433
+  A4 mf 0.208333 s target 440 yin 440.02 yin-cents 0.0801368 acf 439.982 acf-cents -0.0711112 peak 439.349 peak-cents -2.5632 ac 0.991062 rms 0.497031
+  G4 mf 1.25 s target 392 yin 392.096 yin-cents 0.575025 acf 392.118 acf-cents 0.519262 peak 392.059 peak-cents 0.262216 ac 0.999683 rms 0.46755
+  F4 mf 0.208333 s target 349.23 yin 349.291 yin-cents 0.300975 acf 349.54 acf-cents 1.53569 peak 349.056 peak-cents -0.860336 ac 0.99234 rms 0.370168
+  E4 mf 0.208333 s target 329.63 yin 330.363 yin-cents 3.84483 acf 330.401 acf-cents 4.04598 peak 330.571 peak-cents 4.93256 ac 0.998591 rms 0.356338
+  D4 mf 0.208333 s target 293.66 yin 295.595 yin-cents 11.3675 acf 295.737 acf-cents 12.2008 peak 295.872 peak-cents 12.9901 ac 0.989508 rms 0.340799
+  E4 mf 1.66667 s target 329.63 yin 330.39 yin-cents 4.12162 acf 330.413 acf-cents 4.10683 peak 330.358 peak-cents 3.82064 ac 0.99986 rms 0.355854
+  rest 0.416667 s
+  Bb4 mf 0.416667 s target 466.16 yin 466.171 yin-cents 0.0419135 acf 466.163 acf-cents 0.00930958 peak 466.176 peak-cents 0.0596218 ac 0.999987 rms 0.472307
+  C5 mf 0.416667 s target 523.25 yin 523.143 yin-cents -0.354029 acf 523.131 acf-cents -0.392199 peak 523.117 peak-cents -0.441538 ac 0.999797 rms 0.546731
+  Db5 mf 0.833333 s target 554.37 yin 554.12 yin-cents -0.817506 acf 554.12 acf-cents -0.781644 peak 554.146 peak-cents -0.700093 ac 0.99958 rms 0.755922
+  Db5 mf 0.833333 s target 554.37 yin 554.11 yin-cents -0.811597 acf 554.117 acf-cents -0.790515 peak 554.143 peak-cents -0.708676 ac 0.999599 rms 0.756713
+  Db5 mf 0.416667 s target 554.37 yin 554.116 yin-cents -0.793878 acf 554.119 acf-cents -0.782999 peak 554.146 peak-cents -0.701177 ac 0.999586 rms 0.755308
+  Db5 mf 0.416667 s target 554.37 yin 554.119 yin-cents -0.784431 acf 554.12 acf-cents -0.781908 peak 554.147 peak-cents -0.695553 ac 0.99959 rms 0.756576
+  Db5 mf 0.416667 s target 554.37 yin 554.109 yin-cents -0.815104 acf 554.108 acf-cents -0.818329 peak 554.143 peak-cents -0.708807 ac 0.9996 rms 0.757037
+  Db5 mf 0.277778 s target 554.37 yin 554.117 yin-cents -0.790742 acf 554.114 acf-cents -0.798819 peak 554.058 peak-cents -0.975057 ac 0.999599 rms 0.756628
+  Db5 mf 0.277778 s target 554.37 yin 554.117 yin-cents -0.791593 acf 554.115 acf-cents -0.797968 peak 554.058 peak-cents -0.975057 ac 0.9996 rms 0.756488
+  Db5 mf 0.277778 s target 554.37 yin 554.105 yin-cents -0.828175 acf 554.11 acf-cents -0.811065 peak 554.058 peak-cents -0.975058 ac 0.999599 rms 0.756725
+trombone silent-or-unlocked 0
+trombone held-note band above 0.4 fs 7.26563e-08%  below 5 kHz 99.9997%
+mmath-excerpt-trombone.wav playback -24 LUFS  gain 0.124493  from -5.90288 LUFS over 0.5 s to the end
+===============================================================================
+All tests passed (3936964 assertions in 2 test cases)
+

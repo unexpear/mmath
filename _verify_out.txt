@@ -1,0 +1,9 @@
+C:\Program Files\CMake\bin\cmake.exe
+C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe
+C:\Users\micha\AppData\Local\Microsoft\WinGet\Links\ninja.exe
+C:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe
+cmake version 3.31.0-rc1
+Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36260 for x64
+configure exit=0
+build exit=0
+test exit=0

@@ -1,0 +1,365 @@
+Filters: [.songs] [.songs]
+Randomness seeded to: 622387239
+clarinet excerpt: Mozart, Clarinet Concerto K.622, Adagio opening, concert pitch. Mechanism: sounding length. Corner 1500 Hz.
+clarinet airway lung 3.90241 L
+mmath-song-clarinet-bumblebee notes
+  rest 0.56 s
+  A4 f 0.11 s target 440 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  G#4 f 0.11 s target 415.3 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  G4 f 0.11 s target 392 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  F#4 f 0.11 s target 369.99 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  F4 f 0.11 s target 349.23 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  E4 f 0.11 s target 329.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  F4 f 0.11 s target 349.23 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  E4 f 0.11 s target 329.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  D#4 f 0.11 s target 311.13 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  D4 f 0.11 s target 293.66 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C#4 f 0.11 s target 277.18 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C4 f 0.11 s target 261.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C#4 f 0.11 s target 277.18 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C4 f 0.11 s target 261.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  B3 f 0.11 s target 246.94 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  A#3 f 0.11 s target 233.08 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  A3 f 0.6 s target 220 yin 219.355 yin-cents -5.16318 acf 219.369 acf-cents -4.9693 peak 219.326 peak-cents -5.30813 ac 0.999719 rms 0.316592
+  A4 f 0.11 s target 440 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  G#4 f 0.11 s target 415.3 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  G4 f 0.11 s target 392 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  F#4 f 0.11 s target 369.99 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  F4 f 0.11 s target 349.23 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  E4 f 0.11 s target 329.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  F4 f 0.11 s target 349.23 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  E4 f 0.11 s target 329.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  D#4 f 0.11 s target 311.13 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  D4 f 0.11 s target 293.66 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C#4 f 0.11 s target 277.18 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C4 f 0.11 s target 261.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C#4 f 0.11 s target 277.18 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C4 f 0.11 s target 261.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  B3 f 0.11 s target 246.94 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  A#3 f 0.11 s target 233.08 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  A3 f 0.6 s target 220 yin 219.345 yin-cents -5.23905 acf 219.345 acf-cents -5.1601 peak 219.32 peak-cents -5.36168 ac 0.999755 rms 0.316565
+  A4 f 0.11 s target 440 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  G#4 f 0.11 s target 415.3 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  G4 f 0.11 s target 392 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  F#4 f 0.11 s target 369.99 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  F4 f 0.11 s target 349.23 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  E4 f 0.11 s target 329.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  F4 f 0.11 s target 349.23 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  E4 f 0.11 s target 329.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  D#4 f 0.11 s target 311.13 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  D4 f 0.11 s target 293.66 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C#4 f 0.11 s target 277.18 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C4 f 0.11 s target 261.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C#4 f 0.11 s target 277.18 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C4 f 0.11 s target 261.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  B3 f 0.11 s target 246.94 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  A#3 f 0.11 s target 233.08 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  A3 f 0.6 s target 220 yin 219.355 yin-cents -5.24591 acf 219.345 acf-cents -5.16248 peak 219.317 peak-cents -5.38039 ac 0.99976 rms 0.316452
+  A3 f 0.11 s target 220 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  A#3 f 0.11 s target 233.08 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  B3 f 0.11 s target 246.94 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C4 f 0.11 s target 261.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  C#4 f 0.11 s target 277.18 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  D4 f 0.11 s target 293.66 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  D#4 f 0.11 s target 311.13 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  E4 f 0.11 s target 329.63 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  F4 f 0.11 s target 349.23 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  F#4 f 0.11 s target 369.99 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  G4 f 0.11 s target 392 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  G#4 f 0.11 s target 415.3 yin 0 yin-cents 0 acf 0 acf-cents 0 peak 0 peak-cents 0 ac 0 rms 0 DID NOT SPEAK
+  A4 f 0.9 s target 440 yin 442.127 yin-cents 8.3483 acf 442.31 acf-cents 9.06395 peak 439.573 peak-cents -1.6805 ac 0.978703 rms 0.466996
+mmath-song-clarinet-bumblebee silent-or-unlocked 60
+mmath-song-clarinet-bumblebee held-note band above 0.4 fs 0.000522696%  below 5 kHz 99.9853%
+mmath-song-clarinet-bumblebee.wav playback -24 LUFS  gain 0.177087  from -8.96376 LUFS over 0.5 s to the end
+trumpet excerpt: Mussorgsky/Ravel, Pictures, Promenade opening, quarter = 91. Mechanism: sounding length and lip resonance. Not a piston chart.
+trumpet airway lung 6 L
+mmath-song-trumpet-uptown-funk notes
+  rest 0.56 s
+  D5 f 0.2 s target 587.33 yin 582.338 yin-cents -14.7762 acf 582.488 acf-cents -14.3303 peak 582.235 peak-cents -15.0838 ac 0.99773 rms 0.826772
+  rest 0.2 s
+  D5 f 0.2 s target 587.33 yin 578.337 yin-cents -26.7122 acf 577.228 acf-cents -30.0372 peak 578.864 peak-cents -25.1368 ac 0.947935 rms 0.605516
+  F5 f 0.2 s target 698.46 yin 688.23 yin-cents -25.5434 acf 687.19 acf-cents -28.1617 peak 686.547 peak-cents -29.7827 ac 0.973414 rms 0.75208
+  rest 0.2 s
+  D5 f 0.2 s target 587.33 yin 582.887 yin-cents -13.1447 acf 581.476 acf-cents -17.3424 peak 582.229 peak-cents -15.101 ac 0.993416 rms 0.802072
+  rest 0.4 s
+  C5 f 0.2 s target 523.25 yin 521.047 yin-cents -7.30311 acf 520.804 acf-cents -8.11338 peak 520.702 peak-cents -8.45106 ac 0.995255 rms 0.909069
+  D5 f 0.2 s target 587.33 yin 582.529 yin-cents -14.2091 acf 583.059 acf-cents -12.6361 peak 582.268 peak-cents -14.9857 ac 0.995316 rms 0.92559
+  rest 0.2 s
+  Bb4 f 0.2 s target 466.16 yin 462.5 yin-cents -13.648 acf 462.519 acf-cents -13.5757 peak 462.538 peak-cents -13.5038 ac 0.999698 rms 0.697061
+  C5 f 0.2 s target 523.25 yin 522.447 yin-cents -2.65928 acf 521.913 acf-cents -4.43012 peak 520.755 peak-cents -8.27552 ac 0.98526 rms 0.946241
+  D5 f 0.6 s target 587.33 yin 582.611 yin-cents -14.0178 acf 582.668 acf-cents -13.7958 peak 582.489 peak-cents -14.3292 ac 0.998641 rms 0.918
+  rest 0.2 s
+  D5 f 0.2 s target 587.33 yin 582.897 yin-cents -13.1176 acf 582.803 acf-cents -13.3944 peak 582.237 peak-cents -15.0783 ac 0.995572 rms 0.836924
+  rest 0.2 s
+  D5 f 0.2 s target 587.33 yin 578.32 yin-cents -26.7631 acf 577.243 acf-cents -29.9896 peak 578.659 peak-cents -25.7507 ac 0.95165 rms 0.609302
+  F5 f 0.2 s target 698.46 yin 685.998 yin-cents -31.169 acf 685.471 acf-cents -32.4978 peak 686.302 peak-cents -30.4019 ac 0.965261 rms 0.682719
+  rest 0.2 s
+  D5 f 0.2 s target 587.33 yin 582.476 yin-cents -14.3678 acf 580.524 acf-cents -20.1781 peak 582.145 peak-cents -15.3502 ac 0.9893 rms 0.738153
+  rest 0.4 s
+  C5 f 0.2 s target 523.25 yin 520.966 yin-cents -7.572 acf 520.71 acf-cents -8.4254 peak 520.751 peak-cents -8.28826 ac 0.997006 rms 0.896702
+  D5 f 0.2 s target 587.33 yin 582.567 yin-cents -14.0957 acf 583.038 acf-cents -12.6965 peak 582.282 peak-cents -14.9429 ac 0.995507 rms 0.923639
+  rest 0.2 s
+  Bb4 f 0.2 s target 466.16 yin 462.497 yin-cents -13.6575 acf 462.522 acf-cents -13.5649 peak 462.536 peak-cents -13.5097 ac 0.999694 rms 0.695892
+  C5 f 0.2 s target 523.25 yin 522.439 yin-cents -2.68485 acf 521.905 acf-cents -4.4547 peak 520.755 peak-cents -8.27564 ac 0.985291 rms 0.945156
+  D5 f 0.6 s target 587.33 yin 582.612 yin-cents -14.0141 acf 582.67 acf-cents -13.7918 peak 582.489 peak-cents -14.3292 ac 0.998643 rms 0.916974
+  rest 0.2 s
+  F4 f 0.2 s target 349.23 yin 349.554 yin-cents 1.60762 acf 349.656 acf-cents 2.11217 peak 349.37 peak-cents 0.694118 ac 0.994461 rms 0.423194
+  G4 f 0.2 s target 392 yin 391.633 yin-cents -1.62252 acf 391.63 acf-cents -1.63416 peak 391.445 peak-cents -2.45388 ac 0.985975 rms 0.376264
+  Bb4 f 0.2 s target 466.16 yin 462.5 yin-cents -13.6476 acf 462.532 acf-cents -13.5261 peak 462.568 peak-cents -13.3911 ac 0.998978 rms 0.693252
+  C5 f 0.2 s target 523.25 yin 521.427 yin-cents -6.04314 acf 521.425 acf-cents -6.04852 peak 520.751 peak-cents -8.28771 ac 0.991243 rms 0.949729
+  D5 f 0.6 s target 587.33 yin 582.653 yin-cents -13.9623 acf 582.608 acf-cents -13.9736 peak 582.489 peak-cents -14.3287 ac 0.998591 rms 0.923023
+  rest 0.2 s
+  D5 f 0.15 s target 587.33 yin 575.276 yin-cents -35.9004 acf 570.863 acf-cents -49.2311 peak 575.849 peak-cents -34.1781 ac 0.950453 rms 0.631759
+  F5 f 0.8 s target 698.46 yin 690.028 yin-cents -21.1092 acf 690.035 acf-cents -21.0108 peak 690.014 peak-cents -21.0632 ac 0.998844 rms 1.00122
+mmath-song-trumpet-uptown-funk silent-or-unlocked 0
+mmath-song-trumpet-uptown-funk held-note band above 0.4 fs 9.22711e-06%  below 5 kHz 99.9933%
+mmath-song-trumpet-uptown-funk.wav playback -24 LUFS  gain 0.0981458  from -3.83743 LUFS over 0.5 s to the end
+flute excerpt: Debussy, Prélude à l'après-midi d'un faune, opening, bars 1–2, quarter = 44. Mechanism: bore length, jet delay, and pressure. Corner 1800 Hz, the 2 s demo.
+flute airway lung 5.06685 L
+mmath-song-flute-day-in-the-life notes
+  rest 0.56 s
+  B4 mf 0.3 s target 493.88 yin 493.776 yin-cents -0.365749 acf 493.784 acf-cents -0.336657 peak 493.872 peak-cents -0.0283448 ac 0.999151 rms 2.90269
+  B4 mf 0.3 s target 493.88 yin 493.754 yin-cents -0.443124 acf 493.769 acf-cents -0.388776 peak 493.862 peak-cents -0.0619113 ac 0.999159 rms 3.06286
+  B4 mf 0.3 s target 493.88 yin 493.788 yin-cents -0.32335 acf 493.767 acf-cents -0.394495 peak 493.869 peak-cents -0.0400714 ac 0.999135 rms 3.07201
+  A4 mf 0.3 s target 440 yin 439.918 yin-cents -0.321046 acf 439.931 acf-cents -0.27231 peak 439.975 peak-cents -0.0991036 ac 0.999254 rms 2.8334
+  B4 mf 0.3 s target 493.88 yin 493.744 yin-cents -0.478408 acf 493.74 acf-cents -0.489141 peak 493.863 peak-cents -0.0593001 ac 0.999135 rms 3.11785
+  C5 mf 0.3 s target 523.25 yin 523.124 yin-cents -0.4153 acf 523.097 acf-cents -0.507071 peak 523.196 peak-cents -0.179294 ac 0.999089 rms 3.31216
+  B4 mf 0.3 s target 493.88 yin 493.728 yin-cents -0.531678 acf 493.764 acf-cents -0.405471 peak 493.855 peak-cents -0.0865151 ac 0.99914 rms 3.21979
+  A4 mf 0.3 s target 440 yin 439.945 yin-cents -0.217586 acf 439.937 acf-cents -0.248583 peak 439.966 peak-cents -0.132691 ac 0.999245 rms 3.0565
+  G4 mf 0.9 s target 392 yin 391.999 yin-cents -0.362667 acf 391.998 acf-cents -0.0108933 peak 391.913 peak-cents -0.382862 ac 0.998768 rms 2.87057
+  rest 0.3 s
+  A4 mf 0.3 s target 440 yin 439.883 yin-cents -0.461469 acf 439.937 acf-cents -0.24894 peak 439.987 peak-cents -0.0493841 ac 0.999224 rms 2.68621
+  B4 mf 0.3 s target 493.88 yin 493.766 yin-cents -0.399067 acf 493.766 acf-cents -0.399619 peak 493.859 peak-cents -0.0722617 ac 0.999125 rms 3.09449
+  B4 mf 0.3 s target 493.88 yin 493.772 yin-cents -0.377279 acf 493.764 acf-cents -0.407302 peak 493.864 peak-cents -0.0562914 ac 0.999163 rms 3.07325
+  A4 mf 0.3 s target 440 yin 439.935 yin-cents -0.256751 acf 439.931 acf-cents -0.272666 peak 439.975 peak-cents -0.0966113 ac 0.999253 rms 2.8327
+  G4 mf 0.3 s target 392 yin 391.953 yin-cents -0.208114 acf 391.966 acf-cents -0.150292 peak 391.912 peak-cents -0.389968 ac 0.998877 rms 2.63785
+  A4 mf 0.3 s target 440 yin 439.904 yin-cents -0.379315 acf 439.93 acf-cents -0.275668 peak 439.964 peak-cents -0.141836 ac 0.999251 rms 3.08142
+  B4 mf 0.3 s target 493.88 yin 493.755 yin-cents -0.439766 acf 493.761 acf-cents -0.416757 peak 493.856 peak-cents -0.0848693 ac 0.999136 rms 3.23355
+  A4 mf 0.3 s target 440 yin 439.939 yin-cents -0.240614 acf 439.928 acf-cents -0.282528 peak 439.966 peak-cents -0.134775 ac 0.999209 rms 3.05201
+  G4 mf 0.3 s target 392 yin 391.966 yin-cents -0.150618 acf 391.959 acf-cents -0.180228 peak 391.91 peak-cents -0.3979 ac 0.998896 rms 2.86026
+  E4 mf 1.2 s target 329.63 yin 329.648 yin-cents -0.224942 acf 329.645 acf-cents 0.079157 peak 329.607 peak-cents -0.11939 ac 0.998949 rms 2.5566
+  rest 0.3 s
+  G4 mf 0.3 s target 392 yin 391.974 yin-cents -0.115052 acf 391.98 acf-cents -0.0870765 peak 391.933 peak-cents -0.297678 ac 0.998895 rms 2.388
+  A4 mf 0.3 s target 440 yin 439.874 yin-cents -0.494787 acf 439.934 acf-cents -0.261098 peak 439.973 peak-cents -0.10523 ac 0.99923 rms 2.89666
+  B4 mf 0.6 s target 493.88 yin 493.761 yin-cents -0.446793 acf 493.763 acf-cents -0.410203 peak 493.747 peak-cents -0.466285 ac 0.999139 rms 3.17068
+  D5 mf 1.2 s target 587.33 yin 587.194 yin-cents -0.805951 acf 587.165 acf-cents -0.487759 peak 587.133 peak-cents -0.581248 ac 0.998757 rms 3.4156
+mmath-song-flute-day-in-the-life silent-or-unlocked 0
+mmath-song-flute-day-in-the-life held-note band above 0.4 fs 0.00833594%  below 5 kHz 99.9388%
+mmath-song-flute-day-in-the-life.wav playback -24 LUFS  gain 0.0241764  from 8.33215 LUFS over 0.5 s to the end
+trombone excerpt: Ravel, Boléro, trombone solo, through the high Db. Quarter = 72. Mechanism: slide length and lip resonance. No glissando.
+trombone airway lung 5.45328 L
+mmath-song-trombone-mountain notes
+  rest 0.56 s
+  F4 mf 0.28 s target 349.23 yin 349.173 yin-cents -0.282026 acf 349.163 acf-cents -0.330279 peak 349.081 peak-cents -0.736434 ac 0.99965 rms 0.360618
+  G4 mf 0.28 s target 392 yin 392.32 yin-cents 1.41182 acf 392.239 acf-cents 1.05454 peak 392.016 peak-cents 0.068548 ac 0.998113 rms 0.468141
+  Bb4 mf 0.28 s target 466.16 yin 466.417 yin-cents 0.953021 acf 466.231 acf-cents 0.264422 peak 466.201 peak-cents 0.153949 ac 0.99809 rms 0.511504
+  Bb4 mf 0.28 s target 466.16 yin 466.167 yin-cents 0.0250545 acf 466.184 acf-cents 0.0885536 peak 466.129 peak-cents -0.116737 ac 0.99998 rms 0.508417
+  Bb4 mf 0.28 s target 466.16 yin 466.172 yin-cents 0.044102 acf 466.177 acf-cents 0.0626459 peak 466.12 peak-cents -0.148371 ac 0.99999 rms 0.508445
+  Bb4 mf 0.28 s target 466.16 yin 466.166 yin-cents 0.0222899 acf 466.184 acf-cents 0.0902963 peak 466.124 peak-cents -0.135127 ac 0.999986 rms 0.50818
+  G4 mf 0.28 s target 392 yin 398.684 yin-cents 29.2713 acf 399.924 acf-cents 34.6461 peak 392.119 peak-cents 0.527238 ac 0.916673 rms 0.510915
+  F4 mf 0.28 s target 349.23 yin 349.167 yin-cents -0.314706 acf 349.187 acf-cents -0.211712 peak 349.109 peak-cents -0.60171 ac 0.998954 rms 0.366088
+  D4 mf 0.28 s target 293.66 yin 295.798 yin-cents 12.5566 acf 295.843 acf-cents 12.8238 peak 295.731 peak-cents 12.1674 ac 0.995693 rms 0.339408
+  F4 mf 0.28 s target 349.23 yin 349.215 yin-cents -0.0738824 acf 349.18 acf-cents -0.24613 peak 349.126 peak-cents -0.51688 ac 0.999185 rms 0.365169
+  Bb4 mf 1.12 s target 466.16 yin 466.165 yin-cents 0.17323 acf 466.165 acf-cents 0.0187872 peak 466.195 peak-cents 0.128554 ac 0.999986 rms 0.4945
+  rest 0.28 s
+  Bb4 mf 0.28 s target 466.16 yin 466.261 yin-cents 0.376147 acf 466.172 acf-cents 0.0433044 peak 465.974 peak-cents -0.690234 ac 0.999533 rms 0.434933
+  C5 mf 0.28 s target 523.25 yin 523.125 yin-cents -0.414481 acf 523.109 acf-cents -0.466353 peak 523.249 peak-cents -0.00451151 ac 0.999215 rms 0.543395
+  D5 mf 0.28 s target 587.33 yin 583.424 yin-cents -11.552 acf 583.584 acf-cents -11.0761 peak 583.158 peak-cents -12.3426 ac 0.996033 rms 0.741388
+  D5 mf 0.28 s target 587.33 yin 583.314 yin-cents -11.8772 acf 583.488 acf-cents -11.361 peak 583.308 peak-cents -11.8963 ac 0.999474 rms 0.767129
+  D5 mf 0.28 s target 587.33 yin 583.367 yin-cents -11.7205 acf 583.349 acf-cents -11.7755 peak 583.31 peak-cents -11.8916 ac 0.999739 rms 0.766114
+  D5 mf 0.28 s target 587.33 yin 583.304 yin-cents -11.9075 acf 583.386 acf-cents -11.6638 peak 583.312 peak-cents -11.8844 ac 0.999712 rms 0.765284
+  C5 mf 0.28 s target 523.25 yin 523.385 yin-cents 0.4471 acf 523.519 acf-cents 0.888749 peak 523.314 peak-cents 0.213148 ac 0.997251 rms 0.5437
+  Bb4 mf 0.28 s target 466.16 yin 467.577 yin-cents 5.25313 acf 467.614 acf-cents 5.38998 peak 466.214 peak-cents 0.199453 ac 0.982923 rms 0.514886
+  C5 mf 1.4 s target 523.25 yin 523.135 yin-cents -0.490109 acf 523.122 acf-cents -0.423045 peak 523.101 peak-cents -0.492335 ac 0.999826 rms 0.544705
+  rest 0.28 s
+  F4 mf 0.28 s target 349.23 yin 349.146 yin-cents -0.418682 acf 349.158 acf-cents -0.357095 peak 349.095 peak-cents -0.668675 ac 0.99967 rms 0.359918
+  G4 mf 0.28 s target 392 yin 392.362 yin-cents 1.59665 acf 392.258 acf-cents 1.14107 peak 392.042 peak-cents 0.185154 ac 0.998029 rms 0.467411
+  Bb4 mf 0.56 s target 466.16 yin 466.182 yin-cents 0.152542 acf 466.158 acf-cents -0.0074419 peak 466.21 peak-cents 0.185246 ac 0.999981 rms 0.509838
+  C5 mf 0.56 s target 523.25 yin 523.109 yin-cents -0.467797 acf 523.126 acf-cents -0.410514 peak 523.103 peak-cents -0.487875 ac 0.999815 rms 0.544365
+  Bb4 mf 1.4 s target 466.16 yin 466.151 yin-cents 0.155498 acf 466.17 acf-cents 0.0376688 peak 466.195 peak-cents 0.129243 ac 0.999985 rms 0.509994
+mmath-song-trombone-mountain silent-or-unlocked 0
+mmath-song-trombone-mountain held-note band above 0.4 fs 4.65005e-09%  below 5 kHz 99.9994%
+mmath-song-trombone-mountain.wav playback -24 LUFS  gain 0.136683  from -6.71427 LUFS over 0.5 s to the end
+trumpet excerpt: Mussorgsky/Ravel, Pictures, Promenade opening, quarter = 91. Mechanism: sounding length and lip resonance. Not a piston chart.
+trumpet airway lung 4.6132 L
+mmath-song-trumpet-taps notes
+  rest 0.56 s
+  F4 mf 0.45 s target 349.23 yin 349.674 yin-cents 2.1972 acf 349.648 acf-cents 2.06892 peak 349.675 peak-cents 2.20628 ac 0.99961 rms 0.424083
+  F4 mf 0.15 s target 349.23 yin 350.073 yin-cents 4.17358 acf 353.739 acf-cents 0 peak 348.252 peak-cents -4.855 ac 0.693992 rms 0.435163 DID NOT SPEAK
+  Bb4 mf 1.6 s target 466.16 yin 462.487 yin-cents -13.867 acf 462.497 acf-cents -13.6559 peak 462.461 peak-cents -13.7922 ac 0.999812 rms 0.695348
+  F4 mf 0.45 s target 349.23 yin 349.615 yin-cents 1.90934 acf 349.651 acf-cents 2.08441 peak 349.662 peak-cents 2.14123 ac 0.999568 rms 0.43741
+  Bb4 mf 0.15 s target 466.16 yin 463.794 yin-cents -8.80882 acf 462.499 acf-cents -13.6488 peak 462.662 peak-cents -13.0404 ac 0.984093 rms 0.717405
+  D5 mf 1.6 s target 587.33 yin 582.604 yin-cents -14.0494 acf 582.628 acf-cents -13.9162 peak 582.489 peak-cents -14.3293 ac 0.998597 rms 0.916741
+  F4 mf 0.3 s target 349.23 yin 349.614 yin-cents 1.90096 acf 349.686 acf-cents 2.25814 peak 349.486 peak-cents 1.26984 ac 0.997386 rms 0.433806
+  Bb4 mf 0.3 s target 466.16 yin 462.489 yin-cents -13.6857 acf 462.496 acf-cents -13.6606 peak 462.47 peak-cents -13.7583 ac 0.999809 rms 0.694466
+  D5 mf 0.9 s target 587.33 yin 582.605 yin-cents -14.0409 acf 582.604 acf-cents -13.9857 peak 582.489 peak-cents -14.3293 ac 0.998585 rms 0.910662
+  F4 mf 0.3 s target 349.23 yin 349.603 yin-cents 1.84991 acf 349.704 acf-cents 2.34849 peak 349.487 peak-cents 1.27125 ac 0.99738 rms 0.433529
+  Bb4 mf 0.3 s target 466.16 yin 462.496 yin-cents -13.6598 acf 462.498 acf-cents -13.6548 peak 462.46 peak-cents -13.7962 ac 0.999811 rms 0.696073
+  D5 mf 0.9 s target 587.33 yin 582.623 yin-cents -14.0541 acf 582.577 acf-cents -14.0671 peak 582.489 peak-cents -14.3293 ac 0.998588 rms 0.913482
+  Bb4 mf 0.3 s target 466.16 yin 462.49 yin-cents -13.685 acf 462.497 acf-cents -13.6592 peak 462.455 peak-cents -13.8163 ac 0.999724 rms 0.700822
+  D5 mf 0.3 s target 587.33 yin 582.59 yin-cents -14.0289 acf 582.54 acf-cents -14.1767 peak 582.545 peak-cents -14.1612 ac 0.99891 rms 0.883163
+  F5 mf 1.6 s target 698.46 yin 689.994 yin-cents -21.1391 acf 690.053 acf-cents -20.9644 peak 690.014 peak-cents -21.0632 ac 0.998833 rms 1.03897
+  rest 0.4 s
+mmath-song-trumpet-taps silent-or-unlocked 1
+mmath-song-trumpet-taps held-note band above 0.4 fs 1.04967e-05%  below 5 kHz 99.9935%
+mmath-song-trumpet-taps.wav playback -24 LUFS  gain 0.0882488  from -2.91417 LUFS over 0.5 s to the end
+flute excerpt: Debussy, Prélude à l'après-midi d'un faune, opening, bars 1–2, quarter = 44. Mechanism: bore length, jet delay, and pressure. Corner 1800 Hz, the 2 s demo.
+flute airway lung 3.67655 L
+mmath-song-flute-london-bridge notes
+  rest 0.56 s
+  D5 mf 0.6 s target 587.33 yin 587.086 yin-cents -0.718009 acf 587.098 acf-cents -0.685293 peak 587.136 peak-cents -0.57115 ac 0.999065 rms 3.42778
+  E5 mf 0.2 s target 659.26 yin 658.874 yin-cents -1.01506 acf 658.926 acf-cents -0.878539 peak 659.087 peak-cents -0.455066 ac 0.999121 rms 3.5462
+  D5 mf 0.4 s target 587.33 yin 587.109 yin-cents -0.651658 acf 587.098 acf-cents -0.684532 peak 587.179 peak-cents -0.446523 ac 0.999058 rms 3.4544
+  C5 mf 0.4 s target 523.25 yin 523.104 yin-cents -0.484102 acf 523.093 acf-cents -0.520938 peak 523.195 peak-cents -0.182088 ac 0.999129 rms 3.28919
+  B4 mf 0.4 s target 493.88 yin 493.783 yin-cents -0.338357 acf 493.776 acf-cents -0.365271 peak 493.859 peak-cents -0.0728579 ac 0.999136 rms 3.20465
+  C5 mf 0.4 s target 523.25 yin 523.095 yin-cents -0.512599 acf 523.091 acf-cents -0.527513 peak 523.199 peak-cents -0.16782 ac 0.999102 rms 3.30771
+  D5 mf 0.8 s target 587.33 yin 587.145 yin-cents -0.825025 acf 587.104 acf-cents -0.666151 peak 587.137 peak-cents -0.568443 ac 0.999007 rms 3.48672
+  A4 mf 0.4 s target 440 yin 439.888 yin-cents -0.441367 acf 439.936 acf-cents -0.252592 peak 439.975 peak-cents -0.0968463 ac 0.999222 rms 2.93982
+  B4 mf 0.4 s target 493.88 yin 493.782 yin-cents -0.344549 acf 493.76 acf-cents -0.419743 peak 493.855 peak-cents -0.0884626 ac 0.999151 rms 3.23248
+  C5 mf 0.8 s target 523.25 yin 523.083 yin-cents -0.578866 acf 523.082 acf-cents -0.555642 peak 523.081 peak-cents -0.559316 ac 0.999107 rms 3.35095
+  B4 mf 0.4 s target 493.88 yin 493.796 yin-cents -0.292964 acf 493.766 acf-cents -0.398138 peak 493.857 peak-cents -0.081164 ac 0.999132 rms 3.2071
+  C5 mf 0.4 s target 523.25 yin 523.106 yin-cents -0.476242 acf 523.111 acf-cents -0.459119 peak 523.199 peak-cents -0.168268 ac 0.999089 rms 3.30444
+  D5 mf 0.8 s target 587.33 yin 587.068 yin-cents -0.773188 acf 587.092 acf-cents -0.700218 peak 587.135 peak-cents -0.574817 ac 0.999033 rms 3.48577
+  D5 mf 0.6 s target 587.33 yin 587.061 yin-cents -0.793437 acf 587.092 acf-cents -0.702994 peak 587.137 peak-cents -0.567718 ac 0.999035 rms 3.47885
+  E5 mf 0.2 s target 659.26 yin 658.887 yin-cents -0.97937 acf 658.932 acf-cents -0.861733 peak 659.09 peak-cents -0.446101 ac 0.999138 rms 3.54948
+  D5 mf 0.4 s target 587.33 yin 587.14 yin-cents -0.561179 acf 587.109 acf-cents -0.652586 peak 587.178 peak-cents -0.44832 ac 0.999059 rms 3.45518
+  C5 mf 0.4 s target 523.25 yin 523.136 yin-cents -0.376397 acf 523.122 acf-cents -0.42448 peak 523.197 peak-cents -0.174573 ac 0.999068 rms 3.28917
+  B4 mf 0.4 s target 493.88 yin 493.715 yin-cents -0.579523 acf 493.767 acf-cents -0.395814 peak 493.86 peak-cents -0.0718475 ac 0.999145 rms 3.20504
+  C5 mf 0.4 s target 523.25 yin 523.107 yin-cents -0.474468 acf 523.1 acf-cents -0.497764 peak 523.198 peak-cents -0.172273 ac 0.999087 rms 3.30676
+  D5 mf 0.8 s target 587.33 yin 587.134 yin-cents -0.721951 acf 587.11 acf-cents -0.648739 peak 587.136 peak-cents -0.571275 ac 0.99904 rms 3.48506
+  A4 mf 0.8 s target 440 yin 439.947 yin-cents -0.304946 acf 439.939 acf-cents -0.239366 peak 439.962 peak-cents -0.150622 ac 0.999249 rms 3.05709
+  D5 mf 0.8 s target 587.33 yin 587.138 yin-cents -0.824251 acf 587.085 acf-cents -0.722241 peak 587.136 peak-cents -0.572513 ac 0.999053 rms 3.48884
+  B4 mf 0.4 s target 493.88 yin 493.772 yin-cents -0.379282 acf 493.768 acf-cents -0.391418 peak 493.858 peak-cents -0.0767705 ac 0.999153 rms 3.19151
+  G4 mf 1.2 s target 392 yin 392.005 yin-cents -0.310489 acf 392.021 acf-cents 0.0946243 peak 391.913 peak-cents -0.383238 ac 0.998763 rms 2.89669
+mmath-song-flute-london-bridge silent-or-unlocked 0
+mmath-song-flute-london-bridge held-note band above 0.4 fs 0.00858158%  below 5 kHz 99.9422%
+mmath-song-flute-london-bridge.wav playback -24 LUFS  gain 0.0216124  from 9.30595 LUFS over 0.5 s to the end
+trumpet excerpt: Mussorgsky/Ravel, Pictures, Promenade opening, quarter = 91. Mechanism: sounding length and lip resonance. Not a piston chart.
+trumpet airway lung 2.44226 L
+mmath-ens-saints-trumpet notes
+  rest 0.56 s
+  F4 f 0.28 s target 349.23 yin 349.573 yin-cents 1.70111 acf 349.647 acf-cents 2.0642 peak 349.532 peak-cents 1.49457 ac 0.999087 rms 0.423149
+  A4 f 0.28 s target 440 yin 440.989 yin-cents 3.88773 acf 441.001 acf-cents 3.93223 peak 441.082 peak-cents 4.25324 ac 0.999849 rms 0.724313
+  Bb4 f 0.28 s target 466.16 yin 462.485 yin-cents -13.7021 acf 462.469 acf-cents -13.7641 peak 462.467 peak-cents -13.7706 ac 0.999821 rms 0.694098
+  C5 f 1.4 s target 523.25 yin 520.615 yin-cents -8.73967 acf 520.73 acf-cents -8.35947 peak 520.631 peak-cents -8.68608 ac 0.999608 rms 0.940582
+  F4 f 0.28 s target 349.23 yin 349.589 yin-cents 1.77651 acf 349.827 acf-cents 2.95636 peak 349.575 peak-cents 1.71163 ac 0.985309 rms 0.450794
+  A4 f 0.28 s target 440 yin 440.977 yin-cents 3.8413 acf 440.98 acf-cents 3.85125 peak 441.08 peak-cents 4.246 ac 0.999841 rms 0.724664
+  Bb4 f 0.28 s target 466.16 yin 462.508 yin-cents -13.6161 acf 462.473 acf-cents -13.7467 peak 462.467 peak-cents -13.7716 ac 0.99982 rms 0.694849
+  C5 f 1.4 s target 523.25 yin 520.622 yin-cents -8.7538 acf 520.72 acf-cents -8.39106 peak 520.631 peak-cents -8.68608 ac 0.999611 rms 0.941467
+  F4 f 0.28 s target 349.23 yin 349.576 yin-cents 1.71608 acf 349.854 acf-cents 3.08831 peak 349.575 peak-cents 1.70812 ac 0.985374 rms 0.44928
+  A4 f 0.28 s target 440 yin 440.969 yin-cents 3.80968 acf 440.968 acf-cents 3.80382 peak 441.083 peak-cents 4.25578 ac 0.999857 rms 0.725891
+  Bb4 f 0.28 s target 466.16 yin 462.506 yin-cents -13.6222 acf 462.464 acf-cents -13.7824 peak 462.457 peak-cents -13.8082 ac 0.999822 rms 0.69502
+  C5 f 0.56 s target 523.25 yin 520.668 yin-cents -8.56264 acf 520.698 acf-cents -8.46494 peak 520.629 peak-cents -8.69214 ac 0.999604 rms 0.943584
+  A4 f 0.56 s target 440 yin 440.964 yin-cents 3.80834 acf 440.973 acf-cents 3.82492 peak 440.978 peak-cents 3.84491 ac 0.999852 rms 0.725439
+  F4 f 0.56 s target 349.23 yin 349.636 yin-cents 2.22376 acf 349.649 acf-cents 2.07828 peak 349.68 peak-cents 2.23025 ac 0.999605 rms 0.435501
+  A4 f 0.56 s target 440 yin 440.968 yin-cents 3.84531 acf 440.972 acf-cents 3.82048 peak 440.978 peak-cents 3.84405 ac 0.999852 rms 0.725735
+  G4 f 1.12 s target 392 yin 391.259 yin-cents -3.36368 acf 391.309 acf-cents -3.05564 peak 391.278 peak-cents -3.1915 ac 0.999034 rms 0.374485
+  rest 0.28 s
+  A4 f 0.28 s target 440 yin 440.92 yin-cents 3.61571 acf 440.938 acf-cents 3.68565 peak 441.043 peak-cents 4.09725 ac 0.999928 rms 0.727294
+  A4 f 0.28 s target 440 yin 440.932 yin-cents 3.66168 acf 440.938 acf-cents 3.68851 peak 441.041 peak-cents 4.09231 ac 0.999928 rms 0.725222
+  G4 f 0.28 s target 392 yin 391.279 yin-cents -3.18644 acf 391.283 acf-cents -3.17026 peak 391.226 peak-cents -3.42333 ac 0.998864 rms 0.374249
+  F4 f 0.84 s target 349.23 yin 349.69 yin-cents 2.28079 acf 349.64 acf-cents 2.0307 peak 349.68 peak-cents 2.23131 ac 0.999611 rms 0.426154
+  F4 f 0.28 s target 349.23 yin 349.677 yin-cents 2.2137 acf 349.652 acf-cents 2.09308 peak 349.545 peak-cents 1.5591 ac 0.999592 rms 0.426024
+  A4 f 0.56 s target 440 yin 440.998 yin-cents 3.95137 acf 440.984 acf-cents 3.86608 peak 440.978 peak-cents 3.84413 ac 0.999849 rms 0.724221
+  C5 f 0.28 s target 523.25 yin 520.783 yin-cents -8.18308 acf 520.633 acf-cents -8.68069 peak 520.597 peak-cents -8.8011 ac 0.999348 rms 0.942333
+  C5 f 0.28 s target 523.25 yin 520.608 yin-cents -8.76405 acf 520.718 acf-cents -8.39777 peak 520.631 peak-cents -8.68581 ac 0.999569 rms 0.935647
+  Bb4 f 1.12 s target 466.16 yin 462.497 yin-cents -13.8549 acf 462.499 acf-cents -13.6488 peak 462.461 peak-cents -13.7922 ac 0.999812 rms 0.694353
+  rest 0.28 s
+  A4 f 0.28 s target 440 yin 440.951 yin-cents 3.73779 acf 440.946 acf-cents 3.71877 peak 441.051 peak-cents 4.13098 ac 0.999925 rms 0.726334
+  Bb4 f 0.28 s target 466.16 yin 462.459 yin-cents -13.7984 acf 462.469 acf-cents -13.7635 peak 462.451 peak-cents -13.8291 ac 0.999819 rms 0.691694
+  C5 f 0.56 s target 523.25 yin 520.62 yin-cents -8.72349 acf 520.723 acf-cents -8.38108 peak 520.632 peak-cents -8.68387 ac 0.999601 rms 0.93872
+  A4 f 0.56 s target 440 yin 440.969 yin-cents 3.8666 acf 440.977 acf-cents 3.84038 peak 440.946 peak-cents 3.71753 ac 0.999857 rms 0.725029
+  F4 f 0.56 s target 349.23 yin 349.669 yin-cents 2.17539 acf 349.643 acf-cents 2.04413 peak 349.679 peak-cents 2.22665 ac 0.999608 rms 0.433315
+  G4 f 0.56 s target 392 yin 391.256 yin-cents -3.29114 acf 391.308 acf-cents -3.05736 peak 391.278 peak-cents -3.19148 ac 0.99904 rms 0.373982
+  F4 f 1.12 s target 349.23 yin 349.601 yin-cents 2.09773 acf 349.652 acf-cents 2.08999 peak 349.68 peak-cents 2.23119 ac 0.999397 rms 0.425565
+  rest 0.56 s
+mmath-ens-saints-trumpet silent-or-unlocked 0
+mmath-ens-saints-trumpet held-note band above 0.4 fs 2.02937e-06%  below 5 kHz 99.9817%
+mmath-ens-saints-trumpet.wav playback -24.3224 LUFS  gain 0.0990657  from -4.2409 LUFS over 0.5 s to the end
+clarinet excerpt: Mozart, Clarinet Concerto K.622, Adagio opening, concert pitch. Mechanism: sounding length. Corner 1500 Hz.
+clarinet airway lung 3.08881 L
+mmath-ens-saints-clarinet notes
+  rest 0.56 s
+  A3 mf 0.28 s target 220 yin 219.297 yin-cents -5.54484 acf 219.3 acf-cents -5.51471 peak 219.354 peak-cents -5.09462 ac 0.999813 rms 0.314982
+  F4 mf 0.28 s target 349.23 yin 345.411 yin-cents -19.034 acf 345.361 acf-cents -19.2877 peak 345.334 peak-cents -19.4199 ac 0.999834 rms 0.369649
+  G4 mf 0.28 s target 392 yin 391.384 yin-cents -2.72221 acf 391.37 acf-cents -2.7858 peak 391.276 peak-cents -3.20024 ac 0.99932 rms 0.449286
+  A4 mf 1.4 s target 440 yin 439.553 yin-cents -1.80724 acf 439.557 acf-cents -1.74287 peak 439.61 peak-cents -1.53594 ac 0.999708 rms 0.46978
+  A3 mf 0.28 s target 220 yin 219.367 yin-cents -4.98887 acf 219.362 acf-cents -5.02744 peak 219.427 peak-cents -4.51487 ac 0.999754 rms 0.316978
+  F4 mf 0.28 s target 349.23 yin 345.354 yin-cents -19.3233 acf 345.326 acf-cents -19.4599 peak 345.278 peak-cents -19.7043 ac 0.999833 rms 0.370013
+  G4 mf 0.28 s target 392 yin 391.349 yin-cents -2.87579 acf 391.352 acf-cents -2.86383 peak 391.294 peak-cents -3.12076 ac 0.999337 rms 0.449807
+  A4 mf 1.4 s target 440 yin 439.513 yin-cents -2.02954 acf 439.532 acf-cents -1.84049 peak 439.552 peak-cents -1.76282 ac 0.999711 rms 0.469828
+  A3 mf 0.28 s target 220 yin 219.364 yin-cents -5.01559 acf 219.357 acf-cents -5.06612 peak 219.41 peak-cents -4.65217 ac 0.999746 rms 0.316856
+  F4 mf 0.28 s target 349.23 yin 345.284 yin-cents -19.6732 acf 345.307 acf-cents -19.5582 peak 345.265 peak-cents -19.7697 ac 0.999825 rms 0.37003
+  G4 mf 0.28 s target 392 yin 391.376 yin-cents -2.75764 acf 391.379 acf-cents -2.74433 peak 391.297 peak-cents -3.1061 ac 0.999314 rms 0.449487
+  A4 mf 0.56 s target 440 yin 439.551 yin-cents -1.7687 acf 439.56 acf-cents -1.73369 peak 439.543 peak-cents -1.79934 ac 0.999728 rms 0.469754
+  F4 mf 0.56 s target 349.23 yin 345.377 yin-cents -19.2076 acf 345.394 acf-cents -19.1231 peak 345.366 peak-cents -19.2593 ac 0.999819 rms 0.370121
+  A3 mf 0.56 s target 220 yin 219.334 yin-cents -5.25118 acf 219.335 acf-cents -5.23745 peak 219.333 peak-cents -5.25668 ac 0.999756 rms 0.316613
+  F4 mf 0.56 s target 349.23 yin 345.44 yin-cents -19.0055 acf 345.43 acf-cents -18.9426 peak 345.374 peak-cents -19.2216 ac 0.999816 rms 0.370303
+  E4 mf 1.12 s target 329.63 yin 327.946 yin-cents -9.02731 acf 327.959 acf-cents -8.79964 peak 327.948 peak-cents -8.85866 ac 0.999432 rms 0.371483
+  rest 0.28 s
+  F4 mf 0.28 s target 349.23 yin 345.276 yin-cents -19.7146 acf 345.315 acf-cents -19.5161 peak 345.314 peak-cents -19.5216 ac 0.999847 rms 0.369323
+  F4 mf 0.28 s target 349.23 yin 345.374 yin-cents -19.2206 acf 345.381 acf-cents -19.1845 peak 345.38 peak-cents -19.1937 ac 0.999825 rms 0.370241
+  E4 mf 0.28 s target 329.63 yin 327.968 yin-cents -8.75297 acf 327.936 acf-cents -8.91985 peak 327.917 peak-cents -9.01991 ac 0.999403 rms 0.370837
+  A3 mf 0.84 s target 220 yin 219.35 yin-cents -5.15697 acf 219.352 acf-cents -5.10942 peak 219.336 peak-cents -5.23181 ac 0.999746 rms 0.316594
+  A3 mf 0.28 s target 220 yin 219.376 yin-cents -4.91417 acf 219.369 acf-cents -4.96995 peak 219.42 peak-cents -4.56664 ac 0.999703 rms 0.317461
+  F4 mf 0.56 s target 349.23 yin 345.402 yin-cents -19.2257 acf 345.419 acf-cents -18.9975 peak 345.358 peak-cents -19.2994 ac 0.999814 rms 0.370446
+  A4 mf 0.28 s target 440 yin 439.576 yin-cents -1.66734 acf 439.59 acf-cents -1.61317 peak 439.594 peak-cents -1.60004 ac 0.999748 rms 0.469665
+  A4 mf 0.28 s target 440 yin 439.55 yin-cents -1.77055 acf 439.532 acf-cents -1.84283 peak 439.5 peak-cents -1.96841 ac 0.999704 rms 0.469156
+  D4 mf 1.12 s target 293.66 yin 293.713 yin-cents 0.504204 acf 293.711 acf-cents 0.302705 peak 293.762 peak-cents 0.600931 ac 0.999184 rms 0.366266
+  rest 0.28 s
+  F4 mf 0.28 s target 349.23 yin 345.337 yin-cents -19.4072 acf 345.324 acf-cents -19.4726 peak 345.277 peak-cents -19.7062 ac 0.999847 rms 0.370258
+  G4 mf 0.28 s target 392 yin 391.392 yin-cents -2.68509 acf 391.39 acf-cents -2.69481 peak 391.299 peak-cents -3.09909 ac 0.999285 rms 0.450663
+  A4 mf 0.56 s target 440 yin 439.609 yin-cents -1.7031 acf 439.575 acf-cents -1.6721 peak 439.579 peak-cents -1.65696 ac 0.99973 rms 0.469867
+  F4 mf 0.56 s target 349.23 yin 345.445 yin-cents -18.9058 acf 345.452 acf-cents -18.8286 peak 345.399 peak-cents -19.0978 ac 0.999829 rms 0.370326
+  A3 mf 0.56 s target 220 yin 219.338 yin-cents -5.22061 acf 219.341 acf-cents -5.19718 peak 219.333 peak-cents -5.25382 ac 0.999757 rms 0.316657
+  E4 mf 0.56 s target 329.63 yin 327.969 yin-cents -8.84956 acf 327.959 acf-cents -8.79718 peak 327.955 peak-cents -8.81731 ac 0.999438 rms 0.371172
+  A3 mf 1.12 s target 220 yin 219.347 yin-cents -5.32703 acf 219.334 acf-cents -5.25117 peak 219.318 peak-cents -5.37318 ac 0.999774 rms 0.316451
+  rest 0.56 s
+mmath-ens-saints-clarinet silent-or-unlocked 0
+mmath-ens-saints-clarinet held-note band above 0.4 fs 0.000508911%  below 5 kHz 99.9847%
+mmath-ens-saints-clarinet.wav playback -24 LUFS  gain 0.17988  from -9.09967 LUFS over 0.5 s to the end
+trombone excerpt: Ravel, Boléro, trombone solo, through the high Db. Quarter = 72. Mechanism: slide length and lip resonance. No glissando.
+trombone airway lung 3.00106 L
+mmath-ens-saints-trombone notes
+  rest 0.56 s
+  rest 0.84 s
+  F4 mf 0.56 s target 349.23 yin 349.177 yin-cents -0.272133 acf 349.177 acf-cents -0.263413 peak 349.213 peak-cents -0.0835002 ac 0.999685 rms 0.362868
+  F4 mf 0.56 s target 349.23 yin 349.178 yin-cents -0.266489 acf 349.176 acf-cents -0.266314 peak 349.214 peak-cents -0.0776407 ac 0.999684 rms 0.365022
+  F4 mf 0.56 s target 349.23 yin 349.177 yin-cents -0.264156 acf 349.176 acf-cents -0.266184 peak 349.214 peak-cents -0.0777692 ac 0.999685 rms 0.365113
+  F4 mf 0.56 s target 349.23 yin 349.176 yin-cents -0.267863 acf 349.178 acf-cents -0.257296 peak 349.214 peak-cents -0.0777729 ac 0.999689 rms 0.365
+  F4 mf 0.56 s target 349.23 yin 349.167 yin-cents -0.314805 acf 349.177 acf-cents -0.262523 peak 349.214 peak-cents -0.0777763 ac 0.999689 rms 0.364989
+  F4 mf 0.56 s target 349.23 yin 349.172 yin-cents -0.28813 acf 349.175 acf-cents -0.274231 peak 349.214 peak-cents -0.0777841 ac 0.999685 rms 0.365166
+  F4 mf 0.56 s target 349.23 yin 349.177 yin-cents -0.26309 acf 349.172 acf-cents -0.285726 peak 349.214 peak-cents -0.0777919 ac 0.999683 rms 0.365258
+  F4 mf 0.56 s target 349.23 yin 349.181 yin-cents -0.288689 acf 349.172 acf-cents -0.286709 peak 349.214 peak-cents -0.0777964 ac 0.999685 rms 0.365011
+  F4 mf 0.56 s target 349.23 yin 349.175 yin-cents -0.272094 acf 349.175 acf-cents -0.271013 peak 349.214 peak-cents -0.0777953 ac 0.999688 rms 0.364946
+  F4 mf 0.56 s target 349.23 yin 349.176 yin-cents -0.274312 acf 349.176 acf-cents -0.268961 peak 349.214 peak-cents -0.0777603 ac 0.999687 rms 0.364964
+  F4 mf 0.56 s target 349.23 yin 349.175 yin-cents -0.272555 acf 349.176 acf-cents -0.268734 peak 349.214 peak-cents -0.0777618 ac 0.999685 rms 0.365109
+  F4 mf 0.56 s target 349.23 yin 349.174 yin-cents -0.277177 acf 349.177 acf-cents -0.260548 peak 349.214 peak-cents -0.0777952 ac 0.999685 rms 0.365094
+  E4 mf 0.56 s target 329.63 yin 330.387 yin-cents 3.9702 acf 330.386 acf-cents 3.96538 peak 330.34 peak-cents 3.72378 ac 0.999846 rms 0.356228
+  E4 mf 0.56 s target 329.63 yin 330.389 yin-cents 3.98191 acf 330.385 acf-cents 3.9596 peak 330.34 peak-cents 3.72385 ac 0.999846 rms 0.355959
+  E4 mf 0.56 s target 329.63 yin 330.386 yin-cents 3.99303 acf 330.389 acf-cents 3.98276 peak 330.34 peak-cents 3.72384 ac 0.999847 rms 0.355993
+  F4 mf 0.56 s target 349.23 yin 349.176 yin-cents -0.270467 acf 349.177 acf-cents -0.261449 peak 349.214 peak-cents -0.0782214 ac 0.999689 rms 0.365112
+  F4 mf 0.56 s target 349.23 yin 349.18 yin-cents -0.276416 acf 349.176 acf-cents -0.26804 peak 349.214 peak-cents -0.0777858 ac 0.999686 rms 0.365016
+  F4 mf 0.56 s target 349.23 yin 349.177 yin-cents -0.282749 acf 349.178 acf-cents -0.259425 peak 349.214 peak-cents -0.0777599 ac 0.999685 rms 0.365117
+  F4 mf 0.56 s target 349.23 yin 349.177 yin-cents -0.263819 acf 349.176 acf-cents -0.266991 peak 349.214 peak-cents -0.0777357 ac 0.999684 rms 0.364981
+  F4 mf 0.56 s target 349.23 yin 349.176 yin-cents -0.265389 acf 349.178 acf-cents -0.256714 peak 349.214 peak-cents -0.0777729 ac 0.999689 rms 0.365001
+  F4 mf 0.56 s target 349.23 yin 349.167 yin-cents -0.312479 acf 349.177 acf-cents -0.260981 peak 349.214 peak-cents -0.0777757 ac 0.99969 rms 0.364969
+  F4 mf 0.56 s target 349.23 yin 349.171 yin-cents -0.291241 acf 349.175 acf-cents -0.274959 peak 349.214 peak-cents -0.0777831 ac 0.999685 rms 0.365134
+  F4 mf 0.56 s target 349.23 yin 349.176 yin-cents -0.266406 acf 349.172 acf-cents -0.285154 peak 349.214 peak-cents -0.0777906 ac 0.999683 rms 0.365258
+  F4 mf 0.56 s target 349.23 yin 349.181 yin-cents -0.284846 acf 349.172 acf-cents -0.286316 peak 349.214 peak-cents -0.0777951 ac 0.999685 rms 0.365037
+  F4 mf 0.56 s target 349.23 yin 349.176 yin-cents -0.270225 acf 349.175 acf-cents -0.272405 peak 349.214 peak-cents -0.0777725 ac 0.999688 rms 0.364942
+  F4 mf 0.56 s target 349.23 yin 349.176 yin-cents -0.273399 acf 349.176 acf-cents -0.268671 peak 349.214 peak-cents -0.0777594 ac 0.999688 rms 0.36494
+  F4 mf 0.56 s target 349.23 yin 349.175 yin-cents -0.271821 acf 349.176 acf-cents -0.269001 peak 349.214 peak-cents -0.0777613 ac 0.999685 rms 0.365082
+  E4 mf 0.56 s target 329.63 yin 330.387 yin-cents 3.9717 acf 330.385 acf-cents 3.9612 peak 330.34 peak-cents 3.72382 ac 0.999844 rms 0.355832
+  F4 mf 0.56 s target 349.23 yin 349.175 yin-cents -0.284865 acf 349.171 acf-cents -0.292535 peak 349.214 peak-cents -0.0782203 ac 0.999684 rms 0.365238
+  F4 mf 0.56 s target 349.23 yin 349.176 yin-cents -0.268645 acf 349.176 acf-cents -0.265408 peak 349.214 peak-cents -0.077792 ac 0.999689 rms 0.364946
+  rest 0.28 s
+mmath-ens-saints-trombone silent-or-unlocked 0
+mmath-ens-saints-trombone held-note band above 0.4 fs 1.47459e-08%  below 5 kHz 99.9993%
+mmath-ens-saints-trombone.wav playback -24 LUFS  gain 0.199794  from -10.0117 LUFS over 0.5 s to the end
+ensemble trumpet median onset 13.875 ms, shift 0 ms
+ensemble clarinet median onset 7.73958 ms, shift -6.125 ms
+ensemble trombone median onset 14.625 ms, shift 0.75 ms
+===============================================================================
+All tests passed (5960868 assertions in 1 test case)
+

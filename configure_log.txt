@@ -1,0 +1,13 @@
+-- compile probe 'valid_control': as expected
+-- compile probe 'invalid_add_freq_duration': as expected
+-- compile probe 'invalid_add_freq_angular': as expected
+-- compile probe 'invalid_add_timepoint_timepoint': as expected
+-- compile probe 'invalid_mul_freq_duration': as expected
+-- compile probe 'invalid_scale_timepoint': as expected
+-- compile probe 'invalid_add_framecount_framecount': as expected
+-- compile probe 'invalid_add_ratio_ratio': as expected
+-- compile probe 'invalid_convert_samplerate_frequency': as expected
+-- compile probe 'invalid_convert_quantity_double': as expected
+-- Configuring done (6.5s)
+-- Generating done (0.1s)
+-- Build files have been written to: D:/mmathEn_pr2_verify/build_ninja_rel
