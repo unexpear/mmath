@@ -4,3 +4,16 @@ cmake-build-*/
 # Rendered/test audio artifacts must never be committed (demos and tests
 # write WAVs to their working directory).
 *.wav
+
+# local scratch/build artifacts
+/_*.cmd
+/_*.txt
+/_scratch/
+/_wav_base/
+/_wav_new/
+/_wsx/
+/boreexp.txt
+/build_pr2_verify_*.log
+/configure_log.txt
+/test_log.txt
+/verify.cmd
