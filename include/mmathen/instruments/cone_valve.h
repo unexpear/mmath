@@ -554,6 +554,8 @@ class ConeValveVoice final : public IVoice {
   // own V0. Fingering inserts the valve loops. Off by default.
   // Opt-in measured Bb tenor trombone bore (brass_bore::bbTromboneProfile).
   // Sounding lengths select slide positions 1-7 as real added tube.
+  // Trombone kernels are 8192 taps from a 32768-point grid: at 2048/8192 the
+  // truncated reflection function made the pitch glide up by 300+ cents in 1.6 s.
   bool useMeasuredTromboneBore() {
     measuredTrombone_ = true;
     for (auto& slot : kernelCache_) slot = {};
@@ -565,7 +567,7 @@ class ConeValveVoice final : public IVoice {
     if (!rfOn_) measuredBase_ = soundingLength_;
     measuredMask_ = (fingering.v1 ? 1 : 0) | (fingering.v2 ? 2 : 0) | (fingering.v3 ? 4 : 0);
     const double fs = rate_.value();
-    auto k = brass_bore::makeKernels(fs, density_, speed_, fingering, 2048, 8192, measuredBell_);
+    auto k = brass_bore::makeKernels(fs, density_, speed_, fingering, fingering.trombone ? 8192 : 2048, fingering.trombone ? 32768 : 8192, measuredBell_);
     const double zc = density_ * speed_ /
                       (constants::pi * k.throatRadius * k.throatRadius);
     if (!std::isfinite(zc) || !(zc > 0.0)) return false;
@@ -605,7 +607,7 @@ class ConeValveVoice final : public IVoice {
     if (slot.first.empty()) {
       brass_bore::Fingering fg{(mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0};
       if (measuredTrombone_) fg = brass_bore::Fingering{false, false, false, true, brass_bore::tromboneSlideMeters(n)};
-      auto k = brass_bore::makeKernels(rate_.value(), density_, speed_, fg, 2048, 8192, measuredBell_);
+      auto k = brass_bore::makeKernels(rate_.value(), density_, speed_, fg, fg.trombone ? 8192 : 2048, fg.trombone ? 32768 : 8192, measuredBell_);
       slot = {std::move(k.reflection), std::move(k.mouthFlow)};
     }
     if (measuredMask_ >= 0 && kernelCache_[measuredMask_].first.empty())

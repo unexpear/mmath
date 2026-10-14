@@ -3066,6 +3066,16 @@ TEST_CASE("measured trombone bore experiment", "[.tromboneexp]") {
     if (tuned > 0.0) REQUIRE(voice.useAdachiSatoLip(tuned, 1.0e-4));
     std::vector<double> out(frames);
     bool ok = voice.renderBlock(out.data(), FrameCount{frames}).ok();
+    auto pitchAt = [&](std::size_t s0) {
+      const std::size_t w = 4096; const int lo = int(kFs / 400), hi = int(kFs / 50);
+      double bestR = -2; int bl = 0;
+      for (int L = lo; L <= hi; ++L) { double xy = 0, xx = 0, yy = 0;
+        for (std::size_t j = 0; j < w; ++j) { const double x = out[s0 + j], y = out[s0 + j + L]; xy += x * y; xx += x * x; yy += y * y; }
+        const double rr = xy / std::sqrt(xx * yy + 1e-300); if (rr > bestR) { bestR = rr; bl = L; } }
+      return bl ? kFs / bl : 0.0; };
+    std::cout << "tbtrack";
+    for (double t : {0.2, 0.3, 0.4, 0.6, 0.8, 1.2, 1.6}) std::cout << " " << t << ":" << pitchAt(std::size_t(t * kFs));
+    std::cout << "\n";
     double f0 = 0;
     {
       const std::size_t s0 = frames / 2, w = 8192;
