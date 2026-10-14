@@ -938,3 +938,31 @@ TEST_CASE("a positive cup compliance lowers the brass ring", "[contact]") {
   CHECK(peakOf(slideCupSamples, 18000, 28000) > 1.0e-4);
   writeListening(slideCupSamples, "mmath-trombone-cup.wav");
 }
+
+// Held bowed notes at a moderate force sit on pitch. Harness renders at
+// 0.15 of Schelleng's maximum read A4 -34, C5 -24, D5 -27 cents; at 0.05
+// they read within 0.3 cents. The 0.05 fraction is this test's argument
+// (UNSOURCED as a player value); the flattening at higher force is the
+// bow-force flattening McIntyre, Schumacher and Woodhouse describe
+// (JASA 69, 1981), not a delay-line error.
+TEST_CASE("held bowed violin notes sit on pitch at moderate force", "[contact]") {
+  const StringCourse open = unwrap(violin()).courses[2];
+  const double f0 = open.tuning.frequency.value();
+  for (double target : {f0, f0 * std::pow(2.0, 3.0 / 12.0), f0 * std::pow(2.0, 5.0 / 12.0)}) {
+    const StringCourse course =
+        target / f0 < 1.0005 ? open : unwrap(fingerStop(open, 1.0 - f0 / target));
+    const double mu = course.material.linearDensity.value();
+    const double impedance = mu * std::sqrt(course.tension.value() / mu);
+    const double beta = 0.125, speed = 0.2, muS = 0.8, muD = 0.3;
+    const double maximum = 2.0 * impedance * speed / (beta * (muS - muD));
+    const BowStroke stroke{beta, speed, 0.05 * maximum, BowFriction{muS, muD}};
+    auto voice = unwrap(BowedStringVoice::create(course, stroke, courseLoss(course, 2.0, 0.25),
+                                                0.0, 4, 0, kRate, 96000));
+    const auto samples = renderOf(voice, 72000);
+    const double heard = pitchNear(samples, 48000, target * 0.97, target * 1.03);
+    const double cents = 1200.0 * std::log2(heard / target);
+    INFO("held bow " << target << " Hz: " << cents << " cents");
+    WARN("held bow " << target << " Hz: " << cents << " cents");
+    CHECK(std::fabs(cents) < 5.0);
+  }
+}
