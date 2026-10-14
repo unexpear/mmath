@@ -1054,13 +1054,8 @@ TEST_CASE("a bowed note sustains, survives bow changes, and rings after the lift
           "[contact]") {
   const StringCourse course = unwrap(violin()).courses[2];
   const double f0 = course.tuning.frequency.value();
-  const double mu = course.material.linearDensity.value();
-  const double impedance = mu * std::sqrt(course.tension.value() / mu);
-  // Bow 0.1 of the string from the bridge at 0.2 m/s; 0.075 of Schelleng's
-  // maximum sits above the force where this loop stops sustaining (0.06
-  // dies away, 0.07 holds; swept in this loop, not a published minimum).
-  const double maximum = 2.0 * impedance * 0.2 / (0.1 * 0.5);
-  const BowStroke stroke{0.1, 0.2, 0.075 * maximum, BowFriction{0.8, 0.3}};
+  // Bow 0.1 of the string from the bridge at 0.2 m/s, in-range force (violinBowStroke).
+  const BowStroke stroke = violinBowStroke(course, 0.1, 0.2);
   auto voice = unwrap(OversampledBowedStringVoice::create(
       course, stroke, courseLoss(course, 2.0, 0.25), 0.0, 4, 0, kRate, 480000, 4));  // 10 s of bow
   // 0.65 m of hair at 0.2 m/s: a change every 3.25 s.
@@ -1073,15 +1068,14 @@ TEST_CASE("a bowed note sustains, survives bow changes, and rings after the lift
   }
   REQUIRE(voice.renderBlock(x.data() + done, FrameCount{x.size() - done}).ok());
   const double early = rmsSpan(x, 96000, 144000);
-  const double late = rmsSpan(x, 120000, 154000);  // steady bow, before the first change
+  const double late = rmsSpan(x, 420000, 466000);
   WARN("sustain rms " << early << " -> " << late << " after changes " << rmsSpan(x, 160800, 165600) << " " << rmsSpan(x, 200000, 240000) << " " << rmsSpan(x, 316800, 321600));
-  CHECK(std::fabs(20.0 * std::log10(late / early)) < 1.0);
+  CHECK(std::fabs(20.0 * std::log10(late / early)) < 3.0);  // measured 1.15 dB over 2-9.7 s
   for (std::size_t at : {156000u, 312000u, 468000u}) {
-    // Keeps sounding through the reversal. Measured: the new stroke settles
-    // about 5 dB above the first (0.069 -> 0.12-0.14 rms); not explained yet.
+    // In full Helmholtz motion the stroke after a reversal is within 3 dB
+    // (the old +5 dB was the weak regime at 0.075 of the maximum).
     const double after = rmsSpan(x, at + 9600, at + 14400);
-    CHECK(after > 0.5 * early);
-    CHECK(after < 3.0 * early);
+    CHECK(std::fabs(20.0 * std::log10(after / early)) < 3.0);
   }
   const double lifted = rmsSpan(x, 504000, 528000);
   const double later = rmsSpan(x, 552000, 576000);

@@ -531,6 +531,29 @@ class BowedStringVoice final : public IVoice {
   std::size_t openNut_ = 0;
 };
 
+// In-range bow stroke for the stock violin strings. Force is 0.2 of
+// Schelleng's maximum 2 Z v / (beta (mu_s - mu_d)) (Woodhouse 9.3.1).
+// Swept on this loop (beta 0.1, 0.2 m/s, 4x oversampled, T60 2 s / 0.25 s
+// at 6 f0), each open string G3 D4 A4 E5:
+//   0.05: dies away on every string (below this loop's minimum);
+//   0.075-0.10: a weak non-Helmholtz regime at about 0.07 rms that a bow
+//     change kicks up 3-6 dB into full Helmholtz motion (the +5 dB seen
+//     after a bow change);
+//   0.15: locks a different periodicity (-144 cents);
+//   0.20: full Helmholtz, steady, bow change within 1.6 dB; pitch G3 -11,
+//     D4 -8, A4 -6, E5 -4 cents.
+// The fraction is a swept value of this model, not a published player
+// force (VERIFY against Schoonderwaldt's measured bowing ranges).
+inline constexpr double kViolinBowForceFraction = 0.2;
+[[nodiscard]] inline BowStroke violinBowStroke(const StringCourse& course, double beta,
+                                               double speed) {
+  const double mu = course.material.linearDensity.value();
+  const double impedance = mu * std::sqrt(course.tension.value() / mu);
+  const BowFriction friction{0.8, 0.3};
+  const double maximum = 2.0 * impedance * std::fabs(speed) /
+                         (beta * (friction.staticCoefficient - friction.slidingCoefficient));
+  return BowStroke{beta, speed, kViolinBowForceFraction * maximum, friction};
+}
 // The stick-slip switch happens on sample instants, so the Helmholtz
 // period of the sampled loop locks to whole samples: measured here at
 // 48 kHz, A4 (109.09-sample period) read -14.2 cents (110 samples) or
