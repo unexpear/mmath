@@ -2304,7 +2304,7 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
       if (!n.rest && n.tongue) starts.push_back(n.startSec);
     return std::make_pair(samples, starts);
   };
-  auto play_trombone = [&](const auto& score, const std::string& stem) {
+  auto play_trombone = [&](const auto& score, const std::string& stem, bool measured = false) {
     const auto song = ensureLeadIn(score);
     using Finger = BrassFinger;
     const auto& finger = kTromboneFingers;
@@ -2327,14 +2327,47 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     // slide; the cone area stays 3.0e-4 mÂ², the area these lengths play.
     applyScottBell(bone);
     bone.wallRadiusMeters = kBach42BoreRadiusMeters;
+    if (measured) { bone.brassiness = 0.0; bone.reedTurbulence = 0.0; }
     auto voice = unwrap(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate));
+    // Opt-in measured path: bbTromboneProfile bore (closed slide FITTED to
+    // Bb2), Myers steepening, Adachi-Sato lip tuned per note. A note picks
+    // the Bb harmonic n (2..8 of 58.27 Hz) that needs 0-6 semitones of
+    // slide; the sounding length passed is base x 2^(s/12), which
+    // selectMeasuredFingering reads back as slide position s. 5000 Pa is
+    // the blowing pressure of the lip experiment (argument).
+    constexpr double kMeasuredBonePa = 5000.0;
+    const double base = horn.closedLengthMeters;
+    if (measured) {
+      REQUIRE(voice.useMeasuredTromboneBore());
+      REQUIRE(voice.setMeasuredBoreSteepening(true));
+      REQUIRE(voice.useAdachiSatoLip(116.54, 1.0e-4));
+    }
     std::vector<PhraseNote> notes;
     double start = 0.0;
     Finger held = finger[0];
+    double heldMeasured = base;
     for (const auto& src : song) {
       const Finger row = src.hertz > 0.0 ? find(src.hertz) : held;
       const double lipHz = 0.80 * conePartial(row.length, 0.60, row.mode);
-      push(notes, src, start, row.length, lipHz, 1600.0, 0.0, 25.0, 0.005);
+      if (measured) {
+        double length = heldMeasured;
+        double lip = 116.54;
+        if (src.hertz > 0.0) {
+          int bestS = 0;
+          double bestErr = 1e9;
+          for (int n = 2; n <= 8; ++n) {
+            const double s = 12.0 * std::log2(58.27 * n / src.hertz);
+            const int r = static_cast<int>(std::lround(s));
+            if (r >= 0 && r <= 6 && std::fabs(s - r) < bestErr) { bestErr = std::fabs(s - r); bestS = r; }
+          }
+          length = base * std::pow(2.0, bestS / 12.0);
+          heldMeasured = length;
+        }
+        lip = voice.tuneAdachiSatoLipHz(src.hertz > 0.0 ? src.hertz : row.hertz, length, kMeasuredBonePa);
+        push(notes, src, start, length, lip, kMeasuredBonePa, 0.0, 25.0, 0.005);
+      } else {
+        push(notes, src, start, row.length, lipHz, 1600.0, 0.0, 25.0, 0.005);
+      }
       notes.back().peakHz = impedancePeakHz(row.length, 0.60, row.mode, row.hertz);
       if (src.hertz > 0.0) held = row;
       start += src.seconds;
@@ -2355,6 +2388,8 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
   play_trumpet(withLeadIn(excerpts::kUptownFunk, "f"), "mmath-song-trumpet-uptown-funk");
   play_flute(excerpts::kDayInTheLife, "mmath-song-flute-day-in-the-life");
   play_trombone(withLeadIn(excerpts::kMountain, "mf"), "mmath-song-trombone-mountain");
+  play_trombone(excerpts::kTrombone, "mmath-song-trombone-bolero");
+  play_trombone(excerpts::kTrombone, "mmath-song-trombone-bolero-measured", true);
   play_trumpet(excerpts::kTaps, "mmath-song-trumpet-taps");
   play_trumpet(excerpts::kTaps, "mmath-song-trumpet-taps-measured", true);
   play_flute(excerpts::kLondonBridge, "mmath-song-flute-london-bridge");

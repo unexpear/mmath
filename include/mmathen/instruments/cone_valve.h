@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // A reed or a lip on a truncated cone, with an optional unflanged bell
 // (docs/48).
@@ -45,6 +45,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <tuple>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -669,9 +671,23 @@ class ConeValveVoice final : public IVoice {
   [[nodiscard]] double tuneAdachiSatoLipHz(double noteHz, double lengthMeters,
                                            double pressurePa) const {
     if (!as_.on || !(noteHz > 0.0)) return 0.0;
+    // A phrase repeats notes: the search is a pure function of the voice
+    // set-up, the note, the length, and the pressure, so its answer is
+    // kept (keys at 1 mHz, 1 um, 1 mPa). Each probe is 0.4 s of an
+    // 8192-tap convolution on the measured trombone bore.
+    const auto key = std::make_tuple(std::llround(noteHz * 1e3), std::llround(lengthMeters * 1e6),
+                                     std::llround(pressurePa * 1e3));
+    if (auto hit = tuneCache_.find(key); hit != tuneCache_.end()) return hit->second;
+    const double result = tuneAdachiSatoLipHzUncached(noteHz, lengthMeters, pressurePa);
+    tuneCache_[key] = result;
+    return result;
+  }
+  [[nodiscard]] double tuneAdachiSatoLipHzUncached(double noteHz, double lengthMeters,
+                                                   double pressurePa) const {
     const double fs = rate_.value();
     auto probe = [&](double lipHz) -> double {
       ConeValveVoice v = *this;
+      v.tuneCache_.clear();
       v.airway_ = nullptr;
       v.reset();
       v.frame_ = 0;
@@ -684,8 +700,7 @@ class ConeValveVoice final : public IVoice {
         return 0.0;
       const std::size_t n = static_cast<std::size_t>(0.4 * fs);
       std::vector<double> out(n, 0.0);
-      for (std::size_t i = 0; i < n; ++i)
-        if (!v.renderBlock(out.data() + i, FrameCount{1}).ok()) return 0.0;
+      if (!v.renderBlock(out.data(), FrameCount{n}).ok()) return 0.0;
       const std::size_t w = 4096, s0 = n - w - static_cast<std::size_t>(fs / 60.0);
       const int lo = static_cast<int>(fs / (noteHz * 1.2)), hi = static_cast<int>(fs / (noteHz / 1.2));
       double best = -2.0; int bl = 0; std::vector<double> r(hi + 2, 0.0);
@@ -1234,6 +1249,7 @@ class ConeValveVoice final : public IVoice {
     return std::isfinite(y) ? y : p;
   }
   bool measuredTrombone_ = false;
+  mutable std::map<std::tuple<long long, long long, long long>, double> tuneCache_;
   brass_bore::BellRadiation measuredBell_ = brass_bore::BellRadiation::LevineSchwinger;
   std::vector<double> rf_, uf_, hist_, histS_;
   std::size_t hpos_ = 0;
