@@ -1341,3 +1341,21 @@ TEST_CASE("ringing articulation lets short notes ring through the gap", "[contac
   CHECK(ring.contactSeconds == spic.contactSeconds);
   CHECK(gapLevel(ring) > gapLevel(spic) + 6.0);  // the gap stays filled by the free string
 }
+
+TEST_CASE("level floor caps quiet-side attenuation with a soft knee", "[contact]") {
+  using namespace mmathen;
+  std::vector<ScoreNote> sc;
+  for (int i = 0; i < 128; ++i) sc.push_back({0.125 * i, 0.125, 69, i});
+  TimingRules r; r.velocityDbPer64 = 12.0;
+  const auto raw = applyExpressiveTiming(sc, r);
+  r.levelFloorDb = 4.0;
+  const auto cap = applyExpressiveTiming(sc, r);
+  double prev = -1e9;
+  for (size_t i = 0; i < cap.size(); ++i) {
+    const double d = 20 * std::log10(cap[i].level);
+    CHECK(d >= -4.0 - 1e-9);
+    CHECK(d >= prev - 1e-9);  // still monotone in velocity
+    prev = d;
+    if (20 * std::log10(raw[i].level) > -2.0) CHECK(std::abs(cap[i].level - raw[i].level) < 1e-12);
+  }
+}

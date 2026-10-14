@@ -85,6 +85,11 @@ struct TimingRules {
   // note-to-note contrast (accents, phrase shape) but removing slow,
   // multi-second level drift between score sections (UNSOURCED value; 0 = off).
   double levelFlattenSeconds = 0.0;
+  // Quiet-side cap: no performed level falls more than this many dB below
+  // mezzo (level 1) after all rules; a soft knee of 2 dB avoids a hard
+  // corner. Keeps stacked arch/velocity/phrase cuts from dropping a passage
+  // out of the player's sounding range (UNSOURCED value; 0 = off).
+  double levelFloorDb = 0.0;
   std::uint32_t seed = 1;
 };
 
@@ -157,6 +162,15 @@ struct TimingRules {
     for (PerformedNote& p : out) {
       const double a = 1.0 - std::exp(-std::max(p.ioiSeconds, 1e-6) / r.levelSmoothingSeconds);
       y += a * (20.0 * std::log10(p.level) - y);
+      p.level = std::pow(10.0, y / 20.0);
+    }
+  }
+  if (r.levelFloorDb > 0.0) {
+    for (PerformedNote& p : out) {
+      const double d = 20.0 * std::log10(p.level), f = -r.levelFloorDb, k = 2.0;
+      double y = d;
+      if (d < f - k) y = f;
+      else if (d < f + k) y = d + (f + k - d) * (f + k - d) / (4.0 * k);
       p.level = std::pow(10.0, y / 20.0);
     }
   }
