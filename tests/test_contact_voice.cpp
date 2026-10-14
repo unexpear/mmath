@@ -1260,3 +1260,24 @@ TEST_CASE("bridge-force output scales with bow speed and 1/beta", "[contact]") {
   CHECK(20.0 * std::log10(b / a) > 10.0);  // ~12 dB for 4x speed (Helmholtz amplitude ~ v/beta)
   CHECK(c > b);                            // nearer the bridge: louder
 }
+
+TEST_CASE("level smoothing turns velocity steps into gradual swells", "[contact]") {
+  using namespace mmathen;
+  std::vector<ScoreNote> sc;
+  for (int i = 0; i < 40; ++i) sc.push_back({0.125 * i, 0.125, 69, i < 20 ? 32 : 96});
+  TimingRules r; r.velocityDbPer64 = 6.0;
+  const auto hard = applyExpressiveTiming(sc, r);
+  r.levelSmoothingSeconds = 0.5;
+  const auto soft = applyExpressiveTiming(sc, r);
+  REQUIRE(soft.size() == hard.size());
+  double maxStepHard = 0, maxStepSoft = 0;
+  for (size_t i = 1; i < soft.size(); ++i) {
+    maxStepHard = std::max(maxStepHard, std::abs(20 * std::log10(hard[i].level / hard[i - 1].level)));
+    maxStepSoft = std::max(maxStepSoft, std::abs(20 * std::log10(soft[i].level / soft[i - 1].level)));
+    CHECK(soft[i].level >= soft[i - 1].level - 1e-12);  // monotone swell, no overshoot
+  }
+  CHECK(std::abs(maxStepHard - 6.0) < 1e-9);
+  CHECK(maxStepSoft < 1.5);                             // 1-exp(-0.125/0.5) = 22 % of the 6 dB step
+  CHECK(std::abs(20 * std::log10(soft.back().level) - 3.0) < 0.1);  // converges to target
+  CHECK(std::abs(soft.front().level - hard.front().level) < 1e-12);
+}

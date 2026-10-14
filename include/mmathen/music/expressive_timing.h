@@ -75,6 +75,11 @@ struct TimingRules {
   double phraseLevelSdDb = 0.0;
   double timingJitterFraction = 0.0;
   double intonationSdCents = 0.0;
+  // Continuous dynamics: one-pole smoothing of the per-note level (dB) over
+  // performed time with this time constant, so score-velocity steps, phrase
+  // offsets and arch resets become gradual swells as a player's bow speed
+  // changes (UNSOURCED value; 0 = off).
+  double levelSmoothingSeconds = 0.0;
   std::uint32_t seed = 1;
 };
 
@@ -123,6 +128,14 @@ struct TimingRules {
     p.velocity = n.velocity;
     out.push_back(p);
     t += p.ioiSeconds;
+  }
+  if (r.levelSmoothingSeconds > 0.0 && !out.empty()) {
+    double y = 20.0 * std::log10(out.front().level);
+    for (PerformedNote& p : out) {
+      const double a = 1.0 - std::exp(-std::max(p.ioiSeconds, 1e-6) / r.levelSmoothingSeconds);
+      y += a * (20.0 * std::log10(p.level) - y);
+      p.level = std::pow(10.0, y / 20.0);
+    }
   }
   return out;
 }
