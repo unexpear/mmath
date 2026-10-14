@@ -28,6 +28,7 @@
 #include <cstring>
 #include <string>
 
+#include "body.h"
 #include "instrument.h"
 
 namespace mmathen {
@@ -196,6 +197,41 @@ tuneClassicalGuitarString(const ClassicalGuitar& guitar,
                      rows.front().printedFrequencyHz,
                      rows.back().printedFrequencyHz, kClassicalGuitarStringSource},
       kClassicalGuitarStringSource});
+}
+
+// Classical guitar body: ten modes measured at the bridge.
+// Source: V. Debut and J. Antunes, "Physical synthesis of six-string guitar
+// plucks using the Udwadia-Kalaba modal formulation", J. Acoust. Soc. Am.
+// (2020), Table I, open preprint
+// https://hal.science/hal-03604430v1/file/UK_JASA_Preprint.pdf.
+// The table gives f_n (Hz), zeta_n (%), and the modal mass m_n (kg) at the
+// bridge. Q = 1/(2 zeta) is the standard relation for light damping, so
+// zeta = 1.5 % gives Q = 33.3. These are the modes of one measured
+// instrument, not of the Yamaha C40II whose scale is stored above.
+// The bridge-to-listener radiation weighting is UNSOURCED: SoundboardVoice
+// radiates the summed bridge acceleration through one caller-supplied
+// area, the same for every mode. No per-mode radiation efficiency is
+// published here.
+struct DebutAntunesGuitarMode {
+  double frequencyHz;
+  double dampingPercent;
+  double modalMassKg;
+};
+inline constexpr std::array<DebutAntunesGuitarMode, 10> kDebutAntunes2020GuitarBody{{
+    {89.4, 1.5, 0.40},  {182.6, 1.82, 0.08}, {229.9, 0.64, 0.20}, {310.2, 0.89, 0.47},
+    {403.5, 0.55, 1.06}, {511.4, 0.75, 0.58}, {544.2, 0.53, 1.82}, {613.9, 0.61, 0.69},
+    {669.8, 0.69, 0.38}, {848.4, 0.59, 0.81},
+}};
+
+// The table above as BodyModeSpec rows (Q = 1/(2 zeta)).
+[[nodiscard]] inline std::array<BodyModeSpec, 10> classicalGuitarBodyModes() {
+  std::array<BodyModeSpec, 10> modes{};
+  for (std::size_t i = 0; i < modes.size(); ++i) {
+    const auto& row = kDebutAntunes2020GuitarBody[i];
+    modes[i] = BodyModeSpec{row.frequencyHz, 1.0 / (2.0 * row.dampingPercent * 1.0e-2),
+                            row.modalMassKg};
+  }
+  return modes;
 }
 
 [[nodiscard]] inline std::string formula(const ClassicalGuitar& guitar) {
