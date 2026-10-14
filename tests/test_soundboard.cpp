@@ -1,4 +1,4 @@
-// A plucked course closed on a modal soundboard, radiated as a monopole.
+﻿// A plucked course closed on a modal soundboard, radiated as a monopole.
 //
 // Mass, Q, resonance, radiating area, and distance below are this
 // test's arguments. They are not stored on any instrument. The heavy
@@ -93,6 +93,15 @@ double energyAboveGuard(const std::vector<double>& samples, std::size_t origin) 
     if (static_cast<double>(folded) / static_cast<double>(kN) > 0.4) high += power;
   }
   return total > 0.0 ? high / total : 1.0;
+}
+
+double pitchNearLong(const std::vector<double>& samples, std::size_t begin, double lowHz,
+                     double highHz) {
+  std::vector<double> window(samples.begin() + static_cast<std::ptrdiff_t>(begin),
+                             samples.begin() + static_cast<std::ptrdiff_t>(begin + 32768));
+  return unwrap(estimateSinusoid(window, kRate, Window::BlackmanHarris, FrequencyHz{lowHz},
+                                 FrequencyHz{highHz}))
+      .frequency.value();
 }
 
 double autocorrelationAt(const std::vector<double>& samples, std::size_t origin,
@@ -303,15 +312,23 @@ TEST_CASE("harp, harpsichord, and classical guitar radiate through a soundboard"
     INFO(row.name);
     const double frequency = row.course.tuning.frequency.value();
     const BodyModeSpec mode{frequency, 200.0, 20.0};
-    auto voice = makeBoard(row.course, std::span<const BodyModeSpec>(&mode, 1));
-    const auto samples = renderOf(voice, 32768);
+    const auto guitarBody = classicalGuitarBodyModes();
+    const bool isGuitar = std::strcmp(row.name, "classical guitar") == 0;
+    // The guitar uses the measured Debut-Antunes body. Its 310.2 Hz mode
+    // sits 4 bins (8192 window) below E4, where estimateSinusoid checks for
+    // a clean main lobe, so that row reads a 32768-sample window.
+    auto voice = isGuitar ? makeBoard(row.course, std::span<const BodyModeSpec>(guitarBody))
+                          : makeBoard(row.course, std::span<const BodyModeSpec>(&mode, 1));
+    const auto samples = renderOf(voice, isGuitar ? 65536 : 32768);
     requireFinite(samples);
     double peak = 0.0;
     for (double sample : samples) peak = std::max(peak, std::fabs(sample));
     CHECK(peak > 1.0e-5);
     const double low = frequency - 40.0;
     const double high = frequency + 40.0;
-    CHECK(std::fabs(pitchNear(samples, 16384, low, high) - voice.fundamentalHz()) < 1.5);
+    const double measured = isGuitar ? pitchNearLong(samples, 16384, low, high)
+                                     : pitchNear(samples, 16384, low, high);
+    CHECK(std::fabs(measured - voice.fundamentalHz()) < 1.5);
     CHECK(energyAboveGuard(samples, 16384) < 0.01);
     CHECK(autocorrelationAt(samples, 16384, voice.fundamentalHz()) > 0.8);
     const double early = amplitudeNear(samples, 16384, low, high);

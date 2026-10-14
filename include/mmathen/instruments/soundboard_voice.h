@@ -71,7 +71,9 @@ class SoundboardVoice final : public IVoice {
     if (!std::isfinite(impedance) || !(impedance > 0.0))
       return R::failure(QuantityError::RangeError);
     std::vector<Mode> built;
+    std::vector<BodyResonator> resonators;
     built.reserve(modes.size());
+    resonators.reserve(modes.size());
     for (const BodyModeSpec& spec : modes) {
       auto resonator = makeBodyResonator(spec);
       if (!resonator.ok()) return R::failure(resonator.error());
@@ -79,6 +81,7 @@ class SoundboardVoice final : public IVoice {
       const double sigma = omega / (2.0 * resonator.value().qualityFactor);
       if (!(sigma < omega)) return R::failure(QuantityError::DomainError);
       built.push_back(Mode{omega, sigma, resonator.value().modalMassKg, {}});
+      resonators.push_back(resonator.value());
     }
     auto air = makeAir(TemperatureKelvin{temperatureKelvin});
     if (!air.ok()) return R::failure(air.error());
@@ -101,8 +104,28 @@ class SoundboardVoice final : public IVoice {
     if (!std::isfinite(scale) || !(scale > 0.0))
       return R::failure(QuantityError::RangeError);
     const LoopPartial fundamental = design.value().partials.front();
+    // Bridge loading of the string's first mode. With the nut fixed and the
+    // bridge end moving with driving-point admittance Y, the eigen-condition
+    // is tan(kL) = i Z0 Y(w), Z0 = sqrt(T mu). For |Z0 Y| << 1 the n-th mode
+    // shifts by
+    //   df/f = Re(i Z0 Y)/(n pi) = -Z0 Im(Y(w_n))/(n pi),
+    // so mass-like (above-resonance) body modes raise the pitch and stiffness-like
+    // ones lower it. Source: C. E. Gough, "The theory of string resonances on
+    // musical instruments", Acustica 49, 124-141 (1981); J. Woodhouse, "On
+    // the synthesis of guitar plucks", Acta Acustica united with Acustica
+    // 90, 928-944 (2004), Sec. 2. Y is evaluated at the shifted frequency by
+    // fixed-point iteration (n = 1).
+    const double rigidHz = fundamental.frequency.value();
+    double loadedHz = rigidHz;
+    for (int it = 0; it < 8; ++it) {
+      auto y = bodyMobility(std::span<const BodyResonator>(resonators), loadedHz);
+      if (!y.ok()) return R::failure(y.error());
+      loadedHz = rigidHz * (1.0 - impedance * y.value().imag() / constants::pi);
+    }
+    if (!std::isfinite(loadedHz) || !(loadedHz > 0.0))
+      return R::failure(QuantityError::RangeError);
     SoundboardVoice voice(std::move(guide).value(), rate, impedance, scale, delay,
-                          fundamental.frequency.value(), fundamental.decayRate,
+                          loadedHz, fundamental.decayRate,
                           std::move(built));
     return R::success(std::move(voice));
   }
