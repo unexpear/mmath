@@ -1,9 +1,0 @@
-Filters: "player airway shapes breath and tongue"
-Randomness seeded to: 3265984811
-airway sustain spread 0.513154 dB, lung 4.83449 L
-airway pitch 181.818 Hz, bare 183.206 Hz
-airway legato dip 1.0039 dB, tongue stop dip 11.901 dB
-airway tract: pitch shift 0 cents, centroid 607.25 -> 539.125
-===============================================================================
-All tests passed (864030 assertions in 1 test case)
-

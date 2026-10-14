@@ -1,2 +1,0 @@
-[1/2] Building CXX object CMakeFiles\mmathen_tests.dir\tests\test_wind_tone.cpp.obj
-[2/2] Linking CXX executable mmathen_tests.exe
