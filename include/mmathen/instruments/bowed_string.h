@@ -368,6 +368,38 @@ class BowedStringVoice final : public IVoice {
   // While bowed inside Schelleng's range the Helmholtz motion is
   // self-sustaining; once lifted the string rings down freely.
   void sustainFor(std::uint64_t frames) { sustainFrames_ = frame_ + frames; }
+  // Move the bow point (beta of the open string from the bridge) and set
+  // the matching normal force, e.g. at a bow change. Players move toward
+  // the bridge for louder notes, with more force (Schoonderwaldt 2009).
+  // The bridge and nut segments trade whole samples, keeping the loop
+  // length (pitch); the newest samples on each side are kept. This is an
+  // instantaneous jump of the contact point (approximation; VERIFY).
+  [[nodiscard]] bool setBowPosition(double beta, double normalForce) {
+    if (!std::isfinite(beta) || !(beta > 0.0) || !(beta < 0.5) || !std::isfinite(normalForce) ||
+        !(normalForce > 0.0))
+      return false;
+    const long long loop = static_cast<long long>(bridge_.size() + nut_.size()) +
+                           (vib_.empty() ? 0 : vibMean_);
+    const long long nb = std::llround(beta * static_cast<double>(loop));
+    const long long nn = static_cast<long long>(bridge_.size() + nut_.size()) - nb;
+    if (nb < 1 || nn < 1) return false;
+    auto resize = [](std::vector<double>& line, std::size_t& pos, std::size_t target) {
+      const std::size_t n = line.size();
+      std::vector<double> kept(target, 0.0);
+      for (std::size_t i = 0; i < target; ++i) {
+        const long long from = static_cast<long long>(n) - static_cast<long long>(target) +
+                               static_cast<long long>(i);
+        if (from >= 0) kept[i] = line[(pos + static_cast<std::size_t>(from)) % n];
+      }
+      line = std::move(kept);
+      pos = 0;
+    };
+    resize(bridge_, bridgePos_, static_cast<std::size_t>(nb));
+    resize(nut_, nutPos_, static_cast<std::size_t>(nn));
+    stroke_.bridgeFraction = beta;
+    stroke_.normalForceNewtons = normalForce;
+    return true;
+  }
   // Start a note articulation now (see BowArticulation). False on a
   // negative or non-finite field or accentGain <= 0.
   [[nodiscard]] bool articulate(const BowArticulation& a) {
@@ -705,6 +737,15 @@ inline constexpr double kViolinBowForceFraction = 0.2;
 // acoustics of violin bowing", KTH PhD thesis 2009; value VERIFY).
 // 0.15 is a mezzo choice; 0.1 left harmonics 9-15 near -15 dB.
 inline constexpr double kViolinPlayingBeta = 0.15;  // VERIFY
+// Dynamic bow position: beta from kViolinBetaForte (loud) to
+// kViolinBetaPiano (soft), Schoonderwaldt's measured range is roughly
+// 0.05-0.2 (VERIFY); level is the note level in dB re mezzo.
+inline constexpr double kViolinBetaForte = 0.08;   // VERIFY
+inline constexpr double kViolinBetaPiano = 0.18;   // VERIFY
+[[nodiscard]] inline double violinBetaForLevelDb(double levelDb) {
+  const double x = std::clamp(0.5 - levelDb / 24.0, 0.0, 1.0);  // +-12 dB spans the range (UNSOURCED)
+  return kViolinBetaForte + x * (kViolinBetaPiano - kViolinBetaForte);
+}
 // String loss for the stock violin loop: T60 2 s at f0 and 0.08 s at
 // 6 f0. Measured violin-string damping rises steeply with frequency
 // (Woodhouse, Acta Acustica 90, 2004, string loss factors) but these two
@@ -790,6 +831,7 @@ class OversampledBowedStringVoice final : public IVoice {
   [[nodiscard]] bool changeBow(double seconds) { return inner_.changeBow(seconds); }
   void sustainFor(std::uint64_t frames) { inner_.sustainFor(frames * static_cast<std::uint64_t>(factor_)); }
   [[nodiscard]] bool articulate(const BowArticulation& a) { return inner_.articulate(a); }
+  [[nodiscard]] bool setBowPosition(double beta, double force) { return inner_.setBowPosition(beta, force); }
   [[nodiscard]] bool setStoppedFrequency(double hz) { return inner_.setStoppedFrequency(hz); }
   [[nodiscard]] bool setExpression(const BowExpression& e) { return inner_.setExpression(e); }
   [[nodiscard]] bool setStroke(const BowStroke& s) { return inner_.setStroke(s); }

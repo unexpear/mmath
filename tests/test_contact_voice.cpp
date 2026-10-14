@@ -1232,3 +1232,15 @@ TEST_CASE("vibrato depth stays in cents on a stopped note", "[contact]") {
   CHECK(h1 > 14.0);
   CHECK(h1 < 26.0);                  // ~20 cents, not the ~30 of open-string samples
 }
+TEST_CASE("bow position moves keep the loop and reject bad input", "[contact]") {
+  const StringCourse course = unwrap(violin()).courses[2];
+  auto voice = unwrap(OversampledBowedStringVoice::create(
+      course, violinBowStroke(course, kViolinPlayingBeta, 0.2), unwrap(violinStringLoss(course)),
+      0.0, 4, 0, kRate, 48000, 4));
+  const double before = voice.fundamentalHz();
+  CHECK_FALSE(voice.setBowPosition(0.0, 1.0));
+  CHECK_FALSE(voice.setBowPosition(0.1, -1.0));
+  CHECK(voice.setBowPosition(violinBetaForLevelDb(6.0), 1.0));
+  CHECK(voice.fundamentalHz() == before);
+  CHECK(violinBetaForLevelDb(12.0) < violinBetaForLevelDb(-12.0));
+}
