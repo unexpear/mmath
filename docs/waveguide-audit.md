@@ -60,7 +60,7 @@ numeric data is in hand, no body filter is built.
 ## Trombone grading (22deb96 + follow-up)
 
 - Bore peaks (slide 1, steepening on): 41.5, 116.75, 181.5, 253.25, 317.75, 381, 445.75, 508.5 Hz.
-  On the series n x 58.4 Hz (from peak 2): peak 3 is +62 cents, peak 4 +14, peak 5 +14, peak 6 +14.
+  On the series n x 58.4 Hz (from peak 2): peak 3 is +62 cents, peak 4 +141, peak 5 +147, peak 6 +146, peak 7 +151 (stretched series).
   F3 plays +34 / +73 cents (3 / 5 kPa), so it follows the sharp peak 3: a bore problem. The FITTED
   1.39 m cylinder and the UNSOURCED neck taper set peak 2 only; peak 3 needs a measured trombone profile.
 - Velut 2017 Table 2 lip (one-mass, h0 0.5 mm, W 12 mm, mu 9.1, Q 7), f_lip = 1.0x / 1.1x note:
