@@ -45,7 +45,7 @@ needs damping (Q) and amplitude per mode.
 Elliott, Bowsher & Watkinson, "Input and transfer response of brass wind
 instruments", JASA 72(6), 1747-1760 (1982), doi:10.1121/1.388648. The paper
 measures input impedance and the pressure transfer function T = p_out/p_in.
-According to Pyle's Surrey thesis (ibew.org.uk DV02966), it models the bell
+According to a Surrey PhD thesis (author not checked) (ibew.org.uk DV02966), it models the bell
 with the radiation impedance of a pulsating hemisphere (Elliott 1979). The
 abstract says bell radiation impedance data were insufficient. No numerical
 transfer-function table is available without the paywalled paper, so the
