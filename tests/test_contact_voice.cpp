@@ -1359,3 +1359,21 @@ TEST_CASE("level floor caps quiet-side attenuation with a soft knee", "[contact]
     if (20 * std::log10(raw[i].level) > -2.0) CHECK(std::abs(cap[i].level - raw[i].level) < 1e-12);
   }
 }
+
+TEST_CASE("bow beta follows the stopped length: level flat up the A string", "[contact]") {
+  const StringCourse course = unwrap(violin()).courses[2];
+  auto level = [&](double hz, bool keep) {
+    auto voice = unwrap(OversampledBowedStringVoice::create(
+        course, violinBowStroke(course, 0.12, 0.2), unwrap(violinStringLoss(course)), 0.0, 4, 0,
+        kRate, 96000, 4));
+    voice.setBridgeForceOutput(true);
+    voice.setKeepBetaOnStop(keep);
+    REQUIRE(voice.setStoppedFrequency(hz));
+    std::vector<double> x(72000);
+    REQUIRE(voice.renderBlock(x.data(), FrameCount{x.size()}).ok());
+    return 20 * std::log10(rmsSpan(x, 36000, 72000));
+  };
+  const double open = level(440.0, true), octave = level(880.0, true);
+  CHECK(std::abs(octave - open) < 1.5);                        // flat-ish up an octave
+  CHECK(level(880.0, false) < level(880.0, true) - 3.0);       // fixed contact sample drops (~6 dB)
+}

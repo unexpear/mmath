@@ -454,7 +454,21 @@ class BowedStringVoice final : public IVoice {
   // interpolated line. Loss and dispersion filters stay the created
   // course's (an approximation; VERIFY over large shifts). False when
   // out of range.
+  // Bow distance follows the stopped length: beta is measured from the
+  // bridge as a fraction of the vibrating (stopped) string, as in Schelleng
+  // (JASA 53, 1973) and Schoonderwaldt's bowing measurements, where players
+  // keep beta in the 0.05-0.2 range in every position. With a fixed contact
+  // sample the effective beta grew as the stop shortened the loop and the
+  // Helmholtz amplitude (~ v / beta, Cremer ch. 3) fell ~6 dB per octave up a
+  // string. setKeepBetaOnStop(false) restores the fixed contact.
+  void setKeepBetaOnStop(bool on) noexcept { keepBetaOnStop_ = on; }
   [[nodiscard]] bool setStoppedFrequency(double hz) {
+    if (!stopAtFixedContact(hz)) return false;
+    if (keepBetaOnStop_) return setBowPosition(stroke_.bridgeFraction, stroke_.normalForceNewtons);
+    return true;
+  }
+  bool keepBetaOnStop_ = true;
+  [[nodiscard]] bool stopAtFixedContact(double hz) {
     if (!std::isfinite(hz) || !(hz > 0.0)) return false;
     if (retuneFilters_ && retuneStore_.has_value()) return refinger(hz);
     const double fs = rate_.value();
@@ -867,6 +881,7 @@ class OversampledBowedStringVoice final : public IVoice {
   void setBridgeForceOutput(bool on) noexcept { inner_.setBridgeForceOutput(on); }
   [[nodiscard]] bool setBowPosition(double beta, double force) { return inner_.setBowPosition(beta, force); }
   [[nodiscard]] bool setStoppedFrequency(double hz) { return inner_.setStoppedFrequency(hz); }
+  void setKeepBetaOnStop(bool on) noexcept { inner_.setKeepBetaOnStop(on); }
   [[nodiscard]] bool setExpression(const BowExpression& e) { return inner_.setExpression(e); }
   [[nodiscard]] bool setStroke(const BowStroke& s) { return inner_.setStroke(s); }
   [[nodiscard]] double fundamentalHz() const noexcept { return inner_.fundamentalHz(); }
