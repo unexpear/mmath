@@ -91,7 +91,18 @@ struct BowFriction {
   // with stick held while |f| <= mu_s N, so there is no recapture
   // hysteresis.
   double hyperbolicV0 = 0.0;
+  // When true, sliding friction is the steady-sliding curve fit of Smith
+  // and Woodhouse, "The tribology of rosin", J. Mech. Phys. Solids 48
+  // (2000) 1633, Eq. (2):
+  //   mu(V) = 0.4 exp(-V/0.01) + 0.45 exp(-V/0.1) + 0.35   (V in m/s)
+  // so mu(0) = 1.2 is the sticking limit and the coefficients above are
+  // ignored. The slip root is found by bisection on [0, |v_b - v_h|].
+  bool smithWoodhouse2000 = false;
 };
+
+[[nodiscard]] inline double smithWoodhouse2000Mu(double v) noexcept {
+  return 0.4 * std::exp(-v / 0.01) + 0.45 * std::exp(-v / 0.1) + 0.35;
+}
 
 // β from the bridge, bow speed (m/s, sign is direction), normal force (N).
 struct BowStroke {
@@ -320,7 +331,27 @@ struct StickSlipCapture {
   sample.historyVelocity = historyVelocity;
   sample.incomingBridge = incomingBridge;
   sample.incomingNut = incomingNut;
-  if (friction.hyperbolicV0 > 0.0) {
+  if (friction.smithWoodhouse2000) {
+    const double limit = smithWoodhouse2000Mu(0.0) * normalForce;
+    if (absRequired <= limit) {
+      sample.frictionForce = required;
+      sample.stuck = true;
+      sample.stringVelocity = bowSpeed;
+    } else {
+      const double a = std::fabs(bowSpeed - historyVelocity);
+      const double k = normalForce / twoZ;
+      double lo = 0.0, hi = a;
+      for (int it = 0; it < 60; ++it) {
+        const double mid = 0.5 * (lo + hi);
+        if (mid + k * smithWoodhouse2000Mu(mid) - a < 0.0) lo = mid; else hi = mid;
+      }
+      const double slip = 0.5 * (lo + hi);
+      sample.frictionForce =
+          smithWoodhouse2000Mu(slip) * normalForce * helmholtz_detail::signNonzero(required);
+      sample.stuck = false;
+      sample.stringVelocity = historyVelocity + sample.frictionForce / twoZ;
+    }
+  } else if (friction.hyperbolicV0 > 0.0) {
     if (absRequired <= staticLimit) {
       sample.frictionForce = required;
       sample.stuck = true;

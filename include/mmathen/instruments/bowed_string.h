@@ -701,7 +701,10 @@ inline constexpr double kViolinPlayingBeta = 0.15;  // VERIFY
 // UNSOURCED. No body filter is applied: the body resonances (A0 ~280 Hz,
 // B1 ~450-550 Hz, the 2-3 kHz bridge hill) are absent here.
 inline constexpr double kViolinT60LowSeconds = 2.0;    // UNSOURCED
-inline constexpr double kViolinT60HighSeconds = 0.08;  // UNSOURCED
+// 0.08 s was tried (v2-v4): it darkened the dry render but shifted pitch
+// +2-5 cents sharp (loss-filter phase at f0); with a room stage the dark
+// top end of the reference came from the room, so 0.25 s is kept.
+inline constexpr double kViolinT60HighSeconds = 0.25;  // UNSOURCED
 [[nodiscard]] inline Result<LossModel, QuantityError> violinStringLoss(const StringCourse& c) {
   using R = Result<LossModel, QuantityError>;
   const double f = c.tuning.frequency.value();
