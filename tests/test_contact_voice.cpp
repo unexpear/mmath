@@ -1408,3 +1408,24 @@ TEST_CASE("finger changes settle: 0.12 s notes in an up/down A-string run", "[co
   }
   CHECK(worst < 10.0);
 }
+
+#include <mmathen/instruments/violin_body.h>
+TEST_CASE("violin bridge hill: peak near rocking frequency, -12 dB/oct above", "[contact]") {
+  auto mag = [](double f) {
+    BridgeHillFilter h(48000.0);
+    double re = 0, im = 0;
+    const int n = 48000;
+    std::vector<double> y(n);
+    for (int i = 0; i < n; ++i) y[i] = h.process(std::sin(2 * 3.141592653589793 * f * i / 48000.0));
+    for (int i = n / 2; i < n; ++i) { re += y[i] * std::sin(2 * 3.141592653589793 * f * i / 48000.0); im += y[i] * std::cos(2 * 3.141592653589793 * f * i / 48000.0); }
+    return 20 * std::log10(2.0 * std::hypot(re, im) / (n / 2));
+  };
+  CHECK(std::abs(mag(100.0)) < 0.1);
+  CHECK(mag(2900.0) > 2.5);                     // Q 1.5 -> +3.5 dB
+  CHECK(std::abs(mag(2900.0) - 20 * std::log10(1.5)) < 0.5);
+  const double d = mag(8000.0) - mag(16000.0);
+  CHECK(d > 9.0);                               // ~12 dB/octave rolloff
+  // Rayleigh A0 for a 2 l cavity, 2 x 6 cm^2 holes, 2.5 cm effective length -> a few hundred Hz
+  const double a0 = helmholtzFrequencyHz(2.0e-3, 12e-4, 0.025);
+  CHECK(a0 > 200.0); CHECK(a0 < 350.0);  // measured A0 253-282 Hz (Bissinger 2008)
+}
