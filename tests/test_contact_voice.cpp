@@ -1299,3 +1299,27 @@ TEST_CASE("level flattening removes section steps but keeps accents", "[contact]
   const double accFlat = 20 * std::log10(flat[120].level / flat[121].level);
   CHECK(std::abs(accFlat - accHard) < 0.3);         // accent contrast kept
 }
+
+TEST_CASE("bow taper lowers the end of a note and rejects bad fields", "[contact]") {
+  const StringCourse course = unwrap(violin()).courses[2];
+  auto render = [&](double taperLevel) {
+    auto voice = unwrap(OversampledBowedStringVoice::create(
+        course, violinBowStroke(course, 0.12, 0.3), unwrap(violinStringLoss(course)), 0.0, 4, 0,
+        kRate, 96000, 4));
+    voice.setBridgeForceOutput(true);
+    BowArticulation a; a.noteSeconds = 1.5; a.taperSeconds = 0.5; a.taperLevel = taperLevel;
+    REQUIRE(voice.articulate(a));
+    std::vector<double> x(72000);
+    REQUIRE(voice.renderBlock(x.data(), FrameCount{x.size()}).ok());
+    return std::pair{rmsSpan(x, 24000, 48000), rmsSpan(x, 64800, 72000)};
+  };
+  const auto flat = render(1.0), tap = render(0.5);
+  CHECK(std::abs(20 * std::log10(tap.first / flat.first)) < 0.5);  // body of the note unchanged
+  CHECK(20 * std::log10(tap.second / flat.second) < -3.0);         // last 0.15 s ~ half bow speed
+  auto voice = unwrap(OversampledBowedStringVoice::create(
+      course, violinBowStroke(course, 0.12, 0.3), unwrap(violinStringLoss(course)), 0.0, 4, 0, kRate, 96000, 4));
+  BowArticulation bad; bad.taperLevel = 0.0;
+  CHECK_FALSE(voice.articulate(bad));
+  bad.taperLevel = 1.0; bad.taperSeconds = -1.0;
+  CHECK_FALSE(voice.articulate(bad));
+}

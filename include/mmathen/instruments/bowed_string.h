@@ -99,6 +99,14 @@ struct BowArticulation {
   double restDampT60 = 0.0;
   // Note dynamic: bow speed and force scale together (Schelleng ratio kept).
   double level = 1.0;
+  // Within-note bow shaping: over the last taperSeconds of a note lasting
+  // noteSeconds, bow speed and force ramp linearly to taperLevel x their
+  // value (bow slowing into the bow change / note release, as in the
+  // bow-velocity traces of Askenfelt, JASA 86, 1989; depth and time
+  // UNSOURCED). noteSeconds = 0 disables it.
+  double noteSeconds = 0.0;
+  double taperSeconds = 0.0;
+  double taperLevel = 1.0;
 };
 
 // Off-string strokes: the bow bounces, touching the string for part of
@@ -264,6 +272,10 @@ class BowedStringVoice final : public IVoice {
           envelope *= std::max(0.05, std::sin(constants::pi * tn / art_.contactSeconds));
         else if (art_.onsetSeconds > 0.0 && tn < art_.onsetSeconds)
           envelope *= std::max(0.05, 0.5 * (1.0 - std::cos(constants::pi * tn / art_.onsetSeconds)));
+        if (art_.noteSeconds > 0.0 && art_.taperSeconds > 0.0) {
+          const double x = std::clamp((tn - (art_.noteSeconds - art_.taperSeconds)) / art_.taperSeconds, 0.0, 1.0);
+          envelope *= 1.0 + (art_.taperLevel - 1.0) * x;
+        }
       }
       const bool bowOn = frame_ < sustainFrames_ && !(liftAt_ > 0 && frame_ >= liftAt_);
       const double filtered = applyFilter(delayedBridge);
@@ -413,7 +425,9 @@ class BowedStringVoice final : public IVoice {
     if (!std::isfinite(a.accentGain) || !(a.accentGain > 0.0) || !std::isfinite(a.accentSeconds) ||
         a.accentSeconds < 0.0 || !std::isfinite(a.onsetSeconds) || a.onsetSeconds < 0.0 ||
         !std::isfinite(a.contactSeconds) || a.contactSeconds < 0.0 || !std::isfinite(a.level) ||
-        !(a.level > 0.0))
+        !(a.level > 0.0) || !std::isfinite(a.noteSeconds) || a.noteSeconds < 0.0 ||
+        !std::isfinite(a.taperSeconds) || a.taperSeconds < 0.0 || !std::isfinite(a.taperLevel) ||
+        !(a.taperLevel > 0.0))
       return false;
     art_ = a;
     noteStart_ = frame_;
