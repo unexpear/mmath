@@ -112,7 +112,7 @@ inline constexpr double kAccentSeconds = 0.06;           // UNSOURCED
 // Rest damping after a spiccato bounce. Guettler and Askenfelt describe
 // the hair settling on the string between bounces; this T60 is UNSOURCED
 // (chosen, not measured).
-inline constexpr double kSpiccatoRestT60Seconds = 0.04;  // UNSOURCED
+inline constexpr double kSpiccatoRestT60Seconds = 0.2;  // VERIFY (0.15-0.3 s range chosen; 0.04 s silenced the gaps)
 // Score velocity (1-127) to accent: gain 1 at velocity <= 80 rising to
 // 1.6 at 127. UNSOURCED mapping.
 [[nodiscard]] inline BowArticulation articulationForNote(double seconds, int velocity) {
@@ -288,8 +288,8 @@ class BowedStringVoice final : public IVoice {
         return R::failure(QuantityError::RangeError);
       if (!bowOn && liftAt_ > 0 && frame_ >= liftAt_ && art_.restDampT60 > 0.0 &&
           fundamentalHz_ > 0.0) {
-        // One pass of the bow point per period: g^(f0 T60) = 10^-3.
-        const double g = std::pow(10.0, -3.0 / (art_.restDampT60 * fundamentalHz_));
+        // A wave passes the bow point twice per period: g^(2 f0 T60) = 10^-3.
+        const double g = std::pow(10.0, -3.0 / (2.0 * art_.restDampT60 * fundamentalHz_));
         outgoingBridge *= g;
         outgoingNut *= g;
       }

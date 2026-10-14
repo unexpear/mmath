@@ -6,6 +6,7 @@
 // in metres or a pressure in pascals is audible. That scale is playback
 // only: the assertions read the unscaled samples.
 
+#include <mmathen/render/room_convolution.h>
 #include <mmathen/music/expressive_timing.h>
 #include <catch2/catch_test_macros.hpp>
 
@@ -1151,4 +1152,16 @@ TEST_CASE("expressive timing: tempo scale, mean-1 phrase arch, articulation rati
   BowArticulation a = articulationForNote(0.08, 100);
   CHECK(a.bounce);
   CHECK(a.restDampT60 > 0.0);
+}
+TEST_CASE("room convolution is exact against a direct sum", "[contact]") {
+  const std::vector<double> dry{1.0, -0.5, 0.25, 0.0, 2.0};
+  const std::vector<double> ir{0.5, 0.0, -0.25};
+  const auto out = convolveRoom(dry, ir);
+  REQUIRE(out.size() == 7);
+  for (std::size_t n = 0; n < out.size(); ++n) {
+    double want = 0.0;
+    for (std::size_t k = 0; k < ir.size(); ++k)
+      if (n >= k && n - k < dry.size()) want += ir[k] * dry[n - k];
+    CHECK(std::fabs(out[n] - want) < 1e-12);
+  }
 }
