@@ -231,8 +231,13 @@ class BowedStringVoice final : public IVoice {
       if (!vib_.empty()) {
         vib_[vibPos_] = delayedNut;
         double depth = 0.0;
-        if (t > expression_.vibratoOnsetSeconds) {
-          const double since = t - expression_.vibratoOnsetSeconds;
+        // Vibrato restarts with each finger placement: onset and ramp run from
+        // the last setStoppedFrequency, not from the voice start (players begin
+        // vibrato after a new note starts; a continuous phase put up to 30 c of
+        // vibrato swing on 0.12 s notes).
+        const double tv = static_cast<double>(frame_ - vibStart_) / fs;
+        if (tv > expression_.vibratoOnsetSeconds) {
+          const double since = tv - expression_.vibratoOnsetSeconds;
           const double ramp = expression_.vibratoRampSeconds > 0.0
                                   ? std::min(1.0, since / expression_.vibratoRampSeconds)
                                   : 1.0;
@@ -395,7 +400,28 @@ class BowedStringVoice final : public IVoice {
   // While bowed inside Schelleng's range the Helmholtz motion is
   // self-sustaining; once lifted the string rings down freely.
   void sustainFor(std::uint64_t frames) { sustainFrames_ = frame_ + frames; }
-  // Move the bow point (beta of the open string from the bridge) and set
+  // Change a travelling-wave segment's length by resampling its contents
+  // (linear interpolation, oldest to newest end mapped onto the new length).
+  // A finger move changes the vibrating length; the wave already on the
+  // string keeps its shape, scaled to the new length, as in a time-varying
+  // delay read at a moving tap (Smith, Physical Audio Signal Processing,
+  // "Variable delay lines"). Padding zeros instead left the arriving wave
+  // carrying the old period for one round trip (finger-change pitch lag up
+  // to +30 c on descending 0.12 s notes). Approximation; VERIFY.
+  static void stretchLine(std::vector<double>& line, std::size_t& pos, std::size_t target) {
+    const std::size_t n = line.size();
+    std::vector<double> out(target, 0.0);
+    if (n == 1) std::fill(out.begin(), out.end(), line[pos % n]);
+    else if (n > 1)
+      for (std::size_t i = 0; i < target; ++i) {
+        const double x = target > 1 ? static_cast<double>(i) * static_cast<double>(n - 1) / static_cast<double>(target - 1) : static_cast<double>(n - 1);
+        const std::size_t k = std::min<std::size_t>(static_cast<std::size_t>(x), n - 2);
+        const double f = x - static_cast<double>(k);
+        out[i] = (1.0 - f) * line[(pos + k) % n] + f * line[(pos + k + 1) % n];
+      }
+    line = std::move(out);
+    pos = 0;
+  }  // Move the bow point (beta of the open string from the bridge) and set
   // the matching normal force, e.g. at a bow change. Players move toward
   // the bridge for louder notes, with more force (Schoonderwaldt 2009).
   // The bridge and nut segments trade whole samples, keeping the loop
@@ -421,8 +447,8 @@ class BowedStringVoice final : public IVoice {
       line = std::move(kept);
       pos = 0;
     };
-    resize(bridge_, bridgePos_, static_cast<std::size_t>(nb));
-    resize(nut_, nutPos_, static_cast<std::size_t>(nn));
+    stretchLine(bridge_, bridgePos_, static_cast<std::size_t>(nb));
+    stretchLine(nut_, nutPos_, static_cast<std::size_t>(nn));
     stroke_.bridgeFraction = beta;
     stroke_.normalForceNewtons = normalForce;
     return true;
@@ -464,10 +490,12 @@ class BowedStringVoice final : public IVoice {
   void setKeepBetaOnStop(bool on) noexcept { keepBetaOnStop_ = on; }
   [[nodiscard]] bool setStoppedFrequency(double hz) {
     if (!stopAtFixedContact(hz)) return false;
+    vibStart_ = frame_;
     if (keepBetaOnStop_) return setBowPosition(stroke_.bridgeFraction, stroke_.normalForceNewtons);
     return true;
   }
   bool keepBetaOnStop_ = true;
+  std::uint64_t vibStart_ = 0;
   [[nodiscard]] bool stopAtFixedContact(double hz) {
     if (!std::isfinite(hz) || !(hz > 0.0)) return false;
     if (retuneFilters_ && retuneStore_.has_value()) return refinger(hz);
@@ -490,17 +518,7 @@ class BowedStringVoice final : public IVoice {
     if (whole > static_cast<int>(openNut_) - 1) return false;
     const std::size_t target = openNut_ - static_cast<std::size_t>(whole);
     const std::size_t n = nut_.size();
-    if (target != n) {
-      std::vector<double> kept(target, 0.0);
-      for (std::size_t i = 0; i < target; ++i) {
-        // Keep the newest samples when shortening, pad the oldest end when lengthening.
-        const long long from = static_cast<long long>(n) - static_cast<long long>(target) +
-                               static_cast<long long>(i);
-        kept[i] = from >= 0 ? nut_[(nutPos_ + static_cast<std::size_t>(from)) % n] : 0.0;
-      }
-      nut_ = std::move(kept);
-      nutPos_ = 0;
-    }
+    if (target != n) stretchLine(nut_, nutPos_, target);
     fingerShift_ = -(shorter - static_cast<double>(whole));
     stoppedHz_ = hz;
     return true;
@@ -748,16 +766,7 @@ class BowedStringVoice final : public IVoice {
     if (nutLen < 1) return false;
     const auto target = static_cast<std::size_t>(nutLen);
     const std::size_t n = nut_.size();
-    if (target != n) {
-      std::vector<double> kept(target, 0.0);
-      for (std::size_t i = 0; i < target; ++i) {
-        const long long from = static_cast<long long>(n) - static_cast<long long>(target) +
-                               static_cast<long long>(i);
-        kept[i] = from >= 0 ? nut_[(nutPos_ + static_cast<std::size_t>(from)) % n] : 0.0;
-      }
-      nut_ = std::move(kept);
-      nutPos_ = 0;
-    }
+    if (target != n) stretchLine(nut_, nutPos_, target);
     filters_ = filters;
     fingerShift_ = 0.0;
     stoppedHz_ = hz;

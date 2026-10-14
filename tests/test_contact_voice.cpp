@@ -1377,3 +1377,34 @@ TEST_CASE("bow beta follows the stopped length: level flat up the A string", "[c
   CHECK(std::abs(octave - open) < 1.5);                        // flat-ish up an octave
   CHECK(level(880.0, false) < level(880.0, true) - 3.0);       // fixed contact sample drops (~6 dB)
 }
+
+TEST_CASE("finger changes settle: 0.12 s notes in an up/down A-string run", "[contact]") {
+  const StringCourse course = unwrap(violin()).courses[2];
+  auto voice = unwrap(OversampledBowedStringVoice::create(
+      course, violinBowStroke(course, 0.12, 0.3), unwrap(violinStringLoss(course)), 0.0, 4, 0,
+      kRate, 960000, 4));
+  voice.setBridgeForceOutput(true);
+  REQUIRE(voice.setExpression(BowExpression{kViolinVibratoRateHz, kViolinVibratoCents, kViolinVibratoOnsetSeconds, kViolinVibratoRampSeconds, 0.0, 1.0, 0.0}));
+  const int run[8] = {69, 71, 73, 74, 76, 74, 73, 71};
+  const std::size_t note = 5760;  // 0.12 s at 48 kHz
+  std::vector<double> x(note * 40);
+  double worst = 0.0;
+  for (int i = 0; i < 40; ++i) {
+    const double f = 440.0 * std::pow(2.0, (run[i % 8] - 69) / 12.0);
+    REQUIRE(voice.setStoppedFrequency(f));
+    REQUIRE(voice.renderBlock(x.data() + note * i, FrameCount{note}).ok());
+    if (i < 8) continue;  // let the Helmholtz motion establish
+    // pitch over the middle 50 %: autocorrelation peak near the expected period, parabolic refinement
+    const double* s = x.data() + note * i + note / 4;
+    const std::size_t w = note / 2;
+    const double T = 48000.0 / f;
+    auto ac = [&](int lag) { double a = 0; for (std::size_t k = 0; k + lag < w; ++k) a += s[k] * s[k + lag]; return a; };
+    int best = static_cast<int>(T * 0.9); double bv = -1e300;
+    for (int lag = static_cast<int>(T * 0.9); lag <= static_cast<int>(T * 1.1) + 1; ++lag) { const double v = ac(lag); if (v > bv) { bv = v; best = lag; } }
+    const double y0 = ac(best - 1), y1 = bv, y2 = ac(best + 1);
+    const double den = y0 - 2 * y1 + y2;
+    const double lag = best + (std::abs(den) > 0 ? 0.5 * (y0 - y2) / den : 0.0);
+    worst = std::max(worst, std::abs(1200.0 * std::log2(T / lag)));
+  }
+  CHECK(worst < 10.0);
+}
