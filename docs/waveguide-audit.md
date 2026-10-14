@@ -56,3 +56,17 @@ numeric data is in hand, no body filter is built.
   Saitis/Scavone or Maestre/Scavone), or Gough JASA 137 (2015) if it
   tabulates bridge masses. Until then the violin keeps its current body,
   and the guitar is the only instrument with a measured modal body.
+
+## Trombone grading (22deb96 + follow-up)
+
+- Bore peaks (slide 1, steepening on): 41.5, 116.75, 181.5, 253.25, 317.75, 381, 445.75, 508.5 Hz.
+  On the series n x 58.4 Hz (from peak 2): peak 3 is +62 cents, peak 4 +14, peak 5 +14, peak 6 +14.
+  F3 plays +34 / +73 cents (3 / 5 kPa), so it follows the sharp peak 3: a bore problem. The FITTED
+  1.39 m cylinder and the UNSOURCED neck taper set peak 2 only; peak 3 needs a measured trombone profile.
+- Velut 2017 Table 2 lip (one-mass, h0 0.5 mm, W 12 mm, mu 9.1, Q 7), f_lip = 1.0x / 1.1x note:
+  +176 to +280 cents, and at 1.1x a near-sine lip-locked tone. Worse than the tuned Adachi-Sato lip.
+- Spectrum target: Stevenson, Campbell, Bromage, Chick, Gilbert, JASA 125(4) EL152 (2009), Table 1,
+  tenor trombone radiated centroid, non-brassy / brassy: Bb3 716 / 1816 Hz; F3 562 / 2462 Hz
+  (mouthpiece 304/369, 251/392). Model F3 centroid 344 Hz (3 kPa) and 618 Hz (5 kPa).
+  VERIFY that the model output is comparable to their bell-radius microphone.
+- Verdict: NOT GOOD ENOUGH. F3 pitch fails, so the trombone stays opt-in and no clip was rendered.

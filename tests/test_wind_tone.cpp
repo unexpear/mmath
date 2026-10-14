@@ -3047,6 +3047,7 @@ TEST_CASE("measured trombone bore experiment", "[.tromboneexp]") {
   }
   std::cout << "tb myersB " << myersTromboneBrassiness(speed) << "\n";
   const std::uint64_t frames = 96000;
+  for (int lv = 0; lv < 3; ++lv)
   for (double note : {116.54, 174.61})
   for (double p : {3000.0, 5000.0}) {
     TromboneSpec spec = blownTromboneSpec(speed, kAir, kTemp);
@@ -3061,9 +3062,17 @@ TEST_CASE("measured trombone bore experiment", "[.tromboneexp]") {
     auto voice = unwrap(ConeValveVoice::fromTrombone(trombone, 0.60, lip, kRate));
     REQUIRE(voice.useMeasuredTromboneBore());
     REQUIRE(voice.setMeasuredBoreSteepening(true));
-    REQUIRE(voice.useAdachiSatoLip(note, 1.0e-4));
-    const double tuned = voice.tuneAdachiSatoLipHz(note, kTromboneClosedMeters, p);
-    if (tuned > 0.0) REQUIRE(voice.useAdachiSatoLip(tuned, 1.0e-4));
+    // lv 0: Adachi-Sato, tuned. lv 1-2: Velut 2017 Table 2 trombone lip (one-mass,
+    // h0 0.5 mm, W 12 mm, mu 9.1 kg/m^2, Q 7) at f_lip = 1.0 and 1.1 x note.
+    double tuned = 0.0;
+    if (lv == 0) {
+      REQUIRE(voice.useAdachiSatoLip(note, 1.0e-4));
+      tuned = voice.tuneAdachiSatoLipHz(note, kTromboneClosedMeters, p);
+      if (tuned > 0.0) REQUIRE(voice.useAdachiSatoLip(tuned, 1.0e-4));
+    } else {
+      tuned = note * (lv == 1 ? 1.0 : 1.1);
+      REQUIRE(voice.usePublishedTrumpetLips(tuned, 7.0, 5.0e-4, 0.0, 9.1, 0.012));
+    }
     std::vector<double> out(frames);
     bool ok = voice.renderBlock(out.data(), FrameCount{frames}).ok();
     auto pitchAt = [&](std::size_t s0) {
@@ -3103,7 +3112,7 @@ TEST_CASE("measured trombone bore experiment", "[.tromboneexp]") {
       }
       const double m = re * re + im * im; h[k] = m; num += k * f0 * m; den += m;
     }
-    std::cout << "tbexp note " << note << " p " << p << " lip " << tuned << " ok " << ok << " f0 " << f0
+    std::cout << "tbexp lv " << lv << " note " << note << " p " << p << " lip " << tuned << " ok " << ok << " f0 " << f0
               << " cents " << (f0 > 0 ? 1200 * std::log2(f0 / note) : 0) << " cent " << (den > 0 ? num / den : 0)
               << " h2-h5";
     for (int k = 2; k <= 5; ++k) std::cout << " " << 10 * std::log10(h[k] / std::max(h[1], 1e-300));
