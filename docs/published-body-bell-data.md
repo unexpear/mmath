@@ -195,3 +195,43 @@ masses in the bridge admittance. The next step is to read Gough JASA 2015
 (shell model) and Zhang & Woodhouse 2014 for tables, or to get the
 Strad3D/VIOCADEAS mobility data and fit masses ourselves (fitting is not
 "published numbers").
+
+## Addendum 2026-10-14 (3): search for violin bridge effective masses
+
+### (a) An open Gough copy: NOT FOUND
+
+- Gough, "A violin shell model: Vibrational modes and acoustics", JASA 137,
+  1210-1225 (2015), doi:10.1121/1.4913458. Only the paywalled AIP copy
+  exists. There is no author preprint on Semantic Scholar or AIP. The
+  abstract does not report per-mode bridge masses.
+- Related conference version: Gough, "A generic model for instruments of
+  the violin family", Proc. Inst. Acoust. 35(1) (2013). No open copy was
+  found.
+- Gough, "The violin bridge-island input filter", JASA 144(1) (2018). Its
+  abstract describes a quasi-statistical filter, not a per-mode mass
+  table. Paywalled.
+- Gough, "Violin acoustics", Acoustics Today (2016), is open and says
+  effective masses come from measured mobility, but it lists none.
+
+### (b) Open measured bridge admittance data: NOT FOUND
+
+- Maestre, Scavone & Smith, SMAC 2013, http://mtg.upf.edu/system/files/publications/smac_adm_2013_v3.pdf.
+  Its supplementary site https://ccrma.stanford.edu/~esteban/adm/smac13/
+  hosts only three synthesized WAV examples (violin_a, viola_a,
+  cello_a.wav). It has no admittance data or modal parameter files, and
+  the /adm/ directory returns 403.
+- Strad3D, "Get Files" (https://www.strad3d.org/spectra.html): stereo WAVs
+  of a microphone (left) and hammer (right) for the Plowden, Titian and
+  Willemotte violins, described as "uncalibrated". These are radiativity
+  (pressure/force), not bridge velocity/force, so they cannot give modal
+  masses at the bridge.
+- Zenodo: the open hammer datasets are for cello bridges
+  (zenodo.org/records/20797149) and cello bridge force
+  (zenodo.org/records/10619541). There is no violin admittance.
+- Saitis 2012, Elie et al. SMAC 2013 (members.loria.fr/BElie/papers/elieetal_SMAC2013.pdf)
+  and Malvermi et al. 2022 publish plots or statistics only.
+
+Result: no FITTED masses. Fitting would need calibrated bridge
+velocity/force data. Digitizing published admittance plots is possible
+but was not done; it would be a lower-grade source and needs Mike's
+approval.
