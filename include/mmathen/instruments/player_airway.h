@@ -122,8 +122,11 @@ struct PlayerAirwaySpec {
   double residualVolumeM3 = 1.2e-3;
   double relaxationVolumeM3 = 2.4e-3;
   double respiratoryComplianceM3PerPa = 1.0e-6;
-  // UNSOURCED.
-  double inspirationRateM3PerS = 1.0e-3;
+  // A playing breath takes about 1 L in a few tenths of a second; 4 L/s is
+  // inside the adult forced-inspiration range (West 2012; VERIFY figure). At the old
+  // UNSOURCED 1 L/s a 0.3 s stolen breath refilled less than the next note used,
+  // so every later join stole a breath and short notes were graded on 0.1 s.
+  double inspirationRateM3PerS = 4.0e-3;
   // Starting lung volume: a full breath (argument).
   double initialLungVolumeM3 = 5.5e-3;
 };

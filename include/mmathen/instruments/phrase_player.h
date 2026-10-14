@@ -157,6 +157,8 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
         if (frame + count >= join) breathing = false;
       }
     }
+    // The note after a breath is tongued, as after a written rest.
+    if (stolenBreath) airway->setTongueTarget(0.0);
     const bool breathOff = note.rest || afterScore || stolenBreath;
     // Once the breath is off, the lip seals and the wall is Kirchhoff
     // at this fingering's impedance peak. The next blow restores the
