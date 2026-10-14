@@ -1196,28 +1196,39 @@ TEST_CASE("expressive dynamics and seeded variability", "[contact]") {
 }
 
 TEST_CASE("vibrato depth stays in cents on a stopped note", "[contact]") {
+  // Fails the old behaviour twice over: depth was set in open-string
+  // samples (about 30 cents at 1.5x), and the vibrato ring wrapped for
+  // deep vibrato (a +14 cent sharp offset).
   const StringCourse course = unwrap(violin()).courses[2];
   const double open = course.tuning.frequency.value();
-  auto voice = unwrap(OversampledBowedStringVoice::create(
-      course, violinBowStroke(course, kViolinPlayingBeta, 0.2), unwrap(violinStringLoss(course)),
-      0.0, 4, 0, kRate, 96000, 4));
-  REQUIRE(voice.setExpression(BowExpression{6.0, 20.0, 0.0, 0.0, 0.0, 1.0, 0.0}));
-  REQUIRE(voice.setStoppedFrequency(open * 1.5));
-  std::vector<double> x(96000);
-  REQUIRE(voice.renderBlock(x.data(), FrameCount{x.size()}).ok());
-  // Zero-crossing periods over 1 s of steady tone: peak-to-peak / 2 ~ 20 cents.
-  std::vector<double> periods;
-  double last = -1.0;
-  for (std::size_t i = 48001; i < x.size(); ++i)
-    if (x[i - 1] < 0.0 && x[i] >= 0.0) {
-      const double t = (i - 1) + x[i - 1] / (x[i - 1] - x[i]);
-      if (last > 0.0) periods.push_back(t - last);
-      last = t;
+  const double f = open * 1.5;
+  auto measure = [&](double cents, double& meanCents, double& halfCents) {
+    auto voice = unwrap(OversampledBowedStringVoice::create(
+        course, violinBowStroke(course, kViolinPlayingBeta, 0.2), unwrap(violinStringLoss(course)),
+        0.0, 4, 0, kRate, 192000, 4));
+    if (cents > 0.0) REQUIRE(voice.setExpression(BowExpression{6.5, cents, 0.1, 0.15, 0.0, 1.0, 0.0}));
+    REQUIRE(voice.setStoppedFrequency(f));
+    std::vector<double> x(192000);
+    REQUIRE(voice.renderBlock(x.data(), FrameCount{x.size()}).ok());
+    std::vector<double> t;
+    for (std::size_t i = 96001; i < x.size(); ++i)
+      if (x[i - 1] < 0.0 && x[i] >= 0.0) t.push_back((i - 1) + x[i - 1] / (x[i - 1] - x[i]));
+    REQUIRE(t.size() > 200);
+    meanCents = 1200.0 * std::log2(kRate.value() * (t.size() - 1) / (t.back() - t.front()) / f);
+    std::vector<double> p;
+    for (std::size_t i = 1; i < t.size(); ++i) p.push_back(t[i] - t[i - 1]);
+    double lo = 1e9, hi = -1e9;
+    for (std::size_t i = 2; i + 2 < p.size(); ++i) {
+      const double s5 = (p[i - 2] + p[i - 1] + p[i] + p[i + 1] + p[i + 2]) / 5.0;
+      lo = std::min(lo, s5);
+      hi = std::max(hi, s5);
     }
-  REQUIRE(periods.size() > 100);
-  std::vector<double> c;
-  for (double p : periods) c.push_back(1200.0 * std::log2(kRate.value() / p / (open * 1.5)));
-  std::sort(c.begin(), c.end());
-  const double half = 0.5 * (c[c.size() * 95 / 100] - c[c.size() * 5 / 100]);
-  CHECK(half < 40.0);  // unscaled open-string swing would be ~30 cents
+    halfCents = 0.5 * 1200.0 * std::log2(hi / lo);
+  };
+  double m0 = 0.0, h0 = 0.0, m1 = 0.0, h1 = 0.0;
+  measure(0.0, m0, h0);
+  measure(20.0, m1, h1);
+  CHECK(std::fabs(m1 - m0) < 3.0);  // vibrato does not move the centre
+  CHECK(h1 > 14.0);
+  CHECK(h1 < 26.0);                  // ~20 cents, not the ~30 of open-string samples
 }

@@ -471,7 +471,10 @@ class BowedStringVoice final : public IVoice {
         nut_.assign(nut_.size() - static_cast<std::size_t>(mean), 0.0);
         nutPos_ = 0;
         vibMean_ = mean;
-        vib_.assign(static_cast<std::size_t>(mean) + 3, 0.0);
+        // The read point swings to mean + swing samples back, so the ring must
+        // hold that plus the interpolation neighbour. (It was mean + 3: deeper
+        // vibrato wrapped the read, shortening the loop - a sharp offset.)
+        vib_.assign(static_cast<std::size_t>(mean) + static_cast<std::size_t>(std::ceil(swing)) + 3, 0.0);
         vibPos_ = 0;
         openNut_ = nut_.size();
       } else if (mean > vibMean_) {
