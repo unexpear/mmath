@@ -1102,3 +1102,33 @@ TEST_CASE("a bowed note sustains, survives bow changes, and rings after the lift
   CHECK(joinStep < 2.0 * steadyStep);
   CHECK_FALSE(legato.setStoppedFrequency(f0 * 0.5));
 }
+
+TEST_CASE("articulation: spiccato lifts the bow, accents push the onset", "[contact]") {
+  const BowArticulation spic = articulationForNote(0.08, 100);
+  CHECK(std::fabs(spic.contactSeconds - 0.04) < 1e-12);
+  CHECK(spic.accentGain > 1.0);
+  const BowArticulation det = articulationForNote(0.5, 60);
+  CHECK(det.contactSeconds == 0.0);
+  CHECK(det.accentGain == 1.0);
+  BowArticulation bad;
+  bad.accentGain = 0.0;
+  const StringCourse course = unwrap(violin()).courses[2];
+  auto run = [&](const BowArticulation& a) {
+    auto voice = unwrap(OversampledBowedStringVoice::create(
+        course, violinBowStroke(course, kViolinPlayingBeta, 0.2), unwrap(violinStringLoss(course)),
+        0.0, 4, 0, kRate, 96000, 4));
+    std::vector<double> x(96000);
+    REQUIRE(voice.renderBlock(x.data(), FrameCount{48000}).ok());
+    REQUIRE(voice.articulate(a));
+    CHECK_FALSE(voice.articulate(bad) );
+    REQUIRE(voice.renderBlock(x.data() + 48000, FrameCount{48000}).ok());
+    return rmsSpan(x, 72000, 96000);
+  };
+  BowArticulation lift;
+  lift.contactSeconds = 0.05;
+  const double held = run(BowArticulation{});
+  const double lifted = run(lift);
+  CHECK(held > 0.05);
+  // Lifted 0.45 s earlier: the string rings down (T60 2 s at f0, faster above).
+  CHECK(lifted < 0.8 * held);
+}

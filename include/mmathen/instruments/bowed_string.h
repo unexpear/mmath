@@ -80,6 +80,44 @@ struct BowExpression {
   double releaseSeconds = 0.0;
 };
 
+// Per-note bow articulation, applied from the call to articulate().
+// accentGain scales bow force and speed at the onset and relaxes to 1
+// with time constant accentSeconds. onsetSeconds is a raised-cosine bow
+// landing. contactSeconds > 0 lifts the bow that long after the onset
+// (off-string strokes: spiccato / sautille); 0 keeps it down (detache).
+struct BowArticulation {
+  double accentGain = 1.0;
+  double accentSeconds = 0.0;
+  double onsetSeconds = 0.0;
+  double contactSeconds = 0.0;
+};
+
+// Off-string strokes: the bow bounces, touching the string for part of
+// each cycle (Askenfelt and Guettler, "The bouncing bow", JASA 103,
+// 1998; Guettler and Askenfelt, KTH STL-QPSR 1998). Notes shorter than
+// kSpiccatoMaxSeconds are played off the string; sautille rates of about
+// 8-12 notes/s are reported there (threshold value VERIFY).
+inline constexpr double kSpiccatoMaxSeconds = 0.15;     // VERIFY
+inline constexpr double kSpiccatoContactFraction = 0.5; // VERIFY (part of bounce cycle on string)
+inline constexpr double kSpiccatoLandingSeconds = 0.008; // UNSOURCED
+inline constexpr double kDetacheLandingSeconds = 0.03;   // UNSOURCED
+inline constexpr double kAccentSeconds = 0.06;           // UNSOURCED
+// Score velocity (1-127) to accent: gain 1 at velocity <= 80 rising to
+// 1.6 at 127. UNSOURCED mapping.
+[[nodiscard]] inline BowArticulation articulationForNote(double seconds, int velocity) {
+  BowArticulation a;
+  const double v = std::clamp((static_cast<double>(velocity) - 80.0) / 47.0, 0.0, 1.0);
+  a.accentGain = 1.0 + 0.6 * v;
+  a.accentSeconds = kAccentSeconds;
+  if (seconds > 0.0 && seconds < kSpiccatoMaxSeconds) {
+    a.onsetSeconds = kSpiccatoLandingSeconds;
+    a.contactSeconds = kSpiccatoContactFraction * seconds;
+  } else {
+    a.onsetSeconds = kDetacheLandingSeconds;
+  }
+  return a;
+}
+
 class BowedStringVoice final : public IVoice {
  public:
   // sustainFrames is how long the bow stays down. Zero lifts it before
@@ -198,6 +236,14 @@ class BowedStringVoice final : public IVoice {
         if (left < expression_.releaseSeconds)
           envelope *= std::max(left / expression_.releaseSeconds, 1.0e-3);
       }
+      {
+        const double tn = static_cast<double>(frame_ - noteStart_) / fs;
+        if (art_.accentSeconds > 0.0 && art_.accentGain != 1.0)
+          envelope *= 1.0 + (art_.accentGain - 1.0) * std::exp(-tn / art_.accentSeconds);
+        if (art_.onsetSeconds > 0.0 && tn < art_.onsetSeconds)
+          envelope *= std::max(0.05, 0.5 * (1.0 - std::cos(constants::pi * tn / art_.onsetSeconds)));
+      }
+      const bool bowOn = frame_ < sustainFrames_ && !(liftAt_ > 0 && frame_ >= liftAt_);
       const double filtered = applyFilter(delayedBridge);
       if (!std::isfinite(filtered)) return R::failure(QuantityError::RangeError);
       const double incomingBridge =
@@ -207,7 +253,7 @@ class BowedStringVoice final : public IVoice {
       double outgoingBridge = 0.0;
       double outgoingNut = 0.0;
       double velocity = 0.0;
-      if (frame_ < sustainFrames_) {
+      if (bowOn) {
         auto junction = stickSlipJunction(
             history, incomingBridge, incomingNut, stroke_.speedMetersPerSecond * envelope * reversal,
             impedance_, stroke_.normalForceNewtons * envelope, stroke_.friction, wasStuck_);
@@ -293,6 +339,21 @@ class BowedStringVoice final : public IVoice {
   // While bowed inside Schelleng's range the Helmholtz motion is
   // self-sustaining; once lifted the string rings down freely.
   void sustainFor(std::uint64_t frames) { sustainFrames_ = frame_ + frames; }
+  // Start a note articulation now (see BowArticulation). False on a
+  // negative or non-finite field or accentGain <= 0.
+  [[nodiscard]] bool articulate(const BowArticulation& a) {
+    if (!std::isfinite(a.accentGain) || !(a.accentGain > 0.0) || !std::isfinite(a.accentSeconds) ||
+        a.accentSeconds < 0.0 || !std::isfinite(a.onsetSeconds) || a.onsetSeconds < 0.0 ||
+        !std::isfinite(a.contactSeconds) || a.contactSeconds < 0.0)
+      return false;
+    art_ = a;
+    noteStart_ = frame_;
+    liftAt_ = a.contactSeconds > 0.0
+                  ? frame_ + std::max<std::uint64_t>(1, static_cast<std::uint64_t>(std::llround(
+                                                            a.contactSeconds * rate_.value())))
+                  : 0;
+    return true;
+  }
   // Finger change on the sounding string: retune the loop to hz (at or
   // above the created pitch) by moving the stop, keeping string state.
   // Whole samples come out of the nut segment, the fraction from the
@@ -524,6 +585,9 @@ class BowedStringVoice final : public IVoice {
   std::vector<double> dsX_;
   std::vector<double> dsY_;
   bool wasStuck_ = true;
+  BowArticulation art_{};
+  std::uint64_t noteStart_ = 0;
+  std::uint64_t liftAt_ = 0;
   std::uint64_t frame_ = 0;
   bool radiating_ = false;
   double scale_ = 0.0;
@@ -603,6 +667,27 @@ class BowedStringVoice final : public IVoice {
 // The fraction is a swept value of this model, not a published player
 // force (VERIFY against Schoonderwaldt's measured bowing ranges).
 inline constexpr double kViolinBowForceFraction = 0.2;
+// Playing bow position. Players keep beta between about 0.05 and 0.2,
+// nearer the bridge for loud playing (Schoonderwaldt, "Mechanics and
+// acoustics of violin bowing", KTH PhD thesis 2009; value VERIFY).
+// 0.15 is a mezzo choice; 0.1 left harmonics 9-15 near -15 dB.
+inline constexpr double kViolinPlayingBeta = 0.15;  // VERIFY
+// String loss for the stock violin loop: T60 2 s at f0 and 0.08 s at
+// 6 f0. Measured violin-string damping rises steeply with frequency
+// (Woodhouse, Acta Acustica 90, 2004, string loss factors) but these two
+// T60 values are a fit to the Madoyan comparison spectrum, not measured:
+// UNSOURCED. No body filter is applied: the body resonances (A0 ~280 Hz,
+// B1 ~450-550 Hz, the 2-3 kHz bridge hill) are absent here.
+inline constexpr double kViolinT60LowSeconds = 2.0;    // UNSOURCED
+inline constexpr double kViolinT60HighSeconds = 0.08;  // UNSOURCED
+[[nodiscard]] inline Result<LossModel, QuantityError> violinStringLoss(const StringCourse& c) {
+  using R = Result<LossModel, QuantityError>;
+  const double f = c.tuning.frequency.value();
+  auto ideal = courseString(c);
+  if (!ideal.ok()) return R::failure(ideal.error());
+  return lossFromT60(ideal.value().speed, FrequencyHz{f}, DurationSeconds{kViolinT60LowSeconds},
+                     FrequencyHz{6.0 * f}, DurationSeconds{kViolinT60HighSeconds});
+}
 inline constexpr double kViolinHyperbolicV0 = 0.1;  // m/s, VERIFY
 [[nodiscard]] inline BowStroke violinBowStroke(const StringCourse& course, double beta,
                                                double speed) {
@@ -659,6 +744,7 @@ class OversampledBowedStringVoice final : public IVoice {
   [[nodiscard]] BowedStringVoice& inner() noexcept { return inner_; }
   [[nodiscard]] bool changeBow(double seconds) { return inner_.changeBow(seconds); }
   void sustainFor(std::uint64_t frames) { inner_.sustainFor(frames * static_cast<std::uint64_t>(factor_)); }
+  [[nodiscard]] bool articulate(const BowArticulation& a) { return inner_.articulate(a); }
   [[nodiscard]] bool setStoppedFrequency(double hz) { return inner_.setStoppedFrequency(hz); }
   [[nodiscard]] bool setExpression(const BowExpression& e) { return inner_.setExpression(e); }
   [[nodiscard]] bool setStroke(const BowStroke& s) { return inner_.setStroke(s); }
