@@ -310,13 +310,15 @@ class BoreLatticeVoice final : public IVoice {
       for (std::size_t s = 0; s < segments; ++s) {
         atRight_[s] = right_[s][pos_[s]];
         atLeft_[s] = left_[s][pos_[s]];
+        const double a = thiran_[s];
+        if (a != 0.0) {
+          const double yr = a * atRight_[s] + rX_[s] - a * rY_[s];
+          rX_[s] = atRight_[s]; rY_[s] = yr; atRight_[s] = yr;
+          const double yl = a * atLeft_[s] + lX_[s] - a * lY_[s];
+          lX_[s] = atLeft_[s]; lY_[s] = yl; atLeft_[s] = yl;
+        }
       }
-      double farIn = atRight_.back();
-      if (farExtra_) { const double held = farZ_; farZ_ = farIn; farIn = held; }
-      if (farThiran_ != 0.0 || farFraction_ >= 0.5) {
-        const double y = farThiran_ * farIn + farX_ - farThiran_ * farY_;
-        farX_ = farIn; farY_ = y; farIn = y;
-      }
+      const double farIn = atRight_.back();
       const double farOut =
           radiating_ ? openEnd_.step(farIn) : reflection_ * farIn;
       if (!std::isfinite(farOut)) return R::failure(QuantityError::RangeError);
@@ -356,7 +358,7 @@ class BoreLatticeVoice final : public IVoice {
     std::fill(pos_.begin(), pos_.end(), 0);
     for (auto& hole : junctions_) hole.reset();
     openEnd_.reset();
-    farX_ = farY_ = farZ_ = 0.0;
+    for (auto* v : {&rX_, &rY_, &lX_, &lY_}) std::fill(v->begin(), v->end(), 0.0);
     std::fill(jetDelay_.begin(), jetDelay_.end(), initialDisplacement_);
     jetPos_ = 0;
     displacement_ = initialDisplacement_;
@@ -460,22 +462,15 @@ class BoreLatticeVoice final : public IVoice {
     voice.reed_.inertia = inertia;
     voice.closing_ = inertia.closingDisplacementMeters;
     int oneWay = 0;
-    // Each segment was rounded on its own, so a lattice of N segments
-    // could miss the bore by up to N/2 samples each way. The integer
-    // part is now carried from segment to segment (floor with the
-    // remainder passed on), and the round-trip remainder is a first-order
-    // Thiran allpass at the far end (Thiran, IEEE Trans. Circuit Theory
-    // 18, 1971; Laakso, Valimaki, Karjalainen and Laine, "Splitting the
-    // unit delay", IEEE Signal Processing Magazine 13(1), 30-60, 1996),
-    // a = (1 - D)/(1 + D), kept in its accurate range 0.5 <= D <= 1.5
-    // with one whole sample moved in or out as needed.
-    // Scope: plain bores only. With a tone-hole junction the carried
-    // remainder moves the junction by up to a sample, and the test flute
-    // with an open Keefe hole then locks to its 5th mode (1564 Hz instead
-    // of the hole-raised fundamental). Holed lattices keep per-segment
-    // rounding until the junction-side fraction is handled.
-    const bool fractional = holes.empty();
-    double carry = 0.0;
+    // Each segment is an integer delay N plus a first-order Thiran
+    // allpass for the remainder D = samples - N, on both rails, so every
+    // junction sits at its true acoustic position (Thiran, IEEE Trans.
+    // Circuit Theory 18, 1971; Laakso, Valimaki, Karjalainen and Laine,
+    // "Splitting the unit delay", IEEE Signal Processing Magazine 13(1),
+    // 30-60, 1996): a = (1 - D)/(1 + D), with N = floor(samples - 0.5) so
+    // D stays in the accurate range 0.5 <= D < 1.5. Segments shorter than
+    // 1.5 samples keep a rounded integer delay (UNSOURCED fallback).
+    double fraction = 0.0;  // one-way fractional delay in the allpasses
     for (std::size_t s = 0; s + 1 < splits.size(); ++s) {
       const double left = splits[s].x;
       const double right = splits[s + 1].x;
@@ -489,11 +484,17 @@ class BoreLatticeVoice final : public IVoice {
       if (!std::isfinite(samples) ||
           samples > static_cast<double>(std::numeric_limits<int>::max() / 8))
         return R::failure(QuantityError::RangeError);
-      const double target = samples + carry;
-      int delay = fractional ? static_cast<int>(std::floor(target))
-                             : static_cast<int>(std::llround(samples));
-      if (delay < 1) delay = 1;
-      carry = fractional ? target - static_cast<double>(delay) : 0.0;
+      int delay = 0;
+      double coefficient = 0.0;
+      if (samples >= 1.5) {
+        delay = static_cast<int>(std::floor(samples - 0.5));
+        const double D = samples - static_cast<double>(delay);
+        coefficient = (1.0 - D) / (1.0 + D);
+        fraction += D;
+      } else {
+        delay = std::max(1, static_cast<int>(std::llround(samples)));
+      }
+      voice.thiran_.push_back(coefficient);
       oneWay += delay;
       voice.right_.emplace_back(static_cast<std::size_t>(delay), 0.0);
       voice.left_.emplace_back(static_cast<std::size_t>(delay), 0.0);
@@ -527,19 +528,9 @@ class BoreLatticeVoice final : public IVoice {
       }
     }
     if (voice.right_.empty() || oneWay < 1) return R::failure(QuantityError::RangeError);
-    if (fractional) {
-      double d = 2.0 * carry;  // round-trip remainder, samples
-      if (d < 0.5 && voice.right_.back().size() > 1) {
-        voice.right_.back().pop_back();
-        voice.left_.back().pop_back();
-        oneWay -= 1;
-        d += 2.0;
-      }
-      voice.farExtra_ = d > 1.5;
-      const double D = voice.farExtra_ ? d - 1.0 : d;
-      if (D >= 0.5) voice.farThiran_ = (1.0 - D) / (1.0 + D);
-      voice.farFraction_ = d;
-    }
+    voice.farFraction_ = 2.0 * fraction;
+    for (auto* v : {&voice.rX_, &voice.rY_, &voice.lX_, &voice.lY_})
+      v->assign(voice.right_.size(), 0.0);
     const std::size_t segments = voice.right_.size();
     voice.atRight_.assign(segments, 0.0);
     voice.atLeft_.assign(segments, 0.0);
@@ -729,8 +720,8 @@ class BoreLatticeVoice final : public IVoice {
   double jetThickness_ = 0.0;
   double flueToEdge_ = 0.0;
   double fundamentalHz_ = 0.0;
-  double farThiran_ = 0.0, farFraction_ = 0.0, farX_ = 0.0, farY_ = 0.0, farZ_ = 0.0;
-  bool farExtra_ = false;
+  double farFraction_ = 0.0;  // round-trip delay held in the allpasses
+  std::vector<double> thiran_, rX_, rY_, lX_, lY_;
   double decay_ = 0.0;
   int holeCount_ = 0;
   bool radiating_ = false;
