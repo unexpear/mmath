@@ -97,6 +97,8 @@ struct BowArticulation {
   // (bow hair returning to rest on the string between bounces, and
   // left-hand finger lift). 0 lets it ring freely.
   double restDampT60 = 0.0;
+  // Note dynamic: bow speed and force scale together (Schelleng ratio kept).
+  double level = 1.0;
 };
 
 // Off-string strokes: the bow bounces, touching the string for part of
@@ -251,6 +253,7 @@ class BowedStringVoice final : public IVoice {
       }
       {
         const double tn = static_cast<double>(frame_ - noteStart_) / fs;
+        envelope *= art_.level;
         if (art_.accentSeconds > 0.0 && art_.accentGain != 1.0)
           envelope *= 1.0 + (art_.accentGain - 1.0) * std::exp(-tn / art_.accentSeconds);
         if (art_.bounce && art_.contactSeconds > 0.0 && tn < art_.contactSeconds)
@@ -366,7 +369,8 @@ class BowedStringVoice final : public IVoice {
   [[nodiscard]] bool articulate(const BowArticulation& a) {
     if (!std::isfinite(a.accentGain) || !(a.accentGain > 0.0) || !std::isfinite(a.accentSeconds) ||
         a.accentSeconds < 0.0 || !std::isfinite(a.onsetSeconds) || a.onsetSeconds < 0.0 ||
-        !std::isfinite(a.contactSeconds) || a.contactSeconds < 0.0)
+        !std::isfinite(a.contactSeconds) || a.contactSeconds < 0.0 || !std::isfinite(a.level) ||
+        !(a.level > 0.0))
       return false;
     art_ = a;
     noteStart_ = frame_;
@@ -713,6 +717,15 @@ inline constexpr double kViolinT60HighSeconds = 0.25;  // UNSOURCED
   return lossFromT60(ideal.value().speed, FrequencyHz{f}, DurationSeconds{kViolinT60LowSeconds},
                      FrequencyHz{6.0 * f}, DurationSeconds{kViolinT60HighSeconds});
 }
+// Violin vibrato. Mellody and Wakefield (JASA 107, 2000) analyse violin
+// vibrato at roughly 5-7 Hz with depths of tens of cents (VERIFY exact
+// values). The Madoyan reference measured here (audiodiag) shows ~7 Hz
+// and ~20 cents. Onset 0.1 s and ramp 0.15 s are UNSOURCED, chosen so
+// 0.2-0.3 s notes carry vibrato.
+inline constexpr double kViolinVibratoRateHz = 6.5;        // VERIFY
+inline constexpr double kViolinVibratoCents = 20.0;        // VERIFY
+inline constexpr double kViolinVibratoOnsetSeconds = 0.1;  // UNSOURCED
+inline constexpr double kViolinVibratoRampSeconds = 0.15;  // UNSOURCED
 inline constexpr double kViolinHyperbolicV0 = 0.1;  // m/s, VERIFY
 [[nodiscard]] inline BowStroke violinBowStroke(const StringCourse& course, double beta,
                                                double speed) {

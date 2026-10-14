@@ -1165,3 +1165,32 @@ TEST_CASE("room convolution is exact against a direct sum", "[contact]") {
     CHECK(std::fabs(out[n] - want) < 1e-12);
   }
 }
+TEST_CASE("expressive dynamics and seeded variability", "[contact]") {
+  std::vector<ScoreNote> notes;
+  for (int i = 0; i < 16; ++i) notes.push_back({0.25 * i, 0.25, 69, i % 2 ? 101 : 81});
+  TimingRules r;
+  r.phraseScoreSeconds = 4.0;
+  r.levelArchDb = 4.0;
+  r.velocityDbPer64 = 6.0;
+  r.timingJitterFraction = 0.02;
+  r.intonationSdCents = 4.0;
+  const auto a = applyExpressiveTiming(notes, r);
+  const auto b = applyExpressiveTiming(notes, r);
+  REQUIRE(a.size() == b.size());
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    CHECK(a[i].ioiSeconds == b[i].ioiSeconds);   // seeded: reproducible
+    CHECK(a[i].centsOffset == b[i].centsOffset);
+  }
+  CHECK(a[7].level > a[0].level);  // phrase middle louder than its start
+  BowArticulation bad;
+  bad.level = 0.0;
+  const StringCourse course = unwrap(violin()).courses[2];
+  auto voice = unwrap(OversampledBowedStringVoice::create(
+      course, violinBowStroke(course, kViolinPlayingBeta, 0.2), unwrap(violinStringLoss(course)),
+      0.0, 4, 0, kRate, 4800, 4));
+  CHECK_FALSE(voice.articulate(bad));
+  const auto wet = mixRoom({1.0, 0.0, 0.0}, {0.0, 1.0}, 0.5);
+  REQUIRE(wet.size() == 3);
+  CHECK(std::fabs(wet[0] - 0.5) < 1e-12);
+  CHECK(std::fabs(wet[1] - 0.5) < 1e-12);
+}

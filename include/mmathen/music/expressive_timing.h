@@ -24,6 +24,8 @@
 //   violin).
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <random>
 #include <vector>
 
 namespace mmathen {
@@ -39,6 +41,8 @@ struct PerformedNote {
   double onsetSeconds = 0.0;
   double ioiSeconds = 0.0;
   double soundSeconds = 0.0;
+  double level = 1.0;        // bow speed/force multiplier (dynamics)
+  double centsOffset = 0.0;  // intonation deviation
   int midi = 0;
   int velocity = 0;
 };
@@ -50,6 +54,21 @@ struct TimingRules {
   double finalRitardScoreSeconds = 0.0;
   double finalTempoRatio = 1.0;
   double detachedRatio = 1.0;
+  // Dynamics. The KTH phrase-arch rule couples sound level to the tempo
+  // arch: louder toward the phrase middle, softer at its ends (Friberg et
+  // al. 2006). levelArchDb is the swing in dB (VERIFY; KTH default
+  // quantities are a few dB). velocityDbPer64: score velocity v maps to
+  // (v - 64)/64 * velocityDbPer64 dB (UNSOURCED mapping). The level drives
+  // bow speed and force together; Schoonderwaldt (2009) reports players
+  // raising both (and moving toward the bridge) for louder notes.
+  double levelArchDb = 0.0;
+  double velocityDbPer64 = 0.0;
+  // Variability (seeded): onset jitter sd as a fraction of the IOI (Repp
+  // 1992 reports timing variability of a few percent between repeats;
+  // VERIFY) and intonation sd in cents (UNSOURCED).
+  double timingJitterFraction = 0.0;
+  double intonationSdCents = 0.0;
+  std::uint32_t seed = 1;
 };
 
 [[nodiscard]] inline std::vector<PerformedNote> applyExpressiveTiming(
@@ -59,12 +78,17 @@ struct TimingRules {
   double end = 0.0;
   for (const ScoreNote& n : notes) end = std::max(end, n.onsetSeconds + n.ioiSeconds);
   double t = notes.empty() ? 0.0 : notes.front().onsetSeconds * r.tempoScale;
+  std::mt19937 rng(r.seed);
+  std::normal_distribution<double> gauss(0.0, 1.0);
   for (const ScoreNote& n : notes) {
     const double mid = n.onsetSeconds + 0.5 * n.ioiSeconds;
     double m = r.tempoScale;
+    double levelDb = r.velocityDbPer64 * (static_cast<double>(n.velocity) - 64.0) / 64.0;
     if (r.phraseScoreSeconds > 0.0 && r.phraseArchDepth != 0.0) {
       const double x = std::fmod(mid, r.phraseScoreSeconds) / r.phraseScoreSeconds;
-      m *= 1.0 + r.phraseArchDepth * ((2.0 * x - 1.0) * (2.0 * x - 1.0) - 1.0 / 3.0);
+      const double arch = (2.0 * x - 1.0) * (2.0 * x - 1.0) - 1.0 / 3.0;
+      m *= 1.0 + r.phraseArchDepth * arch;
+      levelDb -= r.levelArchDb * 1.5 * arch;  // arch in [-1/3, 2/3]: ends soft, middle loud
     }
     if (r.finalRitardScoreSeconds > 0.0 && r.finalTempoRatio > 0.0 &&
         mid > end - r.finalRitardScoreSeconds) {
@@ -74,7 +98,9 @@ struct TimingRules {
     }
     PerformedNote p;
     p.onsetSeconds = t;
-    p.ioiSeconds = n.ioiSeconds * m;
+    p.ioiSeconds = n.ioiSeconds * m * std::max(0.5, 1.0 + r.timingJitterFraction * gauss(rng));
+    p.level = std::pow(10.0, levelDb / 20.0);
+    p.centsOffset = r.intonationSdCents * gauss(rng);
     p.soundSeconds = p.ioiSeconds * std::clamp(r.detachedRatio, 0.0, 1.0);
     p.midi = n.midi;
     p.velocity = n.velocity;

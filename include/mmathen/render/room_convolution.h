@@ -35,4 +35,14 @@ namespace mmathen {
   return out;
 }
 
+// Partial-wet room: (1 - wet) dry + wet (dry * ir), trimmed to the dry
+// length. wet is the caller's choice (no published value implied).
+[[nodiscard]] inline std::vector<double> mixRoom(const std::vector<double>& dry,
+                                                 const std::vector<double>& ir, double wet) {
+  std::vector<double> out = convolveRoom(dry, ir);
+  out.resize(dry.size());
+  for (std::size_t i = 0; i < dry.size(); ++i) out[i] = (1.0 - wet) * dry[i] + wet * out[i];
+  return out;
+}
+
 }  // namespace mmathen
