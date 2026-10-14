@@ -36,3 +36,23 @@ usable numeric data. Candidates to obtain: Jansson violin bridge mobility
 measurements; Woodhouse "The acoustics of the violin: a review" (Rep. Prog.
 Phys. 77, 2014) modal tables; Elejabarrieta/Ezcurra guitar modal data. Until
 numeric data is in hand, no body filter is built.
+
+## Known gap: modal violin body (2026-10-14)
+
+- **Missing:** per-mode effective (modal) mass at the bridge for A0, CBR,
+  B1- and B1+, and CBR damping. Frequencies (Bissinger 2008, Saitis 2012)
+  and damping for A0, A1, B1- and B1+ (Bissinger 2012: 2.5, 1.0, 1.22 and
+  1.15 %crit) are sourced. See docs/published-body-bell-data.md.
+- **Why the digitized fit failed (17fa541):** the only open calibrated
+  plot (Saitis 2012 Fig. 2) overlays 10 violins.
+  - The 10.5 dB spread between curves leaves the masses uncertain to a
+    factor of about 2-3.
+  - The median curve merges B1- and B1+ (the fitted B1+ hit its 505 Hz
+    bound, against 541 Hz published).
+  - CBR's Q fell to 5, which is unphysical.
+  - The dB reference is not printed.
+- **What closes it:** one calibrated single-violin bridge admittance (a
+  published single-instrument figure, or raw data from McGill CAML,
+  Saitis/Scavone or Maestre/Scavone), or Gough JASA 137 (2015) if it
+  tabulates bridge masses. Until then the violin keeps its current body,
+  and the guitar is the only instrument with a measured modal body.
