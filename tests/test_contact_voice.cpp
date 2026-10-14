@@ -1244,3 +1244,19 @@ TEST_CASE("bow position moves keep the loop and reject bad input", "[contact]") 
   CHECK(voice.fundamentalHz() == before);
   CHECK(violinBetaForLevelDb(12.0) < violinBetaForLevelDb(-12.0));
 }
+
+TEST_CASE("bridge-force output scales with bow speed and 1/beta", "[contact]") {
+  const StringCourse course = unwrap(violin()).courses[2];
+  auto level = [&](double beta, double speed) {
+    auto voice = unwrap(OversampledBowedStringVoice::create(
+        course, violinBowStroke(course, beta, speed), unwrap(violinStringLoss(course)), 0.0, 4, 0,
+        kRate, 96000, 4));
+    voice.setBridgeForceOutput(true);
+    std::vector<double> x(96000);
+    REQUIRE(voice.renderBlock(x.data(), FrameCount{x.size()}).ok());
+    return rmsSpan(x, 48000, 96000);
+  };
+  const double a = level(0.15, 0.1), b = level(0.15, 0.4), c = level(0.08, 0.4);
+  CHECK(20.0 * std::log10(b / a) > 10.0);  // ~12 dB for 4x speed (Helmholtz amplitude ~ v/beta)
+  CHECK(c > b);                            // nearer the bridge: louder
+}

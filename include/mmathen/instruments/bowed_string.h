@@ -324,6 +324,10 @@ class BowedStringVoice final : public IVoice {
         radiation_[radiationPos_] = acceleration;
         radiationPos_ = (radiationPos_ + 1) % radiation_.size();
         out[i] = scale_ * delayed;
+      } else if (bridgeForceOut_) {
+        // Transverse force on a rigid bridge: the arriving wave reflects with
+        // -1, so F = 2 Z v_arriving (Cremer, The Physics of the Violin, ch. 3).
+        out[i] = 2.0 * impedance_ * delayedBridge;
       } else {
         out[i] = velocity;
       }
@@ -400,6 +404,9 @@ class BowedStringVoice final : public IVoice {
     stroke_.normalForceNewtons = normalForce;
     return true;
   }
+  // Output the bridge force (N) instead of the bow-point velocity (rigid
+  // bridge only). This is the force that drives a body.
+  void setBridgeForceOutput(bool on) noexcept { bridgeForceOut_ = on; }
   // Start a note articulation now (see BowArticulation). False on a
   // negative or non-finite field or accentGain <= 0.
   [[nodiscard]] bool articulate(const BowArticulation& a) {
@@ -650,6 +657,7 @@ class BowedStringVoice final : public IVoice {
   std::vector<double> dsX_;
   std::vector<double> dsY_;
   bool wasStuck_ = true;
+  bool bridgeForceOut_ = false;
   BowArticulation art_{};
   std::uint64_t noteStart_ = 0;
   std::uint64_t liftAt_ = 0;
@@ -831,6 +839,7 @@ class OversampledBowedStringVoice final : public IVoice {
   [[nodiscard]] bool changeBow(double seconds) { return inner_.changeBow(seconds); }
   void sustainFor(std::uint64_t frames) { inner_.sustainFor(frames * static_cast<std::uint64_t>(factor_)); }
   [[nodiscard]] bool articulate(const BowArticulation& a) { return inner_.articulate(a); }
+  void setBridgeForceOutput(bool on) noexcept { inner_.setBridgeForceOutput(on); }
   [[nodiscard]] bool setBowPosition(double beta, double force) { return inner_.setBowPosition(beta, force); }
   [[nodiscard]] bool setStoppedFrequency(double hz) { return inner_.setStoppedFrequency(hz); }
   [[nodiscard]] bool setExpression(const BowExpression& e) { return inner_.setExpression(e); }
