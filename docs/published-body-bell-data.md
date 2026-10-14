@@ -235,3 +235,67 @@ Result: no FITTED masses. Fitting would need calibrated bridge
 velocity/force data. Digitizing published admittance plots is possible
 but was not done; it would be a lower-grade source and needs Mike's
 approval.
+
+## Addendum 2026-10-14 (4): violin masses FITTED from a digitized plot (verdict: NOT GOOD ENOUGH)
+
+Source: Saitis, Scavone, Fritz and Giordano, "Bridge admittance
+measurements of 10 preference-rated violins", Acoustics 2012 Nantes, Fig. 2
+(top left, all 10 violins overlaid), https://caml.music.mcgill.ca/lib/exe/fetch.php?media=publications%3Anantes2012_saitis.pdf
+(author list VERIFY). The plot is open; it was chosen because it is the
+only open figure found with a calibrated dB admittance axis.
+
+### Digitizing method
+
+- Page 5 was rasterized at 400 dpi (pdftoppm).
+- Axes were calibrated from the printed grid:
+  - The y axis is 14.9 px/dB, with the -10 dB gridline at pixel row 66.
+  - The frequency axis is logarithmic, about 297 px per ln-unit, from the
+    270, 500 and 660 Hz gridlines. The 270-500 and 500-660 spacings agree
+    to within 0.6 %.
+- For each pixel column, the dark curve pixels were collected, isolated
+  grid dots were dropped, and the median, top and bottom rows were kept.
+- Output: docs/saitis2012_fig2tl_digitized.csv (freq_Hz, median_dB,
+  upper_dB, lower_dB), with the script docs/saitis2012_violin_modal_fit.py.
+- Uncertainty:
+  - Axis reading is about +/-0.3 dB and +/-1 % in frequency.
+  - The 10 overlaid violins spread by a median of 10.5 dB (top minus
+    bottom) across 220-640 Hz. That spread dominates.
+  - The paper does not print the dB reference. 1 m/s/N is assumed (VERIFY).
+    A different reference rescales every mass by the same factor.
+
+### Fit
+
+- Driving-point modal sum |Y| = |sum_k i w / (m_k (w_k^2 - w^2 + i w w_k/Q_k))|,
+  the same form as body.h (Woodhouse, "On the 'bridge hill' of the
+  violin", eq. 4; peak-amplitude/curve-fit modal identification as in
+  Ewins, Modal Testing, 2000).
+- Fitted to the median curve by nonlinear least squares in dB over
+  220-640 Hz (317 points).
+- Q is fixed at Bissinger's published values: A0 20, B1- 41, B1+ 43.
+  CBR Q is free.
+
+| Mode | f fitted Hz | Bissinger f Hz | Q | m FITTED (digitized from Saitis 2012 Fig. 2) |
+|------|------:|------:|------:|------:|
+| A0  | 277.9 | 275 | 20 (Bissinger) | 1214 g (+/-9 %) |
+| CBR | 408.9 | 407 | 5.0 (hit lower bound) | 75 g (+/-5 %) |
+| B1- | 463.3 | 470 | 41 (Bissinger) | 228 g (+/-8 %) |
+| B1+ | 505.0 (hit bound) | 541 | 43 (Bissinger) | 107 g (+/-4 %) |
+
+- Residual: 1.97 dB RMS, 7.2 dB maximum.
+- The +/- figures are fit-only 1-sigma values and exclude the 10.5 dB
+  spread between violins and the unknown dB reference.
+
+### Verdict: NOT GOOD ENOUGH. Not built and not made the default.
+
+1. CBR went to an unphysical Q of 5 (typical body Q is 25-50, per Gough
+   2016). The fit used it to absorb the smeared hump that comes from
+   averaging 10 violins.
+2. B1+ sits on its 505 Hz bound, 36 Hz below Bissinger's 541 Hz. The median
+   of 10 overlaid curves merges B1- and B1+.
+3. The spread between curves (10.5 dB) is about 3x the dB change that
+   doubling a mass makes (6 dB), so the masses are only known to about a
+   factor of 2-3.
+4. The dB reference is not printed.
+
+A usable fit needs one violin's curve, not an overlay: a single-instrument
+figure, or the raw data from Saitis/Scavone or Maestre/Scavone (McGill CAML).
