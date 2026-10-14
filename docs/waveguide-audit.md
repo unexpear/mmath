@@ -70,3 +70,12 @@ numeric data is in hand, no body filter is built.
   (mouthpiece 304/369, 251/392). Model F3 centroid 344 Hz (3 kPa) and 618 Hz (5 kPa).
   VERIFY that the model output is comparable to their bell-radius microphone.
 - Verdict: NOT GOOD ENOUGH. F3 pitch fails, so the trombone stays opt-in and no clip was rendered.
+
+## Trombone measured-profile gap (after f240048)
+
+- No tabulated, measured tenor trombone bore profile found in this session.
+  Braden, Newton & Campbell, JASA 125 (2009) gives bore profiles only as figures (main slide
+  6.95 mm radius, optimized to 6.63-6.65 mm). The Braden 2006 Edinburgh thesis PDF timed out on download
+  (acoustics.ed.ac.uk, twice). The Openwind demo takes .ow geometry, and no trombone example file was found.
+- Still to try: Braden 2006 appendix tables, Kausel's optimization papers, Pyle, Chick/Bromage data by request.
+- Until then the FITTED 1.39 m cylinder + UNSOURCED neck stays. Peak 3 +62 cents, F3 +34/+73 cents. Trombone stays opt-in.
