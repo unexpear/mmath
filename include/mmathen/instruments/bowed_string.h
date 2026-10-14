@@ -4,8 +4,8 @@
 //
 // The resonator is the tuned loop of tuned_waveguide.h: integer delays
 // whose lengths sum to 2M, and the same Thiran, dispersion, and one-pole
-// loss, applied once on the bridge round trip and then reflected with −1.
-// The nut reflects with −1 and no filter. With the bow up, the junction
+// loss, applied once on the bridge round trip and then reflected with âˆ’1.
+// The nut reflects with âˆ’1 and no filter. With the bow up, the junction
 // is transparent and the loop is exactly G(z) = F(z) z^{-2M}, so the
 // ringing frequency and decay are loopPole of that design.
 //
@@ -14,14 +14,14 @@
 // sustainFrames is the caller saying when the bow lifts: after that the
 // force is zero. Lifting the bow is not an amplitude envelope.
 //
-// β is the bow's distance from the bridge. The delays are the nearest
+// Î² is the bow's distance from the bridge. The delays are the nearest
 // positive split of 2M, so the realized fraction can differ from the
 // request by less than one sample. Schelleng's window is not enforced;
 // captureStickSlip does not enforce it either.
 //
 // Pass a BowBodyDrive to close the bridge on a modal soundboard. The
-// bridge force Z (2 v+ − v_bridge) drives the modes, and their velocity
-// replaces the rigid −1. The sample is then the compact monopole of
+// bridge force Z (2 v+ âˆ’ v_bridge) drives the modes, and their velocity
+// replaces the rigid âˆ’1. The sample is then the compact monopole of
 // the bridge acceleration. With no BowBodyDrive the sample stays the
 // bow-point velocity and the bridge stays rigid.
 
@@ -141,11 +141,22 @@ inline constexpr double kSpiccatoRestT60Seconds = 0.2;  // VERIFY (0.15-0.3 s ra
   return a;
 }
 
+// Ringing short strokes (collé/détaché-lift style, as in sustained legato
+// readings): short notes still lift the bow after the contact fraction,
+// but without the bounce half-sine and without rest damping, so the
+// string rings on at its own measured loss (violinStringLoss T60s) through
+// the gap. Same sourced/unsourced constants as articulationForNote.
+[[nodiscard]] inline BowArticulation ringingArticulationForNote(double seconds, int velocity) {
+  BowArticulation a = articulationForNote(seconds, velocity);
+  a.bounce = false;
+  a.restDampT60 = 0.0;
+  return a;
+}
 class BowedStringVoice final : public IVoice {
  public:
   // sustainFrames is how long the bow stays down. Zero lifts it before
   // the first sample. fitPartials and dispersionStages follow
-  // designTunedLoop. κ = 0 requires zero dispersion stages. body is
+  // designTunedLoop. Îº = 0 requires zero dispersion stages. body is
   // optional; null keeps the rigid bridge and the velocity sample.
   [[nodiscard]] static Result<BowedStringVoice, QuantityError> create(
       const StringCourse& course, const BowStroke& stroke, LossModel loss,

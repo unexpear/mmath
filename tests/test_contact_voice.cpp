@@ -1323,3 +1323,21 @@ TEST_CASE("bow taper lowers the end of a note and rejects bad fields", "[contact
   bad.taperLevel = 1.0; bad.taperSeconds = -1.0;
   CHECK_FALSE(voice.articulate(bad));
 }
+
+TEST_CASE("ringing articulation lets short notes ring through the gap", "[contact]") {
+  const StringCourse course = unwrap(violin()).courses[2];
+  auto gapLevel = [&](BowArticulation a) {
+    auto voice = unwrap(OversampledBowedStringVoice::create(
+        course, violinBowStroke(course, 0.12, 0.3), unwrap(violinStringLoss(course)), 0.0, 4, 0,
+        kRate, 96000, 4));
+    voice.setBridgeForceOutput(true);
+    REQUIRE(voice.articulate(a));
+    std::vector<double> x(9600);  // 0.2 s; note 0.12 s, bow lifts at 0.06 s
+    REQUIRE(voice.renderBlock(x.data(), FrameCount{x.size()}).ok());
+    return 20 * std::log10(rmsSpan(x, 7200, 9600) / rmsSpan(x, 1440, 2880));
+  };
+  const BowArticulation spic = articulationForNote(0.12, 64), ring = ringingArticulationForNote(0.12, 64);
+  CHECK(spic.bounce); CHECK_FALSE(ring.bounce); CHECK(ring.restDampT60 == 0.0);
+  CHECK(ring.contactSeconds == spic.contactSeconds);
+  CHECK(gapLevel(ring) > gapLevel(spic) + 6.0);  // the gap stays filled by the free string
+}
