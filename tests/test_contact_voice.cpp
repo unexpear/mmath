@@ -1025,3 +1025,86 @@ TEST_CASE("bow expression keeps mean pitch and softens the attack", "[contact]")
   louder.bridgeFraction = 0.2;
   CHECK_FALSE(voice.setStroke(louder));
 }
+
+// Bowed sustain, bow changes, lift, and finger change on one string.
+namespace {
+double rmsSpan(const std::vector<double>& x, std::size_t a, std::size_t b) {
+  double e = 0.0;
+  for (std::size_t i = a; i < b; ++i) e += x[i] * x[i];
+  return std::sqrt(e / static_cast<double>(b - a));
+}
+double meanPitch(const std::vector<double>& x, std::size_t a, std::size_t b, double target) {
+  double bestLag = 0.0, best = -2.0;
+  for (double lag = kFs / (target * 1.03); lag <= kFs / (target * 0.97); lag += 0.01) {
+    const auto w = static_cast<std::size_t>(lag);
+    const double fr = lag - static_cast<double>(w);
+    double xy = 0.0, xx = 0.0, yy = 0.0;
+    for (std::size_t n = a; n < b; ++n) {
+      const double y = (1.0 - fr) * x[n + w] + fr * x[n + w + 1];
+      xy += x[n] * y; xx += x[n] * x[n]; yy += y * y;
+    }
+    const double r = xy / std::sqrt(xx * yy + 1e-300);
+    if (r > best) { best = r; bestLag = lag; }
+  }
+  return kFs / bestLag;
+}
+}  // namespace
+
+TEST_CASE("a bowed note sustains, survives bow changes, and rings after the lift",
+          "[contact]") {
+  const StringCourse course = unwrap(violin()).courses[2];
+  const double f0 = course.tuning.frequency.value();
+  const double mu = course.material.linearDensity.value();
+  const double impedance = mu * std::sqrt(course.tension.value() / mu);
+  // Bow 0.1 of the string from the bridge at 0.2 m/s; 0.075 of Schelleng's
+  // maximum sits above the force where this loop stops sustaining (0.06
+  // dies away, 0.07 holds; swept in this loop, not a published minimum).
+  const double maximum = 2.0 * impedance * 0.2 / (0.1 * 0.5);
+  const BowStroke stroke{0.1, 0.2, 0.075 * maximum, BowFriction{0.8, 0.3}};
+  auto voice = unwrap(OversampledBowedStringVoice::create(
+      course, stroke, courseLoss(course, 2.0, 0.25), 0.0, 4, 0, kRate, 480000, 4));  // 10 s of bow
+  // 0.65 m of hair at 0.2 m/s: a change every 3.25 s.
+  std::vector<double> x(576000);
+  std::size_t done = 0;
+  for (std::size_t at : {156000u, 312000u, 468000u}) {
+    REQUIRE(voice.renderBlock(x.data() + done, FrameCount{at - done}).ok());
+    done = at;
+    REQUIRE(voice.changeBow(0.1));
+  }
+  REQUIRE(voice.renderBlock(x.data() + done, FrameCount{x.size() - done}).ok());
+  const double early = rmsSpan(x, 96000, 144000);
+  const double late = rmsSpan(x, 120000, 154000);  // steady bow, before the first change
+  WARN("sustain rms " << early << " -> " << late << " after changes " << rmsSpan(x, 160800, 165600) << " " << rmsSpan(x, 200000, 240000) << " " << rmsSpan(x, 316800, 321600));
+  CHECK(std::fabs(20.0 * std::log10(late / early)) < 1.0);
+  for (std::size_t at : {156000u, 312000u, 468000u}) {
+    // Keeps sounding through the reversal. Measured: the new stroke settles
+    // about 5 dB above the first (0.069 -> 0.12-0.14 rms); not explained yet.
+    const double after = rmsSpan(x, at + 9600, at + 14400);
+    CHECK(after > 0.5 * early);
+    CHECK(after < 3.0 * early);
+  }
+  const double lifted = rmsSpan(x, 504000, 528000);
+  const double later = rmsSpan(x, 552000, 576000);
+  WARN("after lift " << lifted << " -> " << later);
+  CHECK(lifted < early);
+  CHECK(later < 0.5 * lifted);
+
+  // Finger change A4 -> C5 on the sounding string: on pitch, no click.
+  auto legato = unwrap(OversampledBowedStringVoice::create(
+      course, stroke, courseLoss(course, 2.0, 0.25), 0.0, 4, 0, kRate, 96000, 4));
+  std::vector<double> y(96000);
+  REQUIRE(legato.renderBlock(y.data(), FrameCount{48000}).ok());
+  const double c5 = f0 * std::pow(2.0, 3.0 / 12.0);
+  REQUIRE(legato.setStoppedFrequency(c5));
+  REQUIRE(legato.renderBlock(y.data() + 48000, FrameCount{48000}).ok());
+  const double heard = meanPitch(y, 72000, 90000, c5);
+  const double cents = 1200.0 * std::log2(heard / c5);
+  WARN("finger change C5 " << cents << " cents");
+  CHECK(std::fabs(cents) < 10.0);  // measured flattening about 6 cents, see OversampledBowedStringVoice
+  double steadyStep = 0.0, joinStep = 0.0;
+  for (std::size_t i = 40000; i < 47000; ++i) steadyStep = std::max(steadyStep, std::fabs(y[i] - y[i - 1]));
+  for (std::size_t i = 47990; i < 48500; ++i) joinStep = std::max(joinStep, std::fabs(y[i] - y[i - 1]));
+  WARN("join step " << joinStep << " steady " << steadyStep);
+  CHECK(joinStep < 2.0 * steadyStep);
+  CHECK_FALSE(legato.setStoppedFrequency(f0 * 0.5));
+}

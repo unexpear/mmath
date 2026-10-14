@@ -165,7 +165,7 @@ class BowedStringVoice final : public IVoice {
           depth = vibSamples_ * ramp *
                   std::sin(constants::twoPi * expression_.vibratoRateHz * since);
         }
-        const double d = static_cast<double>(vibMean_) + depth;
+        const double d = static_cast<double>(vibMean_) + fingerShift_ + depth;
         const auto whole = static_cast<std::size_t>(std::floor(d));
         const double frac = d - std::floor(d);
         const std::size_t size = vib_.size();
@@ -179,6 +179,18 @@ class BowedStringVoice final : public IVoice {
         envelope = expression_.attackFraction +
                    (1.0 - expression_.attackFraction) * 0.5 *
                        (1.0 - std::cos(constants::pi * t / expression_.attackSeconds));
+      double reversal = 1.0;
+      if (changeEnd_ > 0) {
+        if (frame_ >= changeEnd_) {
+          stroke_.speedMetersPerSecond = -stroke_.speedMetersPerSecond;
+          changeEnd_ = 0;
+        } else {
+          const double tau = static_cast<double>(frame_ - changeStart_) /
+                             static_cast<double>(changeEnd_ - changeStart_);
+          reversal = std::cos(constants::pi * tau);
+          if (std::fabs(reversal) < 1.0e-6) reversal = 1.0e-6;
+        }
+      }
       if (expression_.releaseSeconds > 0.0 && frame_ < sustainFrames_) {
         const double left = static_cast<double>(sustainFrames_ - frame_) / fs;
         if (left < expression_.releaseSeconds)
@@ -195,7 +207,7 @@ class BowedStringVoice final : public IVoice {
       double velocity = 0.0;
       if (frame_ < sustainFrames_) {
         auto junction = stickSlipJunction(
-            history, incomingBridge, incomingNut, stroke_.speedMetersPerSecond * envelope,
+            history, incomingBridge, incomingNut, stroke_.speedMetersPerSecond * envelope * reversal,
             impedance_, stroke_.normalForceNewtons * envelope, stroke_.friction, wasStuck_);
         if (!junction.ok()) return R::failure(junction.error());
         const double force = junction.value().frictionForce;
@@ -261,6 +273,70 @@ class BowedStringVoice final : public IVoice {
     vibPos_ = 0;
   }
 
+  // Bow change: over transitionSeconds the bow velocity swings on a half
+  // cosine from +v through zero to -v; normal force is held, so the
+  // Helmholtz motion re-forms on the new stroke (bow-change transients:
+  // Guettler and Askenfelt, JASA 101, 1997; the cosine is UNSOURCED).
+  // A violin bow has about 0.65 m of hair (VERIFY), so at speed v a
+  // stroke lasts about 0.65 / v seconds. False while a change runs.
+  [[nodiscard]] bool changeBow(double transitionSeconds) {
+    if (!std::isfinite(transitionSeconds) || !(transitionSeconds > 0.0) || changeEnd_ > 0)
+      return false;
+    changeStart_ = frame_;
+    changeEnd_ = frame_ + std::max<std::uint64_t>(
+        2, static_cast<std::uint64_t>(std::llround(transitionSeconds * rate_.value())));
+    return true;
+  }
+  // Keep the bow down for frames more samples from now (0 lifts it now).
+  // While bowed inside Schelleng's range the Helmholtz motion is
+  // self-sustaining; once lifted the string rings down freely.
+  void sustainFor(std::uint64_t frames) { sustainFrames_ = frame_ + frames; }
+  // Finger change on the sounding string: retune the loop to hz (at or
+  // above the created pitch) by moving the stop, keeping string state.
+  // Whole samples come out of the nut segment, the fraction from the
+  // interpolated line. Loss and dispersion filters stay the created
+  // course's (an approximation; VERIFY over large shifts). False when
+  // out of range.
+  [[nodiscard]] bool setStoppedFrequency(double hz) {
+    if (!std::isfinite(hz) || !(hz > 0.0)) return false;
+    const double fs = rate_.value();
+    const double shorter = fs / fundamentalHz_ - fs / hz;
+    if (shorter < -1.0e-9) return false;
+    if (vib_.empty()) {
+      if (nut_.size() < 4) return false;
+      std::vector<double> kept(nut_.size() - 2);
+      for (std::size_t i = 0; i < kept.size(); ++i)
+        kept[i] = nut_[(nutPos_ + 2 + i) % nut_.size()];
+      nut_ = std::move(kept);
+      nutPos_ = 0;
+      vibMean_ = 2;
+      vib_.assign(6, 0.0);
+      vibPos_ = 0;
+      openNut_ = nut_.size();
+    }
+    const int whole = static_cast<int>(std::floor(shorter));
+    if (whole > static_cast<int>(openNut_) - 1) return false;
+    const std::size_t target = openNut_ - static_cast<std::size_t>(whole);
+    const std::size_t n = nut_.size();
+    if (target != n) {
+      std::vector<double> kept(target, 0.0);
+      for (std::size_t i = 0; i < target; ++i) {
+        // Keep the newest samples when shortening, pad the oldest end when lengthening.
+        const long long from = static_cast<long long>(n) - static_cast<long long>(target) +
+                               static_cast<long long>(i);
+        kept[i] = from >= 0 ? nut_[(nutPos_ + static_cast<std::size_t>(from)) % n] : 0.0;
+      }
+      nut_ = std::move(kept);
+      nutPos_ = 0;
+    }
+    fingerShift_ = -(shorter - static_cast<double>(whole));
+    stoppedHz_ = hz;
+    return true;
+  }
+  [[nodiscard]] double stoppedHz() const noexcept {
+    return stoppedHz_ > 0.0 ? stoppedHz_ : fundamentalHz_;
+  }
+
   // Replace the stroke between blocks (crescendo, bow speed). The bridge
   // fraction is fixed at create; a different one returns false.
   [[nodiscard]] bool setStroke(const BowStroke& stroke) {
@@ -294,6 +370,7 @@ class BowedStringVoice final : public IVoice {
         vibMean_ = mean;
         vib_.assign(static_cast<std::size_t>(mean) + 3, 0.0);
         vibPos_ = 0;
+        openNut_ = nut_.size();
       } else if (mean > vibMean_) {
         return false;
       }
@@ -447,6 +524,67 @@ class BowedStringVoice final : public IVoice {
   std::size_t vibPos_ = 0;
   int vibMean_ = 0;
   double vibSamples_ = 0.0;
+  double fingerShift_ = 0.0;
+  double stoppedHz_ = 0.0;
+  std::uint64_t changeStart_ = 0;
+  std::uint64_t changeEnd_ = 0;
+  std::size_t openNut_ = 0;
 };
 
+// The stick-slip switch happens on sample instants, so the Helmholtz
+// period of the sampled loop locks to whole samples: measured here at
+// 48 kHz, A4 (109.09-sample period) read -14.2 cents (110 samples) or
+// -35.5 cents at 0.10-0.50 of Schelleng's maximum, the same at every bow
+// speed. Published Helmholtz flattening is a few cents (McIntyre,
+// Schumacher and Woodhouse, JASA 69, 1981), so this is a discretization
+// error. Running the voice at K times the rate makes the lock 1/K sample
+// (about 14/K cents at A4). The output is the mean of each K samples
+// (boxcar decimation; its aliasing above fs/2 is not filtered further).
+class OversampledBowedStringVoice final : public IVoice {
+ public:
+  [[nodiscard]] static Result<OversampledBowedStringVoice, QuantityError> create(
+      const StringCourse& course, const BowStroke& stroke, LossModel loss,
+      double stiffnessKappa, int fitPartials, int dispersionStages, SampleRateHz rate,
+      std::uint64_t sustainFrames, int factor) {
+    using R = Result<OversampledBowedStringVoice, QuantityError>;
+    if (factor < 1 || factor > 32) return R::failure(QuantityError::InvalidArgument);
+    auto inner = BowedStringVoice::create(course, stroke, loss, stiffnessKappa, fitPartials,
+                                          dispersionStages, SampleRateHz{rate.value() * factor},
+                                          sustainFrames * static_cast<std::uint64_t>(factor));
+    if (!inner.ok()) return R::failure(inner.error());
+    return R::success(OversampledBowedStringVoice{std::move(inner).value(), rate, factor});
+  }
+  [[nodiscard]] SampleRateHz sampleRate() const override { return rate_; }
+  [[nodiscard]] Result<FrameCount, QuantityError> renderBlock(double* out, FrameCount n) override {
+    using R = Result<FrameCount, QuantityError>;
+    const auto count = static_cast<std::size_t>(n.value());
+    if (count == 0) return R::success(n);
+    if (out == nullptr) return R::failure(QuantityError::InvalidArgument);
+    buffer_.resize(count * static_cast<std::size_t>(factor_));
+    auto done = inner_.renderBlock(buffer_.data(), FrameCount{buffer_.size()});
+    if (!done.ok()) return R::failure(done.error());
+    for (std::size_t i = 0; i < count; ++i) {
+      double sum = 0.0;
+      for (int k = 0; k < factor_; ++k) sum += buffer_[i * static_cast<std::size_t>(factor_) + static_cast<std::size_t>(k)];
+      out[i] = sum / factor_;
+    }
+    return R::success(n);
+  }
+  void reset() override { inner_.reset(); }
+  [[nodiscard]] BowedStringVoice& inner() noexcept { return inner_; }
+  [[nodiscard]] bool changeBow(double seconds) { return inner_.changeBow(seconds); }
+  void sustainFor(std::uint64_t frames) { inner_.sustainFor(frames * static_cast<std::uint64_t>(factor_)); }
+  [[nodiscard]] bool setStoppedFrequency(double hz) { return inner_.setStoppedFrequency(hz); }
+  [[nodiscard]] bool setExpression(const BowExpression& e) { return inner_.setExpression(e); }
+  [[nodiscard]] bool setStroke(const BowStroke& s) { return inner_.setStroke(s); }
+  [[nodiscard]] double fundamentalHz() const noexcept { return inner_.fundamentalHz(); }
+
+ private:
+  OversampledBowedStringVoice(BowedStringVoice inner, SampleRateHz rate, int factor)
+      : inner_(std::move(inner)), rate_(rate), factor_(factor) {}
+  BowedStringVoice inner_;
+  SampleRateHz rate_;
+  int factor_;
+  std::vector<double> buffer_;
+};
 }  // namespace mmathen
