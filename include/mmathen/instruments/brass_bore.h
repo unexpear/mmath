@@ -71,10 +71,45 @@ inline std::vector<Segment> bbTrumpetProfile(double& mouthRadius, Fingering fg =
   return s;
 }
 
+// Bell radiation load. LevineSchwinger (default) is the unflanged pipe
+// above. HelieRodet is the pulsating portion of a sphere: T. Helie and
+// X. Rodet, Acta Acustica 89, 565-577 (2003), in the second-order
+// high-pass form and Table I polynomial coefficients printed by Eveno,
+// Dalmont, Causse and Gilbert, Acta Acustica 98, 158-165 (2012), eq. (4):
+//   Zr/Zc = (Pa s + s^2) / (1 + 2 Px s + s^2),  s = i nu Pn,  nu = r0 f / c,
+// with Pa, Px, Pn quintic polynomials in the cone half-angle theta0. The
+// numerator/denominator grouping is read from the typeset equation
+// (VERIFY against Helie-Rodet 2003). Bell geometry: Kausel, Mayer and
+// Beauchamp, JASA 149, 2698 (2021), Bb trumpet cutoff 1630 Hz and rim
+// tan(theta) = 3.23. The bell radius is b = 1.84 c / (2 pi f_cutoff), their
+// cutoff relation, and r0 = b / sin(theta0) is the radius of the sphere
+// whose cap meets the rim at that angle.
+enum class BellRadiation { LevineSchwinger, HelieRodet };
+constexpr double kKauselCutoffHz = 1630.0;
+constexpr double kKauselRimTan = 3.23;
+inline std::complex<double> helieRodetLoad(double f, double c) {
+  using C = std::complex<double>;
+  const double th = std::atan(kKauselRimTan);
+  const double b = 1.84 * c / (2.0 * 3.14159265358979323846 * kKauselCutoffHz);
+  const double r0 = b / std::sin(th);
+  auto poly = [th](const double (&k)[6]) {
+    double v = 0.0, t = 1.0;
+    for (double coef : k) { v += coef * t; t *= th; }
+    return v;
+  };
+  static constexpr double kA[6] = {0.8788, 1.0830, -1.24200, 1.1620, -0.6360, 0.1113};
+  static constexpr double kX[6] = {0.7200, 0.0799, 0.22100, -0.1440, 0.0207, 0.0000};
+  static constexpr double kN[6] = {-0.0220, 4.7040, -0.07946, -0.4240, 0.2607, -0.1980};
+  const double pa = poly(kA), px = poly(kX), pn = poly(kN);
+  const C s(0.0, r0 * f / c * pn);
+  return (pa * s + s * s) / (1.0 + 2.0 * px * s + s * s);
+}
+
 // Input impedance (with optional cup), reflectance re zc, mouth flow per p+.
 inline void evaluate(double f, double rho, double c, double zcRef, double cup, Fingering fg,
                      std::complex<double>* zin, std::complex<double>* refl,
-                     std::complex<double>* uMouth) {
+                     std::complex<double>* uMouth,
+                     BellRadiation bell = BellRadiation::LevineSchwinger) {
   using C = std::complex<double>;
   const double eta = 1.85e-5, pr = 0.71, gam = 1.4;
   double mouth = 0.0;
@@ -87,6 +122,7 @@ inline void evaluate(double f, double rho, double c, double zcRef, double cup, F
   const double dl = mouth * (0.6133 * (1 + 0.044 * ka * ka) / (1 + 0.19 * ka * ka) - 0.02 * s2 * s2);
   const C rc = -rm * std::exp(C(0, -2 * k * dl));
   C Z = (f > 0) ? zm * (1.0 + rc) / (1.0 - rc) : C(0, 0);
+  if (bell == BellRadiation::HelieRodet && f > 0) Z = zm * helieRodetLoad(f, c);
   C A(1, 0), B(0, 0), Cc(0, 0), D(1, 0);  // total chain, input = M * mouth
   for (auto it = prof.rbegin(); it != prof.rend(); ++it) {
     const double r = it->radius;
@@ -158,7 +194,8 @@ inline double fletcherTarnopolskyDb(int k, double f1) {
 constexpr double kMeasuredTrumpetPressurePa = 5000.0;
 
 inline Kernels makeKernels(double fs, double rho, double c, Fingering fg = {}, std::size_t taps = 2048,
-                           std::size_t n = 8192) {
+                           std::size_t n = 8192,
+                           BellRadiation bell = BellRadiation::LevineSchwinger) {
   using C = std::complex<double>;
   Kernels kr;
   kr.cupVolume = 2.0 / 3.0 * 3.14159265358979323846 * std::pow(0.00815, 3);
@@ -166,7 +203,7 @@ inline Kernels makeKernels(double fs, double rho, double c, Fingering fg = {}, s
   std::vector<C> R(n / 2 + 1), U(n / 2 + 1);
   for (std::size_t j = 0; j <= n / 2; ++j) {
     const double f = std::max(1.0, fs * j / n);
-    evaluate(f, rho, c, zcRef, 0.0, fg, nullptr, &R[j], &U[j]);
+    evaluate(f, rho, c, zcRef, 0.0, fg, nullptr, &R[j], &U[j], bell);
     // Raised-cosine taper above 0.8 Nyquist keeps the kernels causal-smooth.
     const double x = double(j) / (n / 2);
     const double t = x < 0.8 ? 1.0 : 0.5 * (1 + std::cos(3.14159265358979323846 * (x - 0.8) / 0.2));

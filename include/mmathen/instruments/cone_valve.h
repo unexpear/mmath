@@ -1,43 +1,43 @@
-#pragma once
+﻿#pragma once
 
 // A reed or a lip on a truncated cone, with an optional unflanged bell
 // (docs/48).
 //
-// The bore is the spherical wave of a cone: pressure p = p+ + p− at the
+// The bore is the spherical wave of a cone: pressure p = p+ + pâˆ’ at the
 // throat, and
 //
-//   Z_c U = p+ − p− + (c / (s x0)) p.
+//   Z_c U = p+ âˆ’ pâˆ’ + (c / (s x0)) p.
 //
 // The 1/s term is bilinear, which is the trapezoidal step
-// y ← y + β (p + p_prev), β = c dt / (2 x0). With the mouth sealed,
-// U = 0 and the ring is the root of tan(kL) = −k x0. That is the
+// y â† y + Î² (p + p_prev), Î² = c dt / (2 x0). With the mouth sealed,
+// U = 0 and the ring is the root of tan(kL) = âˆ’k x0. That is the
 // saxophone cone, not a cylinder of the same length. Travel time is
 // still 2L/c; the junction, not a different delay, moves the pitch.
 // The traveling variable is the spherical-wave component at the throat,
-// p± = ψ± / x0, so a bell pressure release is ψ− = −ψ+ and the throat
-// sees the same −1. The round-trip delay is fs * 2L/c with a Thiran
+// pÂ± = ÏˆÂ± / x0, so a bell pressure release is Ïˆâˆ’ = âˆ’Ïˆ+ and the throat
+// sees the same âˆ’1. The round-trip delay is fs * 2L/c with a Thiran
 // fraction. This is the Smith / Scavone cone, not a cylinder of length L.
 //
 // The played reed is the same mass on Dalmont's spring, stopped at the
 // lay. Its resonance is not a cone mode; the caller damps it enough that
-// the first root of tan(kL) = −k x0 is the one that speaks. The lip keeps
+// the first root of tan(kL) = âˆ’k x0 is the one that speaks. The lip keeps
 // its mass and is stopped at the opening rails. The sample is the
-// radiated bell pressure ρ (dU_bell/dt) / (4 π r), smoothed above ka = 1.
-// U_bell uses the throat traveling wave scaled by x_bell / x0, because ψ
+// radiated bell pressure Ï (dU_bell/dt) / (4 Ï€ r), smoothed above ka = 1.
+// U_bell uses the throat traveling wave scaled by x_bell / x0, because Ïˆ
 // is carried unchanged to the bell and the bell area is
-// S_throat (x_bell / x0)².
+// S_throat (x_bell / x0)Â².
 //
-// A positive ValveBlow::radiusMeters replaces the ideal open-end −1
+// A positive ValveBlow::radiusMeters replaces the ideal open-end âˆ’1
 // with OpenEndReflection. The bell radius and the end correction are
 // arguments. The geometric bell area is not used as that radius. A
 // positive bell length is a different termination: the input reflectance
-// of a Bessel flare a(x) = b (x + x0)^{−γ}, ended by Levine–Schwinger at
+// of a Bessel flare a(x) = b (x + x0)^{âˆ’Î³}, ended by Levineâ€“Schwinger at
 // that same mouth. The horn travel is not added to the sounding length.
 // A non-conical area exponent on the whole air column is
 // BesselHornVoice, not a chain of cones. No measured bell curve is
 // stored. A positive cup compliance on the lip path is
-// the lumped volume in parallel with the throat: C dp/dt = U_lip − U_bore, with
-// C = V/(ρ c²) taken from the trumpet. A zero cup leaves the junction
+// the lumped volume in parallel with the throat: C dp/dt = U_lip âˆ’ U_bore, with
+// C = V/(Ï cÂ²) taken from the trumpet. A zero cup leaves the junction
 // unchanged. Cup volume is an argument. An extra length on the trumpet
 // or the trombone is tubing the caller adds to L: engaged valve slides,
 // or the trombone F attachment. Zero leaves this cone unchanged. No
@@ -173,9 +173,9 @@ class ConeValveVoice final : public IVoice {
         // roundoff slit, and the pressure search then fails against a
         // bore that is already sounding.
         if (tongued || !open || breathOff) opening = 0.0;
-        // The closed stop is −rest/slit. Storing that displacement and
+        // The closed stop is âˆ’rest/slit. Storing that displacement and
         // multiplying back by the slit leaves a roundoff opening, about
-        // 1e−22 m². solvePressure then cannot bracket: the Bernoulli
+        // 1eâˆ’22 mÂ². solvePressure then cannot bracket: the Bernoulli
         // term is femtopascals, the residual at the sealed guess does
         // not change sign, and a sounding bore aborts the note. A buzz
         // is a finite fraction of the rest opening, so this cut is
@@ -347,10 +347,10 @@ class ConeValveVoice final : public IVoice {
   [[nodiscard]] double reflectionDecay() const noexcept { return decay_; }
 
   // Half-power bandwidth of this bore's loop at frequencyHz.
-  // Δf = f/Q. The traveling wave is multiplied by the loop magnitude
+  // Î”f = f/Q. The traveling wave is multiplied by the loop magnitude
   // once per round trip T = 2L/c, so the amplitude is exp(t ln|H| / T).
-  // A mode's amplitude is exp(−π Δf t), and 20 log10 of that falls at
-  // 20 log10(e) π Δf ≈ 27.29 Δf decibels per second. Wall loss, the
+  // A mode's amplitude is exp(âˆ’Ï€ Î”f t), and 20 log10 of that falls at
+  // 20 log10(e) Ï€ Î”f â‰ˆ 27.29 Î”f decibels per second. Wall loss, the
   // reflection cutoff, and an unflanged bell, when one is engaged, are
   // the loop. The lip is not in |H|.
   [[nodiscard]] double halfPowerBandwidthHz(double frequencyHz) const {
@@ -380,7 +380,7 @@ class ConeValveVoice final : public IVoice {
   }
 
   // Fit the wall one-pole to Kirchhoff's round-trip transmission at
-  // frequencyHz on the cylindrical bore (Zc = ρ c / S). The cone's
+  // frequencyHz on the cylindrical bore (Zc = Ï c / S). The cone's
   // log-mean fit is left in place until this is called. Zero clears
   // the pole. The sounding length is the one already set.
   bool setWallMatchHz(double frequencyHz) {
@@ -450,7 +450,7 @@ class ConeValveVoice final : public IVoice {
   }
 
   // Sounding length in metres. Travel time is 2L/c; the apex distance
-  // stays, so α = c/x0 is unchanged. The delay line is the construction
+  // stays, so Î± = c/x0 is unchanged. The delay line is the construction
   // length and cannot grow. This is the air column to an open hole, a
   // valve slide, or a trombone slide, not a lattice and not a piston
   // chart. Until this succeeds, readBore is the construction delay.
@@ -513,7 +513,7 @@ class ConeValveVoice final : public IVoice {
     return true;
   }
 
-  // Unloaded lip resonance. k = m (2 π f)^2. A reed has no lip spring.
+  // Unloaded lip resonance. k = m (2 Ï€ f)^2. A reed has no lip spring.
   bool setLipResonanceHz(double hertz) {
     if (!lip_) return false;
     if (as_.on) {
@@ -557,7 +557,7 @@ class ConeValveVoice final : public IVoice {
     if (!rfOn_) measuredBase_ = soundingLength_;
     measuredMask_ = (fingering.v1 ? 1 : 0) | (fingering.v2 ? 2 : 0) | (fingering.v3 ? 4 : 0);
     const double fs = rate_.value();
-    auto k = brass_bore::makeKernels(fs, density_, speed_, fingering);
+    auto k = brass_bore::makeKernels(fs, density_, speed_, fingering, 2048, 8192, measuredBell_);
     const double zc = density_ * speed_ /
                       (constants::pi * k.throatRadius * k.throatRadius);
     if (!std::isfinite(zc) || !(zc > 0.0)) return false;
@@ -573,6 +573,13 @@ class ConeValveVoice final : public IVoice {
     return true;
   }
   [[nodiscard]] bool measuredBoreOn() const noexcept { return rfOn_; }
+  // Bell load of the measured bore (brass_bore::BellRadiation). Default
+  // LevineSchwinger; HelieRodet is the opt-in spherical-cap load. Call
+  // before useMeasuredTrumpetBore (cached fingerings are dropped).
+  void setMeasuredBellRadiation(brass_bore::BellRadiation bell) {
+    measuredBell_ = bell;
+    for (auto& slot : kernelCache_) slot = {};
+  }
 
   // Phrase use of the measured bore: a sounding length is read as
   // semitones below the open length the voice was built with, and the
@@ -589,7 +596,7 @@ class ConeValveVoice final : public IVoice {
     auto& slot = kernelCache_[mask];
     if (slot.first.empty()) {
       brass_bore::Fingering fg{(mask & 1) != 0, (mask & 2) != 0, (mask & 4) != 0};
-      auto k = brass_bore::makeKernels(rate_.value(), density_, speed_, fg);
+      auto k = brass_bore::makeKernels(rate_.value(), density_, speed_, fg, 2048, 8192, measuredBell_);
       slot = {std::move(k.reflection), std::move(k.mouthFlow)};
     }
     if (measuredMask_ >= 0 && kernelCache_[measuredMask_].first.empty())
@@ -808,7 +815,7 @@ class ConeValveVoice final : public IVoice {
                        blow.radiusMeters > 0.0;
     // A straight-pipe mouth keeps OpenEndReflection, fraction and all.
     // A Bessel flare is a one-pole of that horn's throat reflectance, so
-    // the line keeps the geometric length the way a lossless −1 does.
+    // the line keeps the geometric length the way a lossless âˆ’1 does.
     const bool radiating = blow.radiusMeters > 0.0 && !flare;
     BesselBellProfile bell{};
     double flarePole = 0.0;
@@ -825,7 +832,7 @@ class ConeValveVoice final : public IVoice {
         timed -= valve_detail::onePolePhaseDelay(flarePole, geometricGuess, fs);
     }
     if (lossy) {
-      // α ∝ 1/r and r grows linearly along the cone, so the trip uses
+      // Î± âˆ 1/r and r grows linearly along the cone, so the trip uses
       // the log-mean radius, not the throat alone.
       const double throat = std::sqrt(area / constants::pi);
       const double ratio = (apex + sounding) / apex;
@@ -1009,7 +1016,7 @@ class ConeValveVoice final : public IVoice {
       x = y;
     }
     x = wall_.step(x);
-    // A zero at z = −1. An odd-length delay plus a reed that is still
+    // A zero at z = âˆ’1. An odd-length delay plus a reed that is still
     // a negative resistance at fs/2 otherwise locks onto Nyquist, and
     // the bell differentiator then radiates only that rail. The average
     // is linear phase of half a sample, already removed from the line.
@@ -1019,11 +1026,11 @@ class ConeValveVoice final : public IVoice {
   }
 
   // One trip of plane-wave steepening, heard at the bell and not
-  // written back. Peaks advance by β p L / (ρ c³) samples,
-  // β = (γ+1)/2 (Hirschberg, Gilbert, Msallam, and Wijnands, JASA 99,
-  // 1754–1758, 1996). A one-sample Taylor step had to stop that advance
+  // written back. Peaks advance by Î² p L / (Ï cÂ³) samples,
+  // Î² = (Î³+1)/2 (Hirschberg, Gilbert, Msallam, and Wijnands, JASA 99,
+  // 1754â€“1758, 1996). A one-sample Taylor step had to stop that advance
   // at one sample. On these notes the peaks ask for about two, so the
-  // radiated sample is a four-sample causal delay read at age 4 − adv,
+  // radiated sample is a four-sample causal delay read at age 4 âˆ’ adv,
   // linearly interpolated. The lip still sees the linear return. A
   // length change is a step in the incident wave; the read smooths it
   // instead of adding a quarter-wave click. See ValveBlow::brassiness.
@@ -1215,6 +1222,7 @@ class ConeValveVoice final : public IVoice {
     steepRfPos_ = (steepRfPos_ + 1) % kSteepRfSize;
     return std::isfinite(y) ? y : p;
   }
+  brass_bore::BellRadiation measuredBell_ = brass_bore::BellRadiation::LevineSchwinger;
   std::vector<double> rf_, uf_, hist_, histS_;
   std::size_t hpos_ = 0;
   // Sum over n >= 1 of kernel[n] * p+(t - n); hist_ holds past p+.

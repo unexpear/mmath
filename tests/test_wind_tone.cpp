@@ -2920,6 +2920,7 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
     pprev = prev; prev = a; pf = f;
   }
   std::cout << "myersB " << myersBrassiness(speed) << "\n";
+  for (int helie : {0, 1})
   for (int steep : {1})
   for (int var = 0; var < 1; ++var)
   for (double p : {5000.0, 7000.0}) {
@@ -2935,6 +2936,7 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
       lip.brassiness = 0.0;
       lip.reedTurbulence = 0.0;
       auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
+      if (helie) voice.setMeasuredBellRadiation(BellRadiation::HelieRodet);
       REQUIRE(voice.useMeasuredTrumpetBore());
       // 0: Freour 2020 eq. 15. 1: Velut 2017 Table 2 (h0 0.5 mm, W 12 mm, mu 9.1, Q 7).
       // 2: inverse-problem set (L 12 mm, mu 9, Q 20, h0 0.1 mm).
@@ -2980,7 +2982,7 @@ TEST_CASE("measured trumpet bore experiment", "[.boreexp]") {
         }
         const double m = re * re + im * im; h[k] = m; num += k * f0 * m; den += m;
       }
-      std::cout << "boreexp steep " << steep << " Leff " << voice.measuredBoreSteepeningLength()
+      std::cout << "boreexp helie " << helie << " steep " << steep << " Leff " << voice.measuredBoreSteepeningLength()
                 << " closed " << (cnt ? double(shut) / cnt : 0) << " open mm2 " << omin * 1e6 << ".." << omax * 1e6 << " mean " << (cnt ? osum / cnt * 1e6 : 0) << " p " << p << " lip " << lipHz << " ok " << ok << " f0 " << f0 << " cents "
                 << 1200 * std::log2(f0 / 233.08) << " cent " << (den > 0 ? num / den : 0) << " h2-h5 dB re h1";
       for (int k = 2; k <= 5; ++k) std::cout << " " << 10 * std::log10(h[k] / std::max(h[1], 1e-300));
