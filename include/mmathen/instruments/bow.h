@@ -82,6 +82,15 @@ inline constexpr const char* kHelmholtzBowSource =
 struct BowFriction {
   double staticCoefficient;
   double slidingCoefficient;
+  // Optional smooth rosin curve. 0 keeps the Coulomb law above. When
+  // positive, sliding friction is the hyperbolic fit
+  //   mu(dv) = mu_d + (mu_s - mu_d) v0 / (v0 + |dv|)
+  // of Smith and Woodhouse (J. Mech. Phys. Solids 48, 2000) as used in
+  // Woodhouse, Acta Acustica 89 (2003); v0 in m/s (their fitted value is
+  // of order 0.1 m/s: VERIFY). The slip root is unique for this curve
+  // with stick held while |f| <= mu_s N, so there is no recapture
+  // hysteresis.
+  double hyperbolicV0 = 0.0;
 };
 
 // β from the bridge, bow speed (m/s, sign is direction), normal force (N).
@@ -311,7 +320,25 @@ struct StickSlipCapture {
   sample.historyVelocity = historyVelocity;
   sample.incomingBridge = incomingBridge;
   sample.incomingNut = incomingNut;
-  if (wasStuck ? absRequired <= staticLimit : absRequired <= dynamicLimit) {
+  if (friction.hyperbolicV0 > 0.0) {
+    if (absRequired <= staticLimit) {
+      sample.frictionForce = required;
+      sample.stuck = true;
+      sample.stringVelocity = bowSpeed;
+    } else {
+      // s = |v - v_b| solves s = A - mu(s) N / 2Z, A = |v_b - v_h|.
+      const double v0 = friction.hyperbolicV0;
+      const double a = std::fabs(bowSpeed - historyVelocity);
+      const double k = normalForce / twoZ;
+      const double b = v0 - a + k * muD;
+      const double c = v0 * (k * muS - a);
+      const double slip = 0.5 * (-b + std::sqrt(std::max(0.0, b * b - 4.0 * c)));
+      const double mu = muD + (muS - muD) * v0 / (v0 + slip);
+      sample.frictionForce = mu * normalForce * helmholtz_detail::signNonzero(required);
+      sample.stuck = false;
+      sample.stringVelocity = historyVelocity + sample.frictionForce / twoZ;
+    }
+  } else if (wasStuck ? absRequired <= staticLimit : absRequired <= dynamicLimit) {
     sample.frictionForce = required;
     sample.stuck = true;
     sample.stringVelocity = bowSpeed;

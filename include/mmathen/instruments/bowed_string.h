@@ -30,6 +30,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <span>
 #include <utility>
 #include <vector>
@@ -133,6 +134,7 @@ class BowedStringVoice final : public IVoice {
     BowedStringVoice voice{filters, rate, stroke, impedance, bridge, nut,
                            sustainFrames, pole.value().frequency.value(),
                            pole.value().decayRate};
+    voice.retuneStore_.emplace(RetuneSpec{course, loss, stiffnessKappa, fitPartials, dispersionStages});
     if (body != nullptr) {
       auto attached = voice.attachBody(*body);
       if (!attached.ok()) return R::failure(attached.error());
@@ -299,6 +301,7 @@ class BowedStringVoice final : public IVoice {
   // out of range.
   [[nodiscard]] bool setStoppedFrequency(double hz) {
     if (!std::isfinite(hz) || !(hz > 0.0)) return false;
+    if (retuneFilters_ && retuneStore_.has_value()) return refinger(hz);
     const double fs = rate_.value();
     const double shorter = fs / fundamentalHz_ - fs / hz;
     if (shorter < -1.0e-9) return false;
@@ -336,6 +339,15 @@ class BowedStringVoice final : public IVoice {
   [[nodiscard]] double stoppedHz() const noexcept {
     return stoppedHz_ > 0.0 ? stoppedHz_ : fundamentalHz_;
   }
+
+  // Finger change mode. true (default): the loop is redesigned for the
+  // stopped course (fingerStop of the created course, same loss model and
+  // stiffness), so loss, dispersion and the Thiran fraction match the new
+  // length, as a fresh voice on that stop would be (designTunedLoop). The
+  // bridge segment keeps its length (the bow stays where it is); the nut
+  // segment gives up or gains samples at its far (finger) end. false: the
+  // older shift of the created loop.
+  void setFingerRetune(bool on) noexcept { retuneFilters_ = on; }
 
   // Replace the stroke between blocks (crescendo, bow speed). The bridge
   // fraction is fixed at create; a different one returns false.
@@ -529,6 +541,52 @@ class BowedStringVoice final : public IVoice {
   std::uint64_t changeStart_ = 0;
   std::uint64_t changeEnd_ = 0;
   std::size_t openNut_ = 0;
+  struct RetuneSpec {
+    StringCourse course;
+    LossModel loss;
+    double kappa;
+    int fit;
+    int disp;
+  };
+  std::optional<RetuneSpec> retuneStore_;
+  bool retuneFilters_ = true;
+  [[nodiscard]] bool refinger(double hz) {
+    const RetuneSpec& r = *retuneStore_;
+    const double open = r.course.tuning.frequency.value();
+    if (!(hz >= open * (1.0 - 1e-6))) return false;
+    StringCourse stopped = r.course;
+    if (hz > open * (1.0 + 1e-6)) {
+      auto s = fingerStop(r.course, 1.0 - open / hz);
+      if (!s.ok()) return false;
+      stopped = s.value();
+    }
+    auto system = pluckedCourseSystem(stopped, r.loss, r.kappa);
+    if (!system.ok()) return false;
+    auto design = designTunedLoop(system.value(), rate_, r.fit, r.disp);
+    if (!design.ok()) return false;
+    const LoopFilters filters = design.value().filters;
+    if (filters.dispersionStages != filters_.dispersionStages) return false;
+    const long long loop = static_cast<long long>(filters.intervals) * 2;
+    const long long nutLen = loop - static_cast<long long>(bridge_.size()) -
+                             static_cast<long long>(vib_.empty() ? 0 : vibMean_);
+    if (nutLen < 1) return false;
+    const auto target = static_cast<std::size_t>(nutLen);
+    const std::size_t n = nut_.size();
+    if (target != n) {
+      std::vector<double> kept(target, 0.0);
+      for (std::size_t i = 0; i < target; ++i) {
+        const long long from = static_cast<long long>(n) - static_cast<long long>(target) +
+                               static_cast<long long>(i);
+        kept[i] = from >= 0 ? nut_[(nutPos_ + static_cast<std::size_t>(from)) % n] : 0.0;
+      }
+      nut_ = std::move(kept);
+      nutPos_ = 0;
+    }
+    filters_ = filters;
+    fingerShift_ = 0.0;
+    stoppedHz_ = hz;
+    return true;
+  }
 };
 
 // In-range bow stroke for the stock violin strings. Force is 0.2 of
@@ -545,11 +603,15 @@ class BowedStringVoice final : public IVoice {
 // The fraction is a swept value of this model, not a published player
 // force (VERIFY against Schoonderwaldt's measured bowing ranges).
 inline constexpr double kViolinBowForceFraction = 0.2;
+inline constexpr double kViolinHyperbolicV0 = 0.1;  // m/s, VERIFY
 [[nodiscard]] inline BowStroke violinBowStroke(const StringCourse& course, double beta,
                                                double speed) {
   const double mu = course.material.linearDensity.value();
   const double impedance = mu * std::sqrt(course.tension.value() / mu);
-  const BowFriction friction{0.8, 0.3};
+  // Hyperbolic rosin curve (Smith and Woodhouse 2000), v0 0.1 m/s VERIFY.
+  // Measured on the A string at 0.2 of maximum: fingered notes +1.3 to
+  // +3.7 cents against -4 to -11 with the Coulomb law.
+  const BowFriction friction{0.8, 0.3, kViolinHyperbolicV0};
   const double maximum = 2.0 * impedance * std::fabs(speed) /
                          (beta * (friction.staticCoefficient - friction.slidingCoefficient));
   return BowStroke{beta, speed, kViolinBowForceFraction * maximum, friction};
