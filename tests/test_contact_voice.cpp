@@ -6,6 +6,7 @@
 // in metres or a pressure in pascals is audible. That scale is playback
 // only: the assertions read the unscaled samples.
 
+#include <mmathen/music/expressive_timing.h>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -1131,4 +1132,23 @@ TEST_CASE("articulation: spiccato lifts the bow, accents push the onset", "[cont
   CHECK(held > 0.05);
   // Lifted 0.45 s earlier: the string rings down (T60 2 s at f0, faster above).
   CHECK(lifted < 0.8 * held);
+}
+
+TEST_CASE("expressive timing: tempo scale, mean-1 phrase arch, articulation ratio", "[contact]") {
+  std::vector<ScoreNote> notes;
+  for (int i = 0; i < 16; ++i) notes.push_back({0.25 * i, 0.25, 69, 90});
+  TimingRules r;
+  r.tempoScale = 1.5;
+  r.phraseScoreSeconds = 4.0;
+  r.phraseArchDepth = 0.15;
+  r.detachedRatio = 0.85;
+  const auto p = applyExpressiveTiming(notes, r);
+  REQUIRE(p.size() == 16);
+  const double total = p.back().onsetSeconds + p.back().ioiSeconds;
+  CHECK(std::fabs(total - 6.0) < 0.02);            // arch keeps the phrase length
+  CHECK(p.front().ioiSeconds > p[8].ioiSeconds);   // ends slower than the middle
+  CHECK(std::fabs(p[3].soundSeconds - 0.85 * p[3].ioiSeconds) < 1e-12);
+  BowArticulation a = articulationForNote(0.08, 100);
+  CHECK(a.bounce);
+  CHECK(a.restDampT60 > 0.0);
 }

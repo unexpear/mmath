@@ -90,6 +90,13 @@ struct BowArticulation {
   double accentSeconds = 0.0;
   double onsetSeconds = 0.0;
   double contactSeconds = 0.0;
+  // Off-string bounce: bow speed and force follow a half sine over the
+  // contact (the bounce cycle of Askenfelt and Guettler 1998).
+  bool bounce = false;
+  // After the lift the string is damped toward T60 restDampT60 seconds
+  // (bow hair returning to rest on the string between bounces, and
+  // left-hand finger lift). 0 lets it ring freely.
+  double restDampT60 = 0.0;
 };
 
 // Off-string strokes: the bow bounces, touching the string for part of
@@ -102,6 +109,10 @@ inline constexpr double kSpiccatoContactFraction = 0.5; // VERIFY (part of bounc
 inline constexpr double kSpiccatoLandingSeconds = 0.008; // UNSOURCED
 inline constexpr double kDetacheLandingSeconds = 0.03;   // UNSOURCED
 inline constexpr double kAccentSeconds = 0.06;           // UNSOURCED
+// Rest damping after a spiccato bounce. Guettler and Askenfelt describe
+// the hair settling on the string between bounces; this T60 is UNSOURCED
+// (chosen, not measured).
+inline constexpr double kSpiccatoRestT60Seconds = 0.04;  // UNSOURCED
 // Score velocity (1-127) to accent: gain 1 at velocity <= 80 rising to
 // 1.6 at 127. UNSOURCED mapping.
 [[nodiscard]] inline BowArticulation articulationForNote(double seconds, int velocity) {
@@ -112,6 +123,8 @@ inline constexpr double kAccentSeconds = 0.06;           // UNSOURCED
   if (seconds > 0.0 && seconds < kSpiccatoMaxSeconds) {
     a.onsetSeconds = kSpiccatoLandingSeconds;
     a.contactSeconds = kSpiccatoContactFraction * seconds;
+    a.bounce = true;
+    a.restDampT60 = kSpiccatoRestT60Seconds;
   } else {
     a.onsetSeconds = kDetacheLandingSeconds;
   }
@@ -240,7 +253,9 @@ class BowedStringVoice final : public IVoice {
         const double tn = static_cast<double>(frame_ - noteStart_) / fs;
         if (art_.accentSeconds > 0.0 && art_.accentGain != 1.0)
           envelope *= 1.0 + (art_.accentGain - 1.0) * std::exp(-tn / art_.accentSeconds);
-        if (art_.onsetSeconds > 0.0 && tn < art_.onsetSeconds)
+        if (art_.bounce && art_.contactSeconds > 0.0 && tn < art_.contactSeconds)
+          envelope *= std::max(0.05, std::sin(constants::pi * tn / art_.contactSeconds));
+        else if (art_.onsetSeconds > 0.0 && tn < art_.onsetSeconds)
           envelope *= std::max(0.05, 0.5 * (1.0 - std::cos(constants::pi * tn / art_.onsetSeconds)));
       }
       const bool bowOn = frame_ < sustainFrames_ && !(liftAt_ > 0 && frame_ >= liftAt_);
@@ -271,6 +286,13 @@ class BowedStringVoice final : public IVoice {
       if (!std::isfinite(outgoingBridge) || !std::isfinite(outgoingNut) ||
           !std::isfinite(velocity))
         return R::failure(QuantityError::RangeError);
+      if (!bowOn && liftAt_ > 0 && frame_ >= liftAt_ && art_.restDampT60 > 0.0 &&
+          fundamentalHz_ > 0.0) {
+        // One pass of the bow point per period: g^(f0 T60) = 10^-3.
+        const double g = std::pow(10.0, -3.0 / (art_.restDampT60 * fundamentalHz_));
+        outgoingBridge *= g;
+        outgoingNut *= g;
+      }
       bridge_[bridgePos_] = outgoingBridge;
       nut_[nutPos_] = outgoingNut;
       bridgePos_ = (bridgePos_ + 1) % bridge_.size();
