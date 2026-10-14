@@ -3121,3 +3121,63 @@ TEST_CASE("measured trombone bore experiment", "[.tromboneexp]") {
     std::cout << "\n";
   }
 }
+
+TEST_CASE("saxophone on the player airway", "[.saxairway]") {
+  auto push = [](std::vector<PhraseNote>& notes, const excerpts::Note& src, double start,
+                 double length, double lip, double pressure, double jet, double tol,
+                 double minRms) {
+    PhraseNote note;
+    note.name = src.name;
+    note.startSec = start;
+    note.targetHz = src.hertz;
+    note.lengthM = length;
+    note.lipHz = lip;
+    note.pressure = src.hertz > 0.0 ? pressure : 0.0;
+    note.jetSamples = jet;
+    note.tongue = src.tongued;
+    note.vibrato = src.vibrato;
+    note.dynamic = src.dynamic;
+    note.gain = 1.0;
+    note.rest = !(src.hertz > 0.0);
+    note.tolCents = tol;
+    note.minRms = minRms;
+    // Speech and the narrow autocorrelation are graded only when a
+    // window can sit inside the note. Shorter notes are still printed,
+    // including a DID NOT SPEAK. Their end-of-window YIN is checked
+    // separately, at Â±50 cents.
+    note.require = src.hertz > 0.0 && src.seconds >= 0.45;
+    notes.push_back(note);
+  };
+  auto saxLength = [](double frequency) { return saxophoneSoundingLengthMeters(frequency); };
+  const double total = excerpts::excerptSeconds(excerpts::kSaxophone);
+  for (int mode = 0; mode < 2; ++mode) {
+    double longest = 0.0;
+    for (const auto& src : excerpts::kSaxophone)
+      if (src.hertz > 0.0) longest = std::max(longest, saxLength(src.hertz));
+    SaxophoneSpec spec{longest * 1.08, 0.20, 1.6e-4, kAir, kTemp, 1.8e-5, 7500.0,
+                       2.0e-6, 1.4e-4, 7.0e-4, 0.09};
+    auto sax = unwrap(makeSaxophone(spec));
+    const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
+    ValveBlow blow = sustained(4200.0, 1500.0, kSaxophoneAttack);
+    blow.frames = frames;
+    blow.initialDisplacementMeters = 1.0e-5;
+    blow.reedTurbulence = kSaxophoneReedTurbulence;
+    blow.lockedBreathFraction = kSaxophoneLockedBreathFraction;
+    blow.spectrumBreakHz = 837.0;
+    auto voice = unwrap(ConeValveVoice::fromSaxophone(sax, blow, kRate));
+    std::vector<PhraseNote> notes;
+    double start = 0.0, held = longest;
+    for (const auto& src : excerpts::kSaxophone) {
+      const double length = src.hertz > 0.0 ? saxLength(src.hertz) : held;
+      push(notes, src, start, length, 0.0, 4200.0, 0.0, 25.0, 0.01);
+      notes.back().gradePeak = src.hertz > 0.0;
+      if (src.hertz > 0.0) held = length;
+      start += src.seconds;
+    }
+    PlayerAirway airway(PlayerAirwaySpec{});
+    auto samples = renderPhrase(voice, notes, total, false, 0.0, mode ? &airway : nullptr);
+    std::cout << "saxair mode " << mode << " lung " << airway.lungVolumeM3() * 1e3 << " L\n";
+    reportPhrase(mode ? "saxair-on" : "saxair-off", notes, samples, total, 0.50);
+    writePhrase(samples, mode ? "sax-airway-on.wav" : "sax-airway-off.wav", kFs);
+  }
+}

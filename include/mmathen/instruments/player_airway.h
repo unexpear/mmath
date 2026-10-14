@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // The player's side of a wind instrument: lungs, subglottal airway,
 // glottis, vocal tract, tongue and the soft walls of the tract. This is
@@ -168,6 +168,10 @@ class PlayerAirway {
     tongueTarget_ = tongue_;
   }
   [[nodiscard]] double tongueOpenFraction() const { return tongue_; }
+  // True once the lungs are within marginM3 of residual volume (phrase_player.h breath plan).
+  [[nodiscard]] bool needsBreath(double marginM3) const {
+    return lungVolume_ < spec_.residualVolumeM3 + marginM3;
+  }
 
   // Mouth pressure for this sample, Pa, given the player's target lung
   // pressure. Zero target is no breath: zero mouth pressure.

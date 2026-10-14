@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // The phrase player: plays a list of notes on a wind voice through the
 // player's airway (player_airway.h), with tongue closures before tongued
@@ -63,6 +63,16 @@ std::vector<ScoreNote> ensureLeadIn(const Song& song) {
 constexpr double kVibratoHz = 5.5;
 constexpr double kVibratoCents = 12.0;
 
+// Breath plan for scores without enough rests. Wind players breathe at
+// phrase joins and take the time from the end of the note before the join
+// (Bouhuys, J. Appl. Physiol. 19, 967-975, 1964: playing breaths are quick
+// inspirations between phrases, VERIFY the figures). When the lungs come within
+// kBreathMarginM3 of residual volume, the next note join takes a breath: the last
+// kBreathStealSec of the sounding note is silent and the lungs refill.
+// Both values are UNSOURCED arguments.
+constexpr double kBreathMarginM3 = 1.0e-3;
+constexpr double kBreathStealSec = 0.30;
+
 template <typename Voice>
 std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& notes,
                                double totalSec, bool fluteJet, double ringTailSec = 0.0,
@@ -74,7 +84,7 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
   std::vector<double> out(static_cast<std::size_t>(total), 0.0);
   std::vector<char> armed(notes.size(), 0);
   constexpr std::uint64_t kHop = 64;
-  // Bertsch and Hoole, fast single tonguing, about 40â€“64 ms. The closure
+  // Bertsch and Hoole, fast single tonguing, about 40Ã¢â‚¬â€œ64 ms. The closure
   // is that long; the release is the note. The first note keeps the
   // blow's own tongue, if it has one.
   constexpr std::uint64_t kTongue = 1920;
@@ -91,6 +101,7 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     voice.attachAirway(airway);
     airway->placeTongue(1.0);
   }
+  bool breathing = false;
   for (std::uint64_t frame = 0; frame < total;) {
     const std::uint64_t count = std::min<std::uint64_t>(kHop, total - frame);
     int active = 0;
@@ -132,7 +143,21 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       airway->setTongueTarget(tongueShut ? 0.0 : 1.0);
     }
     const double time = static_cast<double>(frame) / rateHz;
-    const bool breathOff = note.rest || afterScore;
+    bool stolenBreath = false;
+    if (airway != nullptr && !afterScore && !note.rest) {
+      const auto next = static_cast<std::size_t>(active) + 1;
+      if (next < notes.size() && !notes[next].rest) {
+        const auto join = static_cast<std::uint64_t>(notes[next].startSec * rateHz);
+        const auto steal = static_cast<std::uint64_t>(kBreathStealSec * rateHz);
+        if (breathing && frame < join) stolenBreath = true;
+        else if (join > steal && frame >= join - steal && frame < join &&
+                 airway->needsBreath(kBreathMarginM3)) {
+          breathing = true; stolenBreath = true;
+        }
+        if (frame + count >= join) breathing = false;
+      }
+    }
+    const bool breathOff = note.rest || afterScore || stolenBreath;
     // Once the breath is off, the lip seals and the wall is Kirchhoff
     // at this fingering's impedance peak. The next blow restores the
     // mild playing pole. The radiated sample is not scaled.
