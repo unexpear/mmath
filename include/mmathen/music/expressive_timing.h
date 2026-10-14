@@ -80,6 +80,11 @@ struct TimingRules {
   // offsets and arch resets become gradual swells as a player's bow speed
   // changes (UNSOURCED value; 0 = off).
   double levelSmoothingSeconds = 0.0;
+  // Section flattening: subtract a zero-phase (forward-backward one-pole)
+  // average of the per-note level (dB) with this time constant, keeping
+  // note-to-note contrast (accents, phrase shape) but removing slow,
+  // multi-second level drift between score sections (UNSOURCED value; 0 = off).
+  double levelFlattenSeconds = 0.0;
   std::uint32_t seed = 1;
 };
 
@@ -128,6 +133,24 @@ struct TimingRules {
     p.velocity = n.velocity;
     out.push_back(p);
     t += p.ioiSeconds;
+  }
+  if (r.levelFlattenSeconds > 0.0 && out.size() > 1) {
+    std::vector<double> db(out.size()), avg(out.size());
+    for (size_t i = 0; i < out.size(); ++i) db[i] = 20.0 * std::log10(out[i].level);
+    double y = db.front();
+    for (size_t i = 0; i < out.size(); ++i) {
+      y += (1.0 - std::exp(-std::max(out[i].ioiSeconds, 1e-6) / r.levelFlattenSeconds)) * (db[i] - y);
+      avg[i] = y;
+    }
+    y = avg.back();
+    for (size_t i = out.size(); i-- > 0;) {
+      y += (1.0 - std::exp(-std::max(out[i].ioiSeconds, 1e-6) / r.levelFlattenSeconds)) * (avg[i] - y);
+      avg[i] = y;
+    }
+    double mean = 0.0;
+    for (double a : avg) mean += a;
+    mean /= static_cast<double>(avg.size());
+    for (size_t i = 0; i < out.size(); ++i) out[i].level = std::pow(10.0, (db[i] - avg[i] + mean) / 20.0);
   }
   if (r.levelSmoothingSeconds > 0.0 && !out.empty()) {
     double y = 20.0 * std::log10(out.front().level);

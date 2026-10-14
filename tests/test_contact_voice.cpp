@@ -1281,3 +1281,21 @@ TEST_CASE("level smoothing turns velocity steps into gradual swells", "[contact]
   CHECK(std::abs(20 * std::log10(soft.back().level) - 3.0) < 0.1);  // converges to target
   CHECK(std::abs(soft.front().level - hard.front().level) < 1e-12);
 }
+
+TEST_CASE("level flattening removes section steps but keeps accents", "[contact]") {
+  using namespace mmathen;
+  std::vector<ScoreNote> sc;  // 10 s soft section then 10 s loud section, every 4th note accented
+  for (int i = 0; i < 160; ++i) sc.push_back({0.125 * i, 0.125, 69, (i < 80 ? 40 : 100) + (i % 4 == 0 ? 20 : 0)});
+  TimingRules r; r.velocityDbPer64 = 6.0;
+  auto meanDb = [](const std::vector<PerformedNote>& v, size_t a, size_t b) { double s = 0; for (size_t i = a; i < b; ++i) s += 20 * std::log10(v[i].level); return s / double(b - a); };
+  const auto hard = applyExpressiveTiming(sc, r);
+  r.levelFlattenSeconds = 2.0;
+  const auto flat = applyExpressiveTiming(sc, r);
+  const double stepHard = meanDb(hard, 100, 160) - meanDb(hard, 0, 60);
+  const double stepFlat = meanDb(flat, 100, 160) - meanDb(flat, 0, 60);
+  CHECK(stepHard > 5.0);
+  CHECK(std::abs(stepFlat) < 1.0);                 // section step removed away from the boundary
+  const double accHard = 20 * std::log10(hard[120].level / hard[121].level);
+  const double accFlat = 20 * std::log10(flat[120].level / flat[121].level);
+  CHECK(std::abs(accFlat - accHard) < 0.3);         // accent contrast kept
+}
