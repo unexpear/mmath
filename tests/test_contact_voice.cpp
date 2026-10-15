@@ -1496,3 +1496,46 @@ TEST_CASE("bowing gesture: louder = faster, closer, more force, inside Schelleng
   }
   CHECK(20 * std::log10((ff.speedMetersPerSecond / ff.bridgeFraction) / (pp.speedMetersPerSecond / pp.bridgeFraction)) > 0);
 }
+
+#include "mmathen/music/performance_dynamics.h"
+TEST_CASE("performance dynamics: high-loud, arch at boundaries, flat trend, seeded", "[contact]") {
+  std::vector<DynamicsNote> n;
+  double t = 0;
+  for (int ph = 0; ph < 6; ++ph) {
+    for (int i = 0; i < 12; ++i) { n.push_back({t, 0.12, 69 + (i % 3) * 2 + (ph % 2) * 12, 81}); t += 0.12; }
+    n.push_back({t, 0.6, 69, 81}); t += 0.6;  // long note ends the phrase
+  }
+  PerformanceDynamicsParams p; p.randomSd = 0.0; p.flattenSeconds = 0.0;
+  const auto d = performanceDynamics(n, p, 1);
+  // high loud: upper-octave phrase louder on average than the lower one
+  double lo = 0, hi = 0;
+  for (int i = 0; i < 13; ++i) { lo += d[i]; hi += d[13 + i]; }
+  CHECK(hi > lo);
+  // arch: mid-phrase louder than the phrase's first note (same pitch class)
+  CHECK(d[6] > d[0]);
+  // flatten removes the whole-clip mean drift; seeded randomness repeatable
+  PerformanceDynamicsParams q;
+  const auto a = performanceDynamics(n, q, 3), b = performanceDynamics(n, q, 3), c = performanceDynamics(n, q, 4);
+  CHECK(a == b);
+  CHECK(a != c);
+  double first = 0, last = 0;
+  for (int i = 0; i < 13; ++i) { first += a[i]; last += a[a.size() - 1 - i]; }
+  CHECK(std::abs(first - last) / 13 < 0.06);
+}
+
+TEST_CASE("bowing gesture: contact point lags the dynamic", "[contact]") {
+  const StringCourse course = unwrap(violin()).courses[2];
+  BowingGestureParams p; p.driftFraction = 0.0; p.betaLagSeconds = 0.3;
+  BowingGestureModel g(1, p), h(1, BowingGestureParams{.driftFraction = 0.0});
+  (void)g.strokeForNote(course, 0.0, 0.12); (void)h.strokeForNote(course, 0.0, 0.12);
+  const BowStroke lag = g.strokeForNote(course, 1.0, 0.12), jump = h.strokeForNote(course, 1.0, 0.12);
+  CHECK(lag.bridgeFraction > jump.bridgeFraction);   // still on the way toward the bridge
+  CHECK(lag.speedMetersPerSecond == jump.speedMetersPerSecond);
+}
+
+TEST_CASE("performance dynamics: strong beats lean louder than weak", "[contact]") {
+  std::vector<DynamicsNote> n; for (int i = 0; i < 32; ++i) n.push_back({i * 0.125, 0.125, 69, 81});
+  PerformanceDynamicsParams p; p.randomSd = 0; p.flattenSeconds = 0; p.archDepth = 0; p.beatSeconds = 0.5;
+  const auto d = performanceDynamics(n, p, 1);
+  CHECK(d[4] > d[5]); CHECK(d[8] > d[7]);
+}

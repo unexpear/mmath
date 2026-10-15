@@ -28,6 +28,9 @@ struct BowingGestureParams {
   double forceFracPiano = 0.15, forceFracForte = 0.35;  // of Schelleng max, UNSOURCED
   double speedShare = 0.6;                              // UNSOURCED
   double driftTauSeconds = 1.5, driftFraction = 0.08;   // UNSOURCED
+  // Contact point follows the dynamic with a lag (players move the bow
+  // gradually toward/away from the bridge; Schoonderwaldt 2009 VERIFY).
+  double betaLagSeconds = 0.0;                          // 0 = per-note jump; UNSOURCED value
 };
 
 class BowingGestureModel {
@@ -42,6 +45,12 @@ class BowingGestureModel {
     const double dbSpeed = d * span * p_.speedShare, dbBeta = d * span * (1.0 - p_.speedShare);
     const double speed = p_.speedPiano * std::pow(p_.speedForte / p_.speedPiano, std::min(1.0, dbSpeed / sMax));
     double beta = p_.betaPiano * std::pow(p_.betaForte / p_.betaPiano, std::min(1.0, dbBeta / bMax));
+    if (p_.betaLagSeconds > 0.0) {
+      if (betaState_ <= 0.0) betaState_ = beta;
+      const double k = std::exp(-std::max(seconds, 0.0) / p_.betaLagSeconds);
+      betaState_ = k * betaState_ + (1.0 - k) * beta;
+      beta = betaState_;
+    }
     // Contact-point drift on its own timescale (independent of d).
     const double a = std::exp(-std::max(seconds, 0.0) / p_.driftTauSeconds);
     drift_ = a * drift_ + std::sqrt(1.0 - a * a) * p_.driftFraction * gauss();
@@ -62,6 +71,7 @@ class BowingGestureModel {
   BowingGestureParams p_;
   std::uint64_t s_;
   double drift_ = 0.0;
+  double betaState_ = 0.0;
 };
 
 }  // namespace mmathen
