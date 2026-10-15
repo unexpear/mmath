@@ -63,7 +63,15 @@ namespace mmathen {
   for (std::size_t i = 1; i < ir.size(); ++i) if (std::abs(ir[i]) > std::abs(ir[peak])) peak = i;
   const std::size_t end = std::min(ir.size(), peak + static_cast<std::size_t>(directMs * 1e-3 * sampleRate));
   const double g = irDistanceM / micDistanceM;
-  for (std::size_t i = 0; i < end; ++i) ir[i] *= g;
+  // The measured direct segment carries the measurement loudspeaker's own
+  // response; the violin model already radiates, so the direct path is an
+  // ideal impulse with the segment's energy (sign of the peak). The tail
+  // still contains the loudspeaker colouration (limitation).
+  double e = 0.0;
+  for (std::size_t i = 0; i < end; ++i) { e += ir[i] * ir[i]; }
+  const double sign = ir[peak] < 0.0 ? -1.0 : 1.0;
+  for (std::size_t i = 0; i < end; ++i) ir[i] = 0.0;
+  ir[peak] = sign * std::sqrt(e) * g;
   std::vector<double> out = convolveRoom(dry, ir);
   out.resize(dry.size());
   return out;

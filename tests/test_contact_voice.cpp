@@ -1469,7 +1469,7 @@ TEST_CASE("bow force jitter adds noise, keeps the Helmholtz level", "[contact]")
   CHECK(std::abs(20 * std::log10(rmsSpan(b, 36000, 72000) / rmsSpan(a, 36000, 72000))) < 1.5);
 }
 TEST_CASE("studio room: direct sound scales with 1/r, reverb tail does not", "[contact]") {
-  std::vector<double> ir(4800, 0.0); ir[100] = 1.0; ir[2000] = 0.25;
+  std::vector<double> ir(4800, 0.0); ir[100] = 1.0; ir[2000] = 0.25;  // direct is a pure impulse here
   std::vector<double> dry(6000, 0.0); dry[0] = 1.0;
   const auto near = studioRoom(dry, ir, 2.0, 1.0, 48000.0);
   const auto same = studioRoom(dry, ir, 2.0, 2.0, 48000.0);
