@@ -63,6 +63,13 @@ struct PerformanceDynamicsParams {
   // number of strings crossed, capped at 2. Weight UNSOURCED (no measured
   // crossing data found). 0 = off.
   double stringCrossingDip = 0.0;
+  // Soft walls on the dynamic: tanh maps an unbounded mid-point to (0,1)
+  // with unit slope at 0.5 when width = 0.5. Hard clamp at 0/1 was
+  // cutting note-to-note contrast (v32). Players' dynamics are continuous,
+  // not hard-clipped at pp/ff (Friberg KTH Director Musices continuous
+  // level curves; Repp, JASA 92, 1992). Soft shape UNSOURCED. 0 = old
+  // hard clamp (seeds unchanged).
+  double softClipWidth = 0.0;
 };
 
 [[nodiscard]] inline std::vector<double> performanceDynamics(const std::vector<DynamicsNote>& notes,
@@ -125,7 +132,10 @@ struct PerformanceDynamicsParams {
     if (p.flattenSeconds > 0.0)
       for (std::size_t j = 0; j < n; ++j)
         if (std::fabs(notes[j].onsetSeconds - notes[i].onsetSeconds) <= p.flattenSeconds / 2) { mean += raw[j]; ++c; }
-    out[i] = std::clamp(p.base + raw[i] - (c ? mean / c : 0.0), 0.0, 1.0);
+    const double mid = p.base + raw[i] - (c ? mean / c : 0.0);
+    out[i] = p.softClipWidth > 0.0
+                 ? 0.5 + 0.5 * std::tanh((mid - 0.5) / p.softClipWidth)
+                 : std::clamp(mid, 0.0, 1.0);
   }
   return out;
 }

@@ -1573,3 +1573,17 @@ TEST_CASE("performance dynamics: stringCrossingDip lightens the first note on a 
   CHECK(std::abs(v[2] - (a[2] - 0.05)) < 1e-12);
   CHECK(std::abs(v[3] - a[3]) < 1e-12);
 }
+
+TEST_CASE("performance dynamics: softClipWidth avoids hard 0/1 walls", "[contact]") {
+  std::vector<DynamicsNote> n; double t = 0;
+  for (int i = 0; i < 8; ++i) { n.push_back({t, 0.2, 69, 81}); t += 0.2; }
+  n[0].midi = 55; n[1].midi = 76;  // large string crossing
+  PerformanceDynamicsParams p; p.randomSd = 0; p.flattenSeconds = 0; p.archDepth = 0; p.highLoudPerOctave = 0;
+  p.stringCrossingDip = 0.5; p.base = 0.45;
+  const auto hard = performanceDynamics(n, p, 1);
+  CHECK(hard[1] == 0.0);
+  p.softClipWidth = 0.5;
+  const auto soft = performanceDynamics(n, p, 1);
+  CHECK(soft[1] > 0.0); CHECK(soft[1] < 0.5);
+  CHECK(soft[0] > 0.0); CHECK(soft[0] < 1.0);
+}

@@ -61,19 +61,32 @@ class BridgeHillFilter {
   double b0_ = 1, b1_ = 0, b2_ = 0, a1_ = 0, a2_ = 0, s1_ = 0, s2_ = 0;
 };
 
-// Low-mid signature modes. Stage 2 tried to derive them from construction
-// (orthotropic shallow shell + soundpost + Helmholtz coupling, see
-// mmath-violin-construction.md): it lands at ~1.1-1.5 kHz, 2-3x too high,
-// so the frequencies here are the MEASURED means of Bissinger 2008 (JASA 124,
-// 17 violins), not derived. Q and gain are TUNED (chosen against the real
-// recording's 400-500 Hz band), not sourced.
-inline constexpr double kViolinSignatureHz[4] = {275.0, 407.0, 475.0, 541.0};  // A0, CBR, B1-, B1+ (Bissinger 2008)
-inline constexpr double kViolinSignatureQ = 15.0;    // TUNED
-inline constexpr double kViolinSignatureGain = 2.0;  // TUNED
+// Low-mid signature modes. Frequencies are MEASURED means (Bissinger 2008,
+// JASA 124, 17 violins). Q per mode from wood internal loss + radiation
+// damping: tan delta_wood ~ 0.008 for resonance spruce along grain
+// (Brémaud, JASA 2012, typical; VERIFY vs her full table), Q_int = 1/tan delta.
+// Strong radiators (A0, B1-, B1+) take FRAD ~ 0.5 so Q_tot = Q_int/2
+// (Bissinger, ARL Online 2004 / JASA 2008: radiation damping comparable to
+// internal for those modes); CBR radiates weakly (Bissinger 2008), FRAD ~ 0,
+// so Q_tot ~ Q_int. Relative gains follow radiation ranking: A0 and B1 strong,
+// CBR weak (Bissinger 2008). Overall scale kViolinSignatureGainScale is TUNED
+// (chosen so dry 400-500 Hz share moves toward the real recording).
+inline constexpr double kViolinSignatureHz[4] = {275.0, 407.0, 475.0, 541.0};  // A0, CBR, B1-, B1+
+inline constexpr double kViolinWoodTanDelta = 0.008;  // Brémaud 2012 spruce VERIFY
+inline constexpr double kViolinSignatureFrad[4] = {0.5, 0.05, 0.5, 0.5};  // A0,CBR,B1-,B1+; CBR weak Bissinger 2008
+inline constexpr double kViolinSignatureRelGain[4] = {1.0, 0.25, 1.2, 1.2};  // radiation ranking; CBR scale UNSOURCED
+inline constexpr double kViolinSignatureGainScale = 8.0;  // TUNED (band energy; physics Q narrower than old Q 15)
+[[nodiscard]] inline double violinSignatureQ(int mode) {
+  const double qInt = 1.0 / kViolinWoodTanDelta;
+  const double frad = kViolinSignatureFrad[mode];
+  return qInt * (1.0 - frad);  // Q_tot = Q_int * (1 - FRAD), FRAD = zeta_rad / zeta_tot
+}
 class SignatureModeFilter {
  public:
-  explicit SignatureModeFilter(double sampleRate, double q = kViolinSignatureQ, double gain = kViolinSignatureGain) : g_(gain) {
+  explicit SignatureModeFilter(double sampleRate, double gainScale = kViolinSignatureGainScale) {
     for (int m = 0; m < 4; ++m) {
+      const double q = violinSignatureQ(m);
+      g_[m] = gainScale * kViolinSignatureRelGain[m];
       const double w = constants::twoPi * kViolinSignatureHz[m];
       const double k = w / std::tan(w / (2.0 * sampleRate));
       const double a0 = k * k + k * w / q + w * w;
@@ -87,13 +100,13 @@ class SignatureModeFilter {
       const double v = b0_[m] * x + s1_[m];
       s1_[m] = -a1_[m] * v + s2_[m];
       s2_[m] = b2_[m] * x - a2_[m] * v;
-      y += g_ * v;
+      y += g_[m] * v;
     }
     return y;
   }
   void processInPlace(std::vector<double>& v) noexcept { for (double& x : v) x = process(x); }
  private:
-  double g_;
+  double g_[4]{};
   double b0_[4]{}, b2_[4]{}, a1_[4]{}, a2_[4]{}, s1_[4]{}, s2_[4]{};
 };
 
