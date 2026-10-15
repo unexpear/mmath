@@ -1477,3 +1477,22 @@ TEST_CASE("studio room: direct sound scales with 1/r, reverb tail does not", "[c
   CHECK(std::abs(near[2000] - 0.25) < 1e-9);
   CHECK(std::abs(same[100] - 1.0) < 1e-9);
 }
+
+#include "mmathen/instruments/bowing_gesture.h"
+TEST_CASE("bowing gesture: louder = faster, closer, more force, inside Schelleng max; drift seeded", "[contact]") {
+  const StringCourse course = unwrap(violin()).courses[2];
+  BowingGestureModel a(7), b(7), c(8);
+  BowStroke p{}, f{};
+  for (int i = 0; i < 5; ++i) { p = a.strokeForNote(course, 0.1, 0.3); f = b.strokeForNote(course, 0.1, 0.3); CHECK(p.bridgeFraction == f.bridgeFraction); }
+  (void)c.strokeForNote(course, 0.1, 0.3); CHECK(c.drift() != a.drift());
+  BowingGestureModel g(3, BowingGestureParams{.driftFraction = 0.0});
+  const BowStroke pp = g.strokeForNote(course, 0.0, 0.3), ff = g.strokeForNote(course, 1.0, 0.3);
+  CHECK(ff.speedMetersPerSecond > pp.speedMetersPerSecond);
+  CHECK(ff.bridgeFraction < pp.bridgeFraction);
+  CHECK(ff.normalForceNewtons > pp.normalForceNewtons);
+  for (const BowStroke& s : {pp, ff}) {
+    const double mu = course.material.linearDensity.value(), Z = mu * std::sqrt(course.tension.value() / mu);
+    CHECK(s.normalForceNewtons < 2 * Z * s.speedMetersPerSecond / (s.bridgeFraction * (s.friction.staticCoefficient - s.friction.slidingCoefficient)));
+  }
+  CHECK(20 * std::log10((ff.speedMetersPerSecond / ff.bridgeFraction) / (pp.speedMetersPerSecond / pp.bridgeFraction)) > 0);
+}
