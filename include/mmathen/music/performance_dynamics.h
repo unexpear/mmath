@@ -41,6 +41,11 @@ struct PerformanceDynamicsParams {
   // (pedagogy: Galamian 1962; Fischer, Basics 1997; KTH 'beat stress').
   // beatSeconds 0 = off; weight UNSOURCED.
   double beatSeconds = 0.0, strongBeatWeight = 0.04;
+  // Repetition variation: each phrase gets its own level (players vary a
+  // repeated phrase rather than copy it: Repp, JASA 92, 1992, repeat
+  // variation; terraced/echo dynamics). Seeded, constant within a phrase,
+  // sd UNSOURCED. 0 = off.
+  double phraseLevelSd = 0.0;
 };
 
 [[nodiscard]] inline std::vector<double> performanceDynamics(const std::vector<DynamicsNote>& notes,
@@ -65,17 +70,19 @@ struct PerformanceDynamicsParams {
   }
   starts.push_back(n);
   std::vector<double> raw(n);
+  std::uint64_t s = seed ? seed : 1;
+  auto un = [&] { s ^= s << 13; s ^= s >> 7; s ^= s << 17; return (static_cast<double>(s >> 11) + 0.5) / 9007199254740992.0; };
+  auto gauss = [&] { return std::sqrt(-2.0 * std::log(un())) * std::cos(6.283185307179586 * un()); };
   for (std::size_t k = 0; k + 1 < starts.size(); ++k) {
     const std::size_t a = starts[k], b = starts[k + 1];
+    const double lvl = p.phraseLevelSd * gauss();
     const double t0 = notes[a].onsetSeconds, t1 = notes[b - 1].onsetSeconds + notes[b - 1].ioiSeconds;
     for (std::size_t i = a; i < b; ++i) {
       const double x = (t1 > t0) ? (notes[i].onsetSeconds - t0) / (t1 - t0) : 0.5;
       const double arch = x < p.archPeak ? x / p.archPeak : (1.0 - x) / (1.0 - p.archPeak);
-      raw[i] = p.archDepth * (arch - 0.5);
+      raw[i] = p.archDepth * (arch - 0.5) + lvl;
     }
   }
-  std::uint64_t s = seed ? seed : 1;
-  auto un = [&] { s ^= s << 13; s ^= s >> 7; s ^= s << 17; return (static_cast<double>(s >> 11) + 0.5) / 9007199254740992.0; };
   double r = 0.0;
   for (std::size_t i = 0; i < n; ++i) {
     const double a = std::exp(-notes[i].ioiSeconds / p.randomTauSeconds);

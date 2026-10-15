@@ -1539,3 +1539,14 @@ TEST_CASE("performance dynamics: strong beats lean louder than weak", "[contact]
   const auto d = performanceDynamics(n, p, 1);
   CHECK(d[4] > d[5]); CHECK(d[8] > d[7]);
 }
+
+TEST_CASE("performance dynamics: repeated phrases differ with phraseLevelSd", "[contact]") {
+  std::vector<DynamicsNote> n; double t = 0;
+  for (int ph = 0; ph < 4; ++ph) { for (int i = 0; i < 8; ++i) { n.push_back({t, 0.12, 69 + i, 81}); t += 0.12; } n.push_back({t, 0.6, 69, 81}); t += 0.6; }
+  PerformanceDynamicsParams p; p.randomSd = 0; p.flattenSeconds = 0;
+  const auto same = performanceDynamics(n, p, 1);
+  CHECK(std::abs(same[3] - same[12]) < 1e-12);
+  p.phraseLevelSd = 0.1;
+  const auto v = performanceDynamics(n, p, 1);
+  CHECK(std::abs(v[3] - v[12]) > 1e-6);
+}
