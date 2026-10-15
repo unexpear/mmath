@@ -46,6 +46,13 @@ struct PerformanceDynamicsParams {
   // variation; terraced/echo dynamics). Seeded, constant within a phrase,
   // sd UNSOURCED. 0 = off.
   double phraseLevelSd = 0.0;
+  // Arch-shape variation per repetition: each phrase draws its own arch depth
+  // (x (1 + sd g)) and peak position (+/- sd/2 g, clamped 0.2..0.85), since a
+  // repeated phrase is shaped differently each time, not just re-levelled
+  // (Repp, JASA 92, 1992: timing/dynamic profiles of repeats differ;
+  // Repp, JASA 105, 1999 dynamics). Stops a fixed-period arch cycle. sd
+  // UNSOURCED. 0 = off (no extra random draws, old seeds unchanged).
+  double archShapeSd = 0.0;
 };
 
 [[nodiscard]] inline std::vector<double> performanceDynamics(const std::vector<DynamicsNote>& notes,
@@ -76,11 +83,16 @@ struct PerformanceDynamicsParams {
   for (std::size_t k = 0; k + 1 < starts.size(); ++k) {
     const std::size_t a = starts[k], b = starts[k + 1];
     const double lvl = p.phraseLevelSd * gauss();
+    double depth = p.archDepth, peak = p.archPeak;
+    if (p.archShapeSd > 0.0) {
+      depth *= std::max(0.0, 1.0 + p.archShapeSd * gauss());
+      peak = std::clamp(peak + 0.5 * p.archShapeSd * gauss(), 0.2, 0.85);
+    }
     const double t0 = notes[a].onsetSeconds, t1 = notes[b - 1].onsetSeconds + notes[b - 1].ioiSeconds;
     for (std::size_t i = a; i < b; ++i) {
       const double x = (t1 > t0) ? (notes[i].onsetSeconds - t0) / (t1 - t0) : 0.5;
-      const double arch = x < p.archPeak ? x / p.archPeak : (1.0 - x) / (1.0 - p.archPeak);
-      raw[i] = p.archDepth * (arch - 0.5) + lvl;
+      const double arch = x < peak ? x / peak : (1.0 - x) / (1.0 - peak);
+      raw[i] = depth * (arch - 0.5) + lvl;
     }
   }
   double r = 0.0;

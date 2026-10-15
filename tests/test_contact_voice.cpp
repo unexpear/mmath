@@ -1550,3 +1550,15 @@ TEST_CASE("performance dynamics: repeated phrases differ with phraseLevelSd", "[
   const auto v = performanceDynamics(n, p, 1);
   CHECK(std::abs(v[3] - v[12]) > 1e-6);
 }
+
+TEST_CASE("performance dynamics: archShapeSd reshapes each repeated phrase", "[contact]") {
+  std::vector<DynamicsNote> n; double t = 0;
+  for (int ph = 0; ph < 4; ++ph) { for (int i = 0; i < 8; ++i) { n.push_back({t, 0.12, 69 + i, 81}); t += 0.12; } n.push_back({t, 0.6, 69, 81}); t += 0.6; }
+  PerformanceDynamicsParams p; p.randomSd = 0; p.flattenSeconds = 0; p.archDepth = 0.2;
+  const auto a = performanceDynamics(n, p, 3);
+  CHECK(std::abs((a[1] - a[6]) - (a[10] - a[15])) < 1e-12);
+  p.archShapeSd = 0.4;
+  const auto v = performanceDynamics(n, p, 3);
+  CHECK(std::abs((v[1] - v[6]) - (v[10] - v[15])) > 1e-4);
+  for (double x : v) { CHECK(x >= 0.0); CHECK(x <= 1.0); }
+}
