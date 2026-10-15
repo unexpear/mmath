@@ -1441,3 +1441,29 @@ TEST_CASE("signature modes boost 400-550 Hz, not low or high", "[contact]") {
   CHECK(std::abs(gainAt(60.0)) < 1.0);
   CHECK(std::abs(gainAt(4000.0)) < 1.0);
 }
+
+TEST_CASE("radiation high-pass falls below A0 and passes above", "[contact]") {
+  auto g = [](double f) { RadiationHighpass h(48000.0); double e = 0, ei = 0; for (int i = 0; i < 96000; ++i) { const double x = std::sin(2 * 3.141592653589793 * f * i / 48000.0); const double y = h.process(x); if (i >= 48000) { e += y * y; ei += x * x; } } return 10 * std::log10(e / ei); };
+  CHECK(g(100.0) < -15.0);
+  CHECK(std::abs(g(2000.0)) < 0.5);
+}
+
+TEST_CASE("bow force jitter adds noise, keeps the Helmholtz level", "[contact]") {
+  const StringCourse course = unwrap(violin()).courses[2];
+  auto render = [&](double j) {
+    auto voice = unwrap(OversampledBowedStringVoice::create(
+        course, violinBowStroke(course, 0.12, 0.2), unwrap(violinStringLoss(course)), 0.0, 4, 0,
+        kRate, 96000, 4));
+    voice.setBridgeForceOutput(true);
+    voice.setForceJitter(j);
+    std::vector<double> x(72000);
+    REQUIRE(voice.renderBlock(x.data(), FrameCount{x.size()}).ok());
+    return x;
+  };
+  const auto a = render(0.0), b = render(0.3), c = render(0.0);
+  double diff = 0, same = 0;
+  for (size_t i = 36000; i < 72000; ++i) { diff += std::abs(a[i] - b[i]); same += std::abs(a[i] - c[i]); }
+  CHECK(same == 0.0);
+  CHECK(diff > 0.0);
+  CHECK(std::abs(20 * std::log10(rmsSpan(b, 36000, 72000) / rmsSpan(a, 36000, 72000))) < 1.5);
+}

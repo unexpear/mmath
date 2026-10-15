@@ -97,4 +97,23 @@ class SignatureModeFilter {
   double b0_[4]{}, b2_[4]{}, a1_[4]{}, a2_[4]{}, s1_[4]{}, s2_[4]{};
 };
 
+// Below A0 the f-hole air flow is in antiphase with the plate volume
+// velocity, so the net monopole radiation falls ~12 dB/octave (Gough,
+// "Science of the violin", sec. A0; Weinreich 1997). Modelled as a 2nd-order
+// high-pass at the A0 frequency; Q 0.707 is UNSOURCED (maximally flat).
+class RadiationHighpass {
+ public:
+  explicit RadiationHighpass(double sampleRate, double cornerHz = kViolinSignatureHz[0], double q = 0.70710678) {
+    const double w = constants::twoPi * cornerHz, k = w / std::tan(w / (2.0 * sampleRate));
+    const double a0 = k * k + k * w / q + w * w;
+    b0_ = k * k / a0; a1_ = (2.0 * w * w - 2.0 * k * k) / a0; a2_ = (k * k - k * w / q + w * w) / a0;
+  }
+  double process(double x) noexcept {
+    const double y = b0_ * x + s1_; s1_ = -2.0 * b0_ * x - a1_ * y + s2_; s2_ = b0_ * x - a2_ * y; return y;
+  }
+  void processInPlace(std::vector<double>& v) noexcept { for (double& x : v) x = process(x); }
+ private:
+  double b0_, a1_, a2_, s1_ = 0, s2_ = 0;
+};
+
 }  // namespace mmathen

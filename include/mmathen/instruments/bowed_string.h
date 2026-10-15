@@ -306,7 +306,7 @@ class BowedStringVoice final : public IVoice {
       if (bowOn) {
         auto junction = stickSlipJunction(
             history, incomingBridge, incomingNut, stroke_.speedMetersPerSecond * envelope * reversal,
-            impedance_, stroke_.normalForceNewtons * envelope, stroke_.friction, wasStuck_);
+            impedance_, stroke_.normalForceNewtons * envelope * forceJitter(), stroke_.friction, wasStuck_);
         if (!junction.ok()) return R::failure(junction.error());
         const double force = junction.value().frictionForce;
         outgoingBridge = incomingNut + force / twoZ;
@@ -488,6 +488,7 @@ class BowedStringVoice final : public IVoice {
   // Helmholtz amplitude (~ v / beta, Cremer ch. 3) fell ~6 dB per octave up a
   // string. setKeepBetaOnStop(false) restores the fixed contact.
   void setKeepBetaOnStop(bool on) noexcept { keepBetaOnStop_ = on; }
+  void setForceJitter(double fraction) noexcept { forceJitter_ = fraction > 0.0 ? fraction : 0.0; }
   [[nodiscard]] bool setStoppedFrequency(double hz) {
     if (!stopAtFixedContact(hz)) return false;
     vibStart_ = frame_;
@@ -495,6 +496,17 @@ class BowedStringVoice final : public IVoice {
     return true;
   }
   bool keepBetaOnStop_ = true;
+  // Bow-hair/rosin contact fluctuation: relative normal-force jitter (white,
+  // zero mean). Level is TUNED against the recording's HNR; no published value
+  // for the fluctuation spectrum was found (UNSOURCED). Default 0 = off.
+  double forceJitter_ = 0.0;
+  unsigned long long jitterState_ = 0x9E3779B97F4A7C15ull;
+  double forceJitter() noexcept {
+    if (forceJitter_ == 0.0) return 1.0;
+    jitterState_ ^= jitterState_ << 13; jitterState_ ^= jitterState_ >> 7; jitterState_ ^= jitterState_ << 17;
+    const double u = (double)(jitterState_ >> 11) * (1.0 / 9007199254740992.0) * 2.0 - 1.0;
+    return 1.0 + forceJitter_ * u;
+  }
   std::uint64_t vibStart_ = 0;
   [[nodiscard]] bool stopAtFixedContact(double hz) {
     if (!std::isfinite(hz) || !(hz > 0.0)) return false;
@@ -891,6 +903,7 @@ class OversampledBowedStringVoice final : public IVoice {
   [[nodiscard]] bool setBowPosition(double beta, double force) { return inner_.setBowPosition(beta, force); }
   [[nodiscard]] bool setStoppedFrequency(double hz) { return inner_.setStoppedFrequency(hz); }
   void setKeepBetaOnStop(bool on) noexcept { inner_.setKeepBetaOnStop(on); }
+  void setForceJitter(double fraction) noexcept { inner_.setForceJitter(fraction); }
   [[nodiscard]] bool setExpression(const BowExpression& e) { return inner_.setExpression(e); }
   [[nodiscard]] bool setStroke(const BowStroke& s) { return inner_.setStroke(s); }
   [[nodiscard]] double fundamentalHz() const noexcept { return inner_.fundamentalHz(); }
