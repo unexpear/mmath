@@ -53,6 +53,16 @@ struct PerformanceDynamicsParams {
   // Repp, JASA 105, 1999 dynamics). Stops a fixed-period arch cycle. sd
   // UNSOURCED. 0 = off (no extra random draws, old seeds unchanged).
   double archShapeSd = 0.0;
+  // String crossing: a note on a different string from the previous one is
+  // played through an arm/elbow level change, so the bow arrives with less
+  // settled weight and the first note on the new string is lighter
+  // (Galamian 1962, string crossings from the arm level; Fischer, Basics
+  // 1997, string-crossing exercises; Rolland, Prelude to String Playing).
+  // String from first position (G3 55, D4 62, A4 69, E5 76; lowest string
+  // that can reach, VERIFY vs fingering). Dip per crossing, scaled by the
+  // number of strings crossed, capped at 2. Weight UNSOURCED (no measured
+  // crossing data found). 0 = off.
+  double stringCrossingDip = 0.0;
 };
 
 [[nodiscard]] inline std::vector<double> performanceDynamics(const std::vector<DynamicsNote>& notes,
@@ -102,6 +112,11 @@ struct PerformanceDynamicsParams {
     if (p.beatSeconds > 0.0) {
       const double ph = notes[i].onsetSeconds / p.beatSeconds;
       raw[i] += std::fabs(ph - std::round(ph)) < 0.08 ? p.strongBeatWeight : -0.25 * p.strongBeatWeight;
+    }
+    if (p.stringCrossingDip > 0.0 && i > 0) {
+      auto str = [](int midi) { return midi >= 76 ? 3 : midi >= 69 ? 2 : midi >= 62 ? 1 : 0; };
+      const int ds = std::abs(str(m[i]) - str(m[i - 1]));
+      raw[i] -= p.stringCrossingDip * std::min(ds, 2);
     }
     raw[i] += p.highLoudPerOctave * (m[i] - med) / 12.0 + p.accentPerVelocity * (notes[i].velocity - 81) + r;
   }

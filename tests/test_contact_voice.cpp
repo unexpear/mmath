@@ -1562,3 +1562,14 @@ TEST_CASE("performance dynamics: archShapeSd reshapes each repeated phrase", "[c
   CHECK(std::abs((v[1] - v[6]) - (v[10] - v[15])) > 1e-4);
   for (double x : v) { CHECK(x >= 0.0); CHECK(x <= 1.0); }
 }
+
+TEST_CASE("performance dynamics: stringCrossingDip lightens the first note on a new string", "[contact]") {
+  std::vector<DynamicsNote> n{{0, 0.2, 64, 81}, {0.2, 0.2, 65, 81}, {0.4, 0.2, 71, 81}, {0.6, 0.2, 72, 81}};
+  PerformanceDynamicsParams p; p.randomSd = 0; p.flattenSeconds = 0; p.archDepth = 0; p.highLoudPerOctave = 0;
+  const auto a = performanceDynamics(n, p, 1);
+  p.stringCrossingDip = 0.05;
+  const auto v = performanceDynamics(n, p, 1);
+  CHECK(std::abs(v[1] - a[1]) < 1e-12);
+  CHECK(std::abs(v[2] - (a[2] - 0.05)) < 1e-12);
+  CHECK(std::abs(v[3] - a[3]) < 1e-12);
+}
