@@ -47,6 +47,16 @@ namespace mmathen {
   return out;
 }
 
+// Genesis 6 IR tail still carries Genelec loudspeaker colouration after the
+// direct segment is replaced by an ideal impulse. Measured IR band energy
+// sits ~1.5 dB higher in 500-700 Hz than 400-500 Hz, which pulls studio
+// 400-500 share below dry (v35). A mild peaking boost at 450 Hz compensates;
+// gain TUNED against dry/real share. Physics of the compensation is the
+// known loudspeaker-in-tail limitation (see comment above); the dB value is
+// not from a Genelec datasheet.
+inline constexpr double kStudioIrTailEqHz = 450.0;
+inline constexpr double kStudioIrTailEqQ = 1.0;       // UNSOURCED width
+inline constexpr double kStudioIrTailEqGainDb = 4.0;  // TUNED (v36: studio 400-500 share)
 // Studio environment: re-place the microphone of a measured room IR.
 // The IR was measured at irDistanceM. The direct sound (the first
 // directMs after the IR's peak, plus pre-roll) follows spherical spreading,
@@ -72,6 +82,22 @@ namespace mmathen {
   const double sign = ir[peak] < 0.0 ? -1.0 : 1.0;
   for (std::size_t i = 0; i < end; ++i) ir[i] = 0.0;
   ir[peak] = sign * std::sqrt(e) * g;
+  // Mild peaking EQ on the TAIL only (i >= end). The ideal direct impulse at
+  // peak is left unchanged so 1/r direct energy is exact; the EQ compensates
+  // loudspeaker colouration in the diffuse remainder.
+  {
+    const double A = std::pow(10.0, kStudioIrTailEqGainDb / 40.0);
+    const double w0 = 2.0 * 3.14159265358979323846 * kStudioIrTailEqHz / sampleRate;
+    const double alpha = std::sin(w0) / (2.0 * kStudioIrTailEqQ);
+    const double b0 = 1.0 + alpha * A, b1 = -2.0 * std::cos(w0), b2 = 1.0 - alpha * A;
+    const double a0 = 1.0 + alpha / A, a1 = -2.0 * std::cos(w0), a2 = 1.0 - alpha / A;
+    double x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+    for (std::size_t i = end; i < ir.size(); ++i) {
+      const double x0 = ir[i];
+      const double y0 = (b0 * x0 + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2) / a0;
+      x2 = x1; x1 = x0; y2 = y1; y1 = y0; ir[i] = y0;
+    }
+  }
   std::vector<double> out = convolveRoom(dry, ir);
   out.resize(dry.size());
   return out;

@@ -1474,8 +1474,11 @@ TEST_CASE("studio room: direct sound scales with 1/r, reverb tail does not", "[c
   const auto near = studioRoom(dry, ir, 2.0, 1.0, 48000.0);
   const auto same = studioRoom(dry, ir, 2.0, 2.0, 48000.0);
   CHECK(std::abs(near[100] - 2.0) < 1e-9);
-  CHECK(std::abs(near[2000] - 0.25) < 1e-9);
   CHECK(std::abs(same[100] - 1.0) < 1e-9);
+  // Tail is not 1/r-scaled (same mic-independent); loudspeaker-tail EQ may
+  // reshape it, so compare near vs same rather than to the raw IR value.
+  CHECK(std::abs(near[2000] - same[2000]) < 1e-9);
+  CHECK(std::abs(near[2000]) > 0.0);
 }
 
 #include "mmathen/instruments/bowing_gesture.h"
@@ -1617,4 +1620,15 @@ TEST_CASE("detache articulation applies rest damp in gaps", "[contact]") {
   const auto s = articulationForNote(0.08, 81);
   CHECK(s.bounce == true);
   CHECK(std::abs(s.restDampT60 - kSpiccatoRestT60Seconds) < 1e-12);
+}
+
+TEST_CASE("studio IR tail EQ constants are finite", "[contact]") {
+  CHECK(kStudioIrTailEqHz > 0.0);
+  CHECK(kStudioIrTailEqQ > 0.0);
+  CHECK(std::isfinite(kStudioIrTailEqGainDb));
+  std::vector<double> dry(480, 0.0); dry[0] = 1.0;
+  std::vector<double> ir(4800, 0.0); ir[100] = 1.0; for (int i = 101; i < 4800; ++i) ir[i] = 0.01 * std::exp(-(i - 100) / 500.0);
+  const auto out = studioRoom(dry, ir, 2.43, 1.0, 48000.0);
+  CHECK(out.size() == dry.size());
+  double e = 0; for (double x : out) e += x * x; CHECK(e > 0.0);
 }
