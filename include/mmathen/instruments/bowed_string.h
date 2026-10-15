@@ -123,6 +123,13 @@ inline constexpr double kAccentSeconds = 0.06;           // UNSOURCED
 // the hair settling on the string between bounces; this T60 is UNSOURCED
 // (chosen, not measured).
 inline constexpr double kSpiccatoRestT60Seconds = 0.2;  // VERIFY (0.15-0.3 s range chosen; 0.04 s silenced the gaps)
+// Detache gap damping: after the bow lifts between notes the string is
+// lightly damped (finger/bow hair near the string). Without this the free
+// ring fills score gaps and onset-detected note-to-note level change is
+// compressed vs mid-note RMS (v34: mid-note ~7 dB, onset ~5.5 dB). Guettler
+// and Askenfelt describe hair settling; value UNSOURCED (chosen so onset
+// nn approaches mid-note without silencing gaps). 0 = free ring (old).
+inline constexpr double kDetacheRestT60Seconds = 0.12;  // UNSOURCED
 // Score velocity (1-127) to accent: gain 1 at velocity <= 80 rising to
 // 1.6 at 127. UNSOURCED mapping.
 [[nodiscard]] inline BowArticulation articulationForNote(double seconds, int velocity) {
@@ -137,6 +144,7 @@ inline constexpr double kSpiccatoRestT60Seconds = 0.2;  // VERIFY (0.15-0.3 s ra
     a.restDampT60 = kSpiccatoRestT60Seconds;
   } else {
     a.onsetSeconds = kDetacheLandingSeconds;
+    a.restDampT60 = kDetacheRestT60Seconds;
   }
   return a;
 }

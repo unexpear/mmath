@@ -1609,3 +1609,12 @@ TEST_CASE("performance dynamics: shortNoteAccent raises short IOIs", "[contact]"
   CHECK(v[1] > a[1]);
   CHECK(v[0] <= a[0] + 1e-12);
 }
+
+TEST_CASE("detache articulation applies rest damp in gaps", "[contact]") {
+  const auto a = articulationForNote(0.25, 81);
+  CHECK(a.bounce == false);
+  CHECK(std::abs(a.restDampT60 - kDetacheRestT60Seconds) < 1e-12);
+  const auto s = articulationForNote(0.08, 81);
+  CHECK(s.bounce == true);
+  CHECK(std::abs(s.restDampT60 - kSpiccatoRestT60Seconds) < 1e-12);
+}

@@ -75,17 +75,22 @@ inline constexpr double kViolinSignatureHz[4] = {275.0, 407.0, 475.0, 541.0};  /
 inline constexpr double kViolinWoodTanDelta = 0.008;  // Brémaud 2012 spruce VERIFY
 inline constexpr double kViolinSignatureFrad[4] = {0.5, 0.05, 0.5, 0.5};  // A0,CBR,B1-,B1+; CBR weak Bissinger 2008
 inline constexpr double kViolinSignatureRelGain[4] = {1.0, 0.25, 1.2, 1.2};  // radiation ranking; CBR scale UNSOURCED
-inline constexpr double kViolinSignatureGainScale = 8.0;  // TUNED (band energy; physics Q narrower than old Q 15)
+inline constexpr double kViolinSignatureGainScale = 8.0;  // TUNED
+// Bandpass-EQ is not a true modal radiator: physics Q (~60) is too narrow to
+// fill 400-500 Hz. Scale Q down toward the old TUNED Q 15 so band energy
+// recovers while keeping Bremaud/Bissinger relative Q ranking. TUNED.
+inline constexpr double kViolinSignatureQScale = 0.35;  // TUNED (~0.35*62.5 ~ 22)
 [[nodiscard]] inline double violinSignatureQ(int mode) {
   const double qInt = 1.0 / kViolinWoodTanDelta;
   const double frad = kViolinSignatureFrad[mode];
   return qInt * (1.0 - frad);  // Q_tot = Q_int * (1 - FRAD), FRAD = zeta_rad / zeta_tot
 }
+
 class SignatureModeFilter {
  public:
   explicit SignatureModeFilter(double sampleRate, double gainScale = kViolinSignatureGainScale) {
     for (int m = 0; m < 4; ++m) {
-      const double q = violinSignatureQ(m);
+      const double q = std::max(8.0, violinSignatureQ(m) * kViolinSignatureQScale);
       g_[m] = gainScale * kViolinSignatureRelGain[m];
       const double w = constants::twoPi * kViolinSignatureHz[m];
       const double k = w / std::tan(w / (2.0 * sampleRate));
