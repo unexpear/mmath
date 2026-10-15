@@ -1587,3 +1587,25 @@ TEST_CASE("performance dynamics: softClipWidth avoids hard 0/1 walls", "[contact
   CHECK(soft[1] > 0.0); CHECK(soft[1] < 0.5);
   CHECK(soft[0] > 0.0); CHECK(soft[0] < 1.0);
 }
+
+TEST_CASE("performance dynamics: bowAlternationWeight is pitch-independent", "[contact]") {
+  std::vector<DynamicsNote> n; double t = 0;
+  for (int i = 0; i < 8; ++i) { n.push_back({t, 0.2, 69, 81}); t += 0.2; }
+  PerformanceDynamicsParams p; p.randomSd = 0; p.flattenSeconds = 0; p.archDepth = 0; p.highLoudPerOctave = 0;
+  const auto a = performanceDynamics(n, p, 1);
+  p.bowAlternationWeight = 0.05;
+  const auto v = performanceDynamics(n, p, 1);
+  CHECK(std::abs((v[0] - a[0]) - 0.05) < 1e-12);
+  CHECK(std::abs((v[1] - a[1]) + 0.05) < 1e-12);
+  CHECK(std::abs((v[2] - a[2]) - 0.05) < 1e-12);
+}
+
+TEST_CASE("performance dynamics: shortNoteAccent raises short IOIs", "[contact]") {
+  std::vector<DynamicsNote> n{{0, 0.4, 69, 81}, {0.4, 0.1, 69, 81}, {0.5, 0.4, 69, 81}};
+  PerformanceDynamicsParams p; p.randomSd = 0; p.flattenSeconds = 0; p.archDepth = 0; p.highLoudPerOctave = 0;
+  const auto a = performanceDynamics(n, p, 1);
+  p.shortNoteAccent = 0.1;
+  const auto v = performanceDynamics(n, p, 1);
+  CHECK(v[1] > a[1]);
+  CHECK(v[0] <= a[0] + 1e-12);
+}

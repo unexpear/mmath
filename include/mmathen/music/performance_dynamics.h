@@ -70,6 +70,18 @@ struct PerformanceDynamicsParams {
   // level curves; Repp, JASA 92, 1992). Soft shape UNSOURCED. 0 = old
   // hard clamp (seeds unchanged).
   double softClipWidth = 0.0;
+  // Bow-direction alternation: down-bow slightly heavier than up-bow from
+  // arm weight (Galamian 1962; Fischer Basics). Askenfelt JASA 86 1989
+  // shows stroke-to-stroke force/speed asymmetries (VERIFY magnitude).
+  // Applied as +/- weight on alternate notes, independent of pitch, so it
+  // does not lock to Caprice's bar-periodic string crossings. Weight
+  // UNSOURCED. 0 = off.
+  double bowAlternationWeight = 0.0;
+  // Short-note accent: shorter IOI -> louder attack (Askenfelt 1989
+  // short-stroke bow-velocity onsets are more impulsive; Schoonderwaldt
+  // 2009). Weight per octave of IOI below the piece median. UNSOURCED.
+  // 0 = off.
+  double shortNoteAccent = 0.0;
 };
 
 [[nodiscard]] inline std::vector<double> performanceDynamics(const std::vector<DynamicsNote>& notes,
@@ -112,6 +124,11 @@ struct PerformanceDynamicsParams {
       raw[i] = depth * (arch - 0.5) + lvl;
     }
   }
+  std::vector<double> iois(n);
+  for (std::size_t i = 0; i < n; ++i) iois[i] = notes[i].ioiSeconds;
+  std::vector<double> ioSorted = iois;
+  std::nth_element(ioSorted.begin(), ioSorted.begin() + static_cast<std::ptrdiff_t>(n / 2), ioSorted.end());
+  const double medIoi = std::max(ioSorted[n / 2], 1e-6);
   double r = 0.0;
   for (std::size_t i = 0; i < n; ++i) {
     const double a = std::exp(-notes[i].ioiSeconds / p.randomTauSeconds);
@@ -125,6 +142,10 @@ struct PerformanceDynamicsParams {
       const int ds = std::abs(str(m[i]) - str(m[i - 1]));
       raw[i] -= p.stringCrossingDip * std::min(ds, 2);
     }
+    if (p.bowAlternationWeight > 0.0)
+      raw[i] += (i % 2 == 0 ? 1.0 : -1.0) * p.bowAlternationWeight;
+    if (p.shortNoteAccent > 0.0)
+      raw[i] += p.shortNoteAccent * std::log2(medIoi / std::max(notes[i].ioiSeconds, 1e-6));
     raw[i] += p.highLoudPerOctave * (m[i] - med) / 12.0 + p.accentPerVelocity * (notes[i].velocity - 81) + r;
   }
   for (std::size_t i = 0; i < n; ++i) {
