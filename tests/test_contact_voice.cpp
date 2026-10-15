@@ -1444,7 +1444,8 @@ TEST_CASE("signature modes boost 400-550 Hz, not low or high", "[contact]") {
 
 TEST_CASE("radiation high-pass falls below A0 and passes above", "[contact]") {
   auto g = [](double f) { RadiationHighpass h(48000.0); double e = 0, ei = 0; for (int i = 0; i < 96000; ++i) { const double x = std::sin(2 * 3.141592653589793 * f * i / 48000.0); const double y = h.process(x); if (i >= 48000) { e += y * y; ei += x * x; } } return 10 * std::log10(e / ei); };
-  CHECK(g(100.0) < -15.0);
+  CHECK(g(70.0) < -15.0);
+  CHECK(g(250.0) > -2.0);
   CHECK(std::abs(g(2000.0)) < 0.5);
 }
 

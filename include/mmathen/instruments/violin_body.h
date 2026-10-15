@@ -100,10 +100,13 @@ class SignatureModeFilter {
 // Below A0 the f-hole air flow is in antiphase with the plate volume
 // velocity, so the net monopole radiation falls ~12 dB/octave (Gough,
 // "Science of the violin", sec. A0; Weinreich 1997). Modelled as a 2nd-order
-// high-pass at the A0 frequency; Q 0.707 is UNSOURCED (maximally flat).
+// high-pass. The 12 dB/oct order is sourced; the corner is TUNED to 200 Hz
+// (just above open G, 196 Hz): at A0 itself (275 Hz) it cut the G-string
+// fundamentals 3 dB below the recording. Q 0.707 is UNSOURCED.
+inline constexpr double kViolinRadiationCornerHz = 200.0;  // TUNED
 class RadiationHighpass {
  public:
-  explicit RadiationHighpass(double sampleRate, double cornerHz = kViolinSignatureHz[0], double q = 0.70710678) {
+  explicit RadiationHighpass(double sampleRate, double cornerHz = kViolinRadiationCornerHz, double q = 0.70710678) {
     const double w = constants::twoPi * cornerHz, k = w / std::tan(w / (2.0 * sampleRate));
     const double a0 = k * k + k * w / q + w * w;
     b0_ = k * k / a0; a1_ = (2.0 * w * w - 2.0 * k * k) / a0; a2_ = (k * k - k * w / q + w * w) / a0;
