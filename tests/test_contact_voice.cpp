@@ -1632,3 +1632,9 @@ TEST_CASE("studio IR tail EQ constants are finite", "[contact]") {
   CHECK(out.size() == dry.size());
   double e = 0; for (double x : out) e += x * x; CHECK(e > 0.0);
 }
+
+TEST_CASE("kuttruff mean free path for Genesis 6 volume", "[contact]") {
+  const double ms = kuttruffMeanFreePathMs(35.2);
+  CHECK(ms > 6.0); CHECK(ms < 7.0);
+  CHECK(kuttruffMeanFreePathMs(0.0) == 2.5);
+}

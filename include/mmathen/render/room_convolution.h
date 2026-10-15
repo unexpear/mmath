@@ -57,6 +57,20 @@ namespace mmathen {
 inline constexpr double kStudioIrTailEqHz = 450.0;
 inline constexpr double kStudioIrTailEqQ = 1.0;       // UNSOURCED width
 inline constexpr double kStudioIrTailEqGainDb = 4.0;  // TUNED (v36: studio 400-500 share)
+// Direct-window length from Kuttruff's mean free path, l = 4V/S (Kuttruff,
+// "Room Acoustics", ch. 4): energy arriving within one mean free path of
+// the direct sound is the source's own response plus at most first-order
+// reflections; beyond it the field is treated as reverberant. S from a
+// cube of volume V (S = 6 V^(2/3)); room shape UNSOURCED. Genesis 6 is
+// 35.2 m^3 (OpenAIR) -> about 6.4 ms. Measured studio (v37): the 2.5 ms
+// window left the Genelec 8040's own 3-15 ms response in the "reverb",
+// where it interfered with the direct path and raised the 1.95 s
+// loudness cycle (0.18 -> about 0.10 with this window).
+[[nodiscard]] inline double kuttruffMeanFreePathMs(double volumeM3, double soundSpeed = 343.0) {
+  if (!(volumeM3 > 0.0)) return 2.5;
+  const double s = 6.0 * std::pow(volumeM3, 2.0 / 3.0);
+  return 1000.0 * 4.0 * volumeM3 / (s * soundSpeed);
+}
 // Studio environment: re-place the microphone of a measured room IR.
 // The IR was measured at irDistanceM. The direct sound (the first
 // directMs after the IR's peak, plus pre-roll) follows spherical spreading,
