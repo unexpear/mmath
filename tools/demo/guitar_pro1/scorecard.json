@@ -1,0 +1,834 @@
+{
+ "score": {
+  "Momentary loudness range p95-p10 (LU)": {
+   "real": 8.073440818311784,
+   "dry": 4.982999879364424,
+   "studio": 7.31516449053942
+  },
+  "Short-term loudness std (LU)": {
+   "real": 1.130097696650555,
+   "dry": 0.7040865461050172,
+   "studio": 0.6761956208162603
+  },
+  "RMS envelope swing p90-p10 (dB)": {
+   "real": 10.111541748046875,
+   "dry": 18.92522621154785,
+   "studio": 19.402027130126953
+  },
+  "Band 400-500 Hz re 0.5-1.5k (dB)": {
+   "real": 6.6397247314453125,
+   "dry": 3.2721481323242188,
+   "studio": 3.368549346923828
+  },
+  "Band 2-3 kHz re 0.5-1.5k (dB)": {
+   "real": -15.860851287841797,
+   "dry": -18.60826873779297,
+   "studio": -21.33120346069336
+  },
+  "Band 5-10 kHz re 0.5-1.5k (dB)": {
+   "real": -31.72214126586914,
+   "dry": -33.11711120605469,
+   "studio": -35.176151275634766
+  },
+  "Band 200-320 Hz re 0.5-1.5k (dB)": {
+   "real": 13.924179077148438,
+   "dry": 13.946975708007812,
+   "studio": 14.930522918701172
+  },
+  "Max |1/3-oct diff| 100 Hz-10 kHz (dB)": {
+   "real": 0.0,
+   "dry": 14.03012466430664,
+   "studio": 21.846187591552734
+  },
+  "Pitch mean |cents| vs ET (pyin)": {
+   "real": 65.44476438038915,
+   "dry": 50.09205936601816,
+   "studio": 27.500000000000107
+  },
+  "Note-centre pitch mean |cents| (v10: mid-50pct, PV-refined pyin, vibrato LS fit)": {
+   "real": NaN,
+   "dry": 4.862862576127147,
+   "studio": 7.781556044415566
+  },
+  "Note-centre mean |cents|, notes >= 0.25 s (v10)": {
+   "real": NaN,
+   "dry": 4.862862576127147,
+   "studio": 7.781556044415566
+  },
+  "Note-centre mean |cents|, notes < 0.25 s (v10)": {
+   "real": NaN,
+   "dry": NaN,
+   "studio": NaN
+  },
+  "Note-centre measurable notes (count)": {
+   "real": 0.0,
+   "dry": 1.0,
+   "studio": 4.0
+  },
+  "Note-centre pitch mean signed cents": {
+   "real": NaN,
+   "dry": 4.862862576127147,
+   "studio": -0.37082623383938884
+  },
+  "Note-centre |cents| re own median tuning": {
+   "real": NaN,
+   "dry": 0.0,
+   "studio": 7.781556044415566
+  },
+  "Own median tuning offset (cents)": {
+   "real": NaN,
+   "dry": 4.862862576127147,
+   "studio": -0.2185389136246627
+  },
+  "Pitch spread std cents": {
+   "real": 77.58865896508335,
+   "dry": 37.66629793329869,
+   "studio": 27.726341266023653
+  },
+  "Vibrato rate Hz (median, measurable notes)": {
+   "real": NaN,
+   "dry": NaN,
+   "studio": NaN
+  },
+  "Vibrato depth cents": {
+   "real": NaN,
+   "dry": NaN,
+   "studio": NaN
+  },
+  "Harmonic slope partials 1-12 (dB/partial)": {
+   "real": -1.4160729919063908,
+   "dry": -4.794099660383327,
+   "studio": -2.941842229468243
+  },
+  "Partial 2 re strongest (dB)": {
+   "real": -11.305061168306615,
+   "dry": -23.805353281690156,
+   "studio": -23.620549499059738
+  },
+  "HNR median (dB)": {
+   "real": -5.422305996352126,
+   "dry": -6.560077738461592,
+   "studio": -11.421842759421795
+  },
+  "Inharmonicity B median (x1e-4)": {
+   "real": 0.05182976937601811,
+   "dry": -0.27263148845444424,
+   "studio": -0.16637806864833332
+  },
+  "Spectral centroid median": {
+   "real": 1065.9176965973168,
+   "dry": 383.52431447345475,
+   "studio": 519.2649012376779
+  },
+  "Spectral rolloff median": {
+   "real": 1701.123046875,
+   "dry": 538.330078125,
+   "studio": 602.9296875
+  },
+  "Spectral flatness median": {
+   "real": 4.043073658976937e-06,
+   "dry": 2.2890571382827574e-10,
+   "studio": 9.040400072990451e-08
+  },
+  "Spectral flux median": {
+   "real": 0.9702383279800415,
+   "dry": 0.03330262377858162,
+   "studio": 0.06621861457824707
+  },
+  "Attack rise 10-90% median (ms)": {
+   "real": 140.04535147392295,
+   "dry": 37.006802721087695,
+   "studio": 39.18367346938734
+  },
+  "Note peak-to-gap depth median (dB)": {
+   "real": 11.73708724975586,
+   "dry": 22.122215270996094,
+   "studio": 16.995872497558594
+  },
+  "In-note decay slope median (dB/s)": {
+   "real": -13.03975840142366,
+   "dry": -38.97867960102893,
+   "studio": -34.13923382896614
+  },
+  "Harmonic/residual energy HPSS (dB)": {
+   "real": 8.660286903381348,
+   "dry": 9.939030647277832,
+   "studio": 12.92110538482666
+  },
+  "Envelope peak near 400-550 Hz present": {
+   "real": 1.0,
+   "dry": 1.0,
+   "studio": 1.0
+  },
+  "Envelope peak near 2-3 kHz present": {
+   "real": 0.0,
+   "dry": 1.0,
+   "studio": 0.0
+  },
+  "Decay T60-equiv from falling envelopes (s)": {
+   "real": 0.38268363115308235,
+   "dry": 0.32900185101052565,
+   "studio": 0.3483569977997107
+  },
+  "Onset deviation sd vs model timing (ms)": {
+   "real": 23.77195632211051,
+   "dry": 4.55807163316085,
+   "studio": 4.094178189778864
+  },
+  "Onsets detected per s": {
+   "real": 11.058823529411764,
+   "dry": 3.235294117647059,
+   "studio": 3.235294117647059
+  }
+ },
+ "rows": [
+  [
+   "Momentary loudness range p95-p10 (LU)",
+   "dry",
+   "4.98",
+   "8.07",
+   "-3.09",
+   "close",
+   "no phrase-level dynamics (velocity only 81/101); room stage wet level"
+  ],
+  [
+   "Momentary loudness range p95-p10 (LU)",
+   "studio",
+   "7.32",
+   "8.07",
+   "-0.758",
+   "match",
+   ""
+  ],
+  [
+   "Short-term loudness std (LU)",
+   "dry",
+   "0.704",
+   "1.13",
+   "-0.426",
+   "match",
+   ""
+  ],
+  [
+   "Short-term loudness std (LU)",
+   "studio",
+   "0.676",
+   "1.13",
+   "-0.454",
+   "match",
+   ""
+  ],
+  [
+   "RMS envelope swing p90-p10 (dB)",
+   "dry",
+   "18.9",
+   "10.1",
+   "+8.81",
+   "close",
+   "spiccato lift + rest damping vs reverb fill"
+  ],
+  [
+   "RMS envelope swing p90-p10 (dB)",
+   "studio",
+   "19.4",
+   "10.1",
+   "+9.29",
+   "close",
+   "spiccato lift + rest damping vs reverb fill"
+  ],
+  [
+   "Band 400-500 Hz re 0.5-1.5k (dB)",
+   "dry",
+   "3.27",
+   "6.64",
+   "-3.37",
+   "close",
+   "no violin body (B1-/B1+ corpus modes)"
+  ],
+  [
+   "Band 400-500 Hz re 0.5-1.5k (dB)",
+   "studio",
+   "3.37",
+   "6.64",
+   "-3.27",
+   "close",
+   "no violin body (B1-/B1+ corpus modes)"
+  ],
+  [
+   "Band 2-3 kHz re 0.5-1.5k (dB)",
+   "dry",
+   "-18.6",
+   "-15.9",
+   "-2.75",
+   "close",
+   "no bridge rocking mode (bridge hill)"
+  ],
+  [
+   "Band 2-3 kHz re 0.5-1.5k (dB)",
+   "studio",
+   "-21.3",
+   "-15.9",
+   "-5.47",
+   "close",
+   "no bridge rocking mode (bridge hill)"
+  ],
+  [
+   "Band 5-10 kHz re 0.5-1.5k (dB)",
+   "dry",
+   "-33.1",
+   "-31.7",
+   "-1.39",
+   "match",
+   ""
+  ],
+  [
+   "Band 5-10 kHz re 0.5-1.5k (dB)",
+   "studio",
+   "-35.2",
+   "-31.7",
+   "-3.45",
+   "close",
+   "dry: no body/air/mic rolloff; room IR supplies it"
+  ],
+  [
+   "Band 200-320 Hz re 0.5-1.5k (dB)",
+   "dry",
+   "13.9",
+   "13.9",
+   "+0.0228",
+   "match",
+   ""
+  ],
+  [
+   "Band 200-320 Hz re 0.5-1.5k (dB)",
+   "studio",
+   "14.9",
+   "13.9",
+   "+1.01",
+   "match",
+   ""
+  ],
+  [
+   "Max |1/3-oct diff| 100 Hz-10 kHz (dB)",
+   "dry",
+   "14",
+   "0",
+   "+14",
+   "wrong",
+   "body transfer function missing"
+  ],
+  [
+   "Max |1/3-oct diff| 100 Hz-10 kHz (dB)",
+   "studio",
+   "21.8",
+   "0",
+   "+21.8",
+   "wrong",
+   "body transfer function missing"
+  ],
+  [
+   "Pitch mean |cents| vs ET (pyin)",
+   "dry",
+   "50.1",
+   "65.4",
+   "-15.4",
+   "wrong",
+   "smooth-friction sharp offset; player intonation"
+  ],
+  [
+   "Pitch mean |cents| vs ET (pyin)",
+   "studio",
+   "27.5",
+   "65.4",
+   "-37.9",
+   "wrong",
+   "smooth-friction sharp offset; player intonation"
+  ],
+  [
+   "Note-centre pitch mean |cents| (v10: mid-50pct, PV-refined pyin, vibrato LS fit)",
+   "dry",
+   "4.86",
+   "nan",
+   "+nan",
+   "n/a",
+   "friction-curve offset + seeded intonation (4 c); real: player intonation"
+  ],
+  [
+   "Note-centre pitch mean |cents| (v10: mid-50pct, PV-refined pyin, vibrato LS fit)",
+   "studio",
+   "7.78",
+   "nan",
+   "+nan",
+   "n/a",
+   "friction-curve offset + seeded intonation (4 c); real: player intonation"
+  ],
+  [
+   "Note-centre mean |cents|, notes >= 0.25 s (v10)",
+   "dry",
+   "4.86",
+   "nan",
+   "+nan",
+   "n/a",
+   ""
+  ],
+  [
+   "Note-centre mean |cents|, notes >= 0.25 s (v10)",
+   "studio",
+   "7.78",
+   "nan",
+   "+nan",
+   "n/a",
+   ""
+  ],
+  [
+   "Note-centre mean |cents|, notes < 0.25 s (v10)",
+   "dry",
+   "nan",
+   "nan",
+   "+nan",
+   "n/a",
+   ""
+  ],
+  [
+   "Note-centre mean |cents|, notes < 0.25 s (v10)",
+   "studio",
+   "nan",
+   "nan",
+   "+nan",
+   "n/a",
+   ""
+  ],
+  [
+   "Note-centre measurable notes (count)",
+   "dry",
+   "1",
+   "0",
+   "+1",
+   "match",
+   ""
+  ],
+  [
+   "Note-centre measurable notes (count)",
+   "studio",
+   "4",
+   "0",
+   "+4",
+   "wrong",
+   ""
+  ],
+  [
+   "Note-centre pitch mean signed cents",
+   "dry",
+   "4.86",
+   "nan",
+   "+nan",
+   "n/a",
+   "smooth-friction sharp offset"
+  ],
+  [
+   "Note-centre pitch mean signed cents",
+   "studio",
+   "-0.371",
+   "nan",
+   "+nan",
+   "n/a",
+   "smooth-friction sharp offset"
+  ],
+  [
+   "Note-centre |cents| re own median tuning",
+   "dry",
+   "0",
+   "nan",
+   "+nan",
+   "n/a",
+   "intonation scatter (ours seeded 4 c; real player)"
+  ],
+  [
+   "Note-centre |cents| re own median tuning",
+   "studio",
+   "7.78",
+   "nan",
+   "+nan",
+   "n/a",
+   "intonation scatter (ours seeded 4 c; real player)"
+  ],
+  [
+   "Own median tuning offset (cents)",
+   "dry",
+   "4.86",
+   "nan",
+   "+nan",
+   "n/a",
+   "reference pitch (real may tune above A440)"
+  ],
+  [
+   "Own median tuning offset (cents)",
+   "studio",
+   "-0.219",
+   "nan",
+   "+nan",
+   "n/a",
+   "reference pitch (real may tune above A440)"
+  ],
+  [
+   "Pitch spread std cents",
+   "dry",
+   "37.7",
+   "77.6",
+   "-39.9",
+   "wrong",
+   "spiccato notes start in weak/non-Helmholtz contact"
+  ],
+  [
+   "Pitch spread std cents",
+   "studio",
+   "27.7",
+   "77.6",
+   "-49.9",
+   "wrong",
+   "spiccato notes start in weak/non-Helmholtz contact"
+  ],
+  [
+   "Vibrato rate Hz (median, measurable notes)",
+   "dry",
+   "nan",
+   "nan",
+   "+nan",
+   "n/a",
+   "fixed 6 Hz vibrato with 0.3 s onset"
+  ],
+  [
+   "Vibrato rate Hz (median, measurable notes)",
+   "studio",
+   "nan",
+   "nan",
+   "+nan",
+   "n/a",
+   "fixed 6 Hz vibrato with 0.3 s onset"
+  ],
+  [
+   "Vibrato depth cents",
+   "dry",
+   "nan",
+   "nan",
+   "+nan",
+   "n/a",
+   "fixed vibrato depth; short notes never reach full depth"
+  ],
+  [
+   "Vibrato depth cents",
+   "studio",
+   "nan",
+   "nan",
+   "+nan",
+   "n/a",
+   "fixed vibrato depth; short notes never reach full depth"
+  ],
+  [
+   "Harmonic slope partials 1-12 (dB/partial)",
+   "dry",
+   "-4.79",
+   "-1.42",
+   "-3.38",
+   "wrong",
+   "ideal sawtooth Helmholtz source, no body filter, bow-position comb"
+  ],
+  [
+   "Harmonic slope partials 1-12 (dB/partial)",
+   "studio",
+   "-2.94",
+   "-1.42",
+   "-1.53",
+   "close",
+   "ideal sawtooth Helmholtz source, no body filter, bow-position comb"
+  ],
+  [
+   "Partial 2 re strongest (dB)",
+   "dry",
+   "-23.8",
+   "-11.3",
+   "-12.5",
+   "wrong",
+   "body/radiation weighting absent"
+  ],
+  [
+   "Partial 2 re strongest (dB)",
+   "studio",
+   "-23.6",
+   "-11.3",
+   "-12.3",
+   "wrong",
+   "body/radiation weighting absent"
+  ],
+  [
+   "HNR median (dB)",
+   "dry",
+   "-6.56",
+   "-5.42",
+   "-1.14",
+   "match",
+   ""
+  ],
+  [
+   "HNR median (dB)",
+   "studio",
+   "-11.4",
+   "-5.42",
+   "-6",
+   "close",
+   "stick-slip/bow-change transients; no bow-width/torsion smoothing"
+  ],
+  [
+   "Inharmonicity B median (x1e-4)",
+   "dry",
+   "-0.273",
+   "0.0518",
+   "-0.324",
+   "match",
+   ""
+  ],
+  [
+   "Inharmonicity B median (x1e-4)",
+   "studio",
+   "-0.166",
+   "0.0518",
+   "-0.218",
+   "match",
+   ""
+  ],
+  [
+   "Spectral centroid median",
+   "dry",
+   "384",
+   "1.07e+03",
+   "-682",
+   "wrong",
+   "source brightness vs body/room filtering"
+  ],
+  [
+   "Spectral centroid median",
+   "studio",
+   "519",
+   "1.07e+03",
+   "-547",
+   "close",
+   "source brightness vs body/room filtering"
+  ],
+  [
+   "Spectral rolloff median",
+   "dry",
+   "538",
+   "1.7e+03",
+   "-1.16e+03",
+   "close",
+   "source brightness vs body/room filtering"
+  ],
+  [
+   "Spectral rolloff median",
+   "studio",
+   "603",
+   "1.7e+03",
+   "-1.1e+03",
+   "close",
+   "source brightness vs body/room filtering"
+  ],
+  [
+   "Spectral flatness median",
+   "dry",
+   "2.29e-10",
+   "4.04e-06",
+   "-4.04e-06",
+   "match",
+   ""
+  ],
+  [
+   "Spectral flatness median",
+   "studio",
+   "9.04e-08",
+   "4.04e-06",
+   "-3.95e-06",
+   "match",
+   ""
+  ],
+  [
+   "Spectral flux median",
+   "dry",
+   "0.0333",
+   "0.97",
+   "-0.937",
+   "wrong",
+   "articulation density"
+  ],
+  [
+   "Spectral flux median",
+   "studio",
+   "0.0662",
+   "0.97",
+   "-0.904",
+   "wrong",
+   "articulation density"
+  ],
+  [
+   "Attack rise 10-90% median (ms)",
+   "dry",
+   "37",
+   "140",
+   "-103",
+   "wrong",
+   "bow landing ramps (8-30 ms) vs real bow + room smear"
+  ],
+  [
+   "Attack rise 10-90% median (ms)",
+   "studio",
+   "39.2",
+   "140",
+   "-101",
+   "wrong",
+   "bow landing ramps (8-30 ms) vs real bow + room smear"
+  ],
+  [
+   "Note peak-to-gap depth median (dB)",
+   "dry",
+   "22.1",
+   "11.7",
+   "+10.4",
+   "wrong",
+   "rest damping / reverb fill"
+  ],
+  [
+   "Note peak-to-gap depth median (dB)",
+   "studio",
+   "17",
+   "11.7",
+   "+5.26",
+   "close",
+   "rest damping / reverb fill"
+  ],
+  [
+   "In-note decay slope median (dB/s)",
+   "dry",
+   "-39",
+   "-13",
+   "-25.9",
+   "close",
+   "bounce half-sine envelope, string loss"
+  ],
+  [
+   "In-note decay slope median (dB/s)",
+   "studio",
+   "-34.1",
+   "-13",
+   "-21.1",
+   "close",
+   "bounce half-sine envelope, string loss"
+  ],
+  [
+   "Harmonic/residual energy HPSS (dB)",
+   "dry",
+   "9.94",
+   "8.66",
+   "+1.28",
+   "match",
+   ""
+  ],
+  [
+   "Harmonic/residual energy HPSS (dB)",
+   "studio",
+   "12.9",
+   "8.66",
+   "+4.26",
+   "close",
+   "transient noise; HPSS counts onsets as noise"
+  ],
+  [
+   "Envelope peak near 400-550 Hz present",
+   "dry",
+   "1",
+   "1",
+   "+0",
+   "match",
+   ""
+  ],
+  [
+   "Envelope peak near 400-550 Hz present",
+   "studio",
+   "1",
+   "1",
+   "+0",
+   "match",
+   ""
+  ],
+  [
+   "Envelope peak near 2-3 kHz present",
+   "dry",
+   "1",
+   "0",
+   "+1",
+   "wrong",
+   "no bridge hill"
+  ],
+  [
+   "Envelope peak near 2-3 kHz present",
+   "studio",
+   "0",
+   "0",
+   "+0",
+   "match",
+   ""
+  ],
+  [
+   "Decay T60-equiv from falling envelopes (s)",
+   "dry",
+   "0.329",
+   "0.383",
+   "-0.0537",
+   "match",
+   ""
+  ],
+  [
+   "Decay T60-equiv from falling envelopes (s)",
+   "studio",
+   "0.348",
+   "0.383",
+   "-0.0343",
+   "match",
+   ""
+  ],
+  [
+   "Onset deviation sd vs model timing (ms)",
+   "dry",
+   "4.56",
+   "23.8",
+   "-19.2",
+   "close",
+   "rule-based timing vs real rubato"
+  ],
+  [
+   "Onset deviation sd vs model timing (ms)",
+   "studio",
+   "4.09",
+   "23.8",
+   "-19.7",
+   "close",
+   "rule-based timing vs real rubato"
+  ],
+  [
+   "Onsets detected per s",
+   "dry",
+   "3.24",
+   "11.1",
+   "-7.82",
+   "wrong",
+   "articulation clarity"
+  ],
+  [
+   "Onsets detected per s",
+   "studio",
+   "3.24",
+   "11.1",
+   "-7.82",
+   "wrong",
+   "articulation clarity"
+  ]
+ ]
+}
