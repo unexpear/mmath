@@ -26,8 +26,8 @@ TEST_CASE("Guitar per-mode areas: Perry/Roberts BR2 values, T(1,1)1 opposite pol
   REQUIRE(a.size() == classicalGuitarBodyModes().size());
   REQUIRE(a[0] < 0.0);
   REQUIRE(a[1] > 0.0);
-  // A = Gamma00 * M w / Q, Perry p.106 and Roberts Table 4.3.
+  // A = Gamma00 * m w / Q on this body (Perry p.106, Debut-Antunes mode 1).
   const double tau = 6.283185307179586;
-  REQUIRE_THAT(-a[0], Catch::Matchers::WithinRel(8.4e-3 * 0.292 * tau * 91.4 / 45.0, 0.02));
-  for (std::size_t i = 5; i < a.size(); ++i) REQUIRE_THAT(a[i], Catch::Matchers::WithinRel(0.04 / std::sqrt(3.0), 0.01));
+  REQUIRE_THAT(-a[0], Catch::Matchers::WithinRel(8.4e-3 * 0.40 * tau * 89.4 * 0.03, 0.01));
+  REQUIRE_THAT(a[4], Catch::Matchers::WithinRel(3.0e-3 * 1.06 * tau * 403.5 * 0.011, 0.01));
 }

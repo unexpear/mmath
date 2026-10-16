@@ -233,30 +233,27 @@ inline constexpr std::array<DebutAntunesGuitarMode, 10> kDebutAntunes2020GuitarB
 
 // Per-mode monopole effective area A_n (m^2, signed) for the ten modes
 // above, for SoundboardVoice's per-mode overload: U = sum A_n v_n.
-// Sources (both Cardiff PhD theses, 2015, CC BY-NC-ND, same guitar BR2):
-//  I. A. Perry, "Sound radiation measurements on guitars and other
-//   stringed musical instruments": monopole source strength Gamma_00
-//   (volume velocity per bridge force, m^3 s^-1 N^-1) of BR2 at the bridge,
-//   T(1,1)1 = 8.4e-3 (text p.106-107), T(3,1) = 0.345e-3 at 446 Hz
-//   (Table 5.1, p.137); T(1,1)2 ~7e-3, T(1,2)2 ~3e-3, T(2,1) no monopole
-//   peak (~0.3e-3) read off Fig. 5.7 (p.104), log axis, VERIFY +-20 %.
-//  W. H. Roberts, "Physical modelling of the guitar and banjo": BR2 modal
-//   f0, Q, M_eff, Table 4.3 (p.72); T(1,1)1 and T(1,1)2 of opposite
-//   polarity (p.120); statistical monopole limits +-0.04 m^2 for
-//   0.5-1.5 kHz, Table 7.1 (p.125).
-// At resonance v = F Q/(M w), so A = Gamma_00 * M w / Q (BR2 values):
-//   T(1,1)1 91.4 Hz, Q 45, M 0.292 kg -> A = 8.4e-3 * 3.73  = 0.031 m^2
-//   T(1,1)2 178.6 Hz, Q 46, M 0.102   -> A = 7e-3   * 2.49  = 0.017
-//   T(2,1)  206.5 Hz, Q 56, M 0.423   -> A = 0.3e-3 * 9.80  = 0.003
-//   T(1,2)2 411.3 Hz, Q 45, M 0.319   -> A = 3e-3   * 18.3  = 0.055
-// Modes above 500 Hz: rms of Roberts' uniform +-0.04 m^2 = 0.04/sqrt(3)
-// = 0.023 m^2, sign positive (Roberts draws the sign at random; VERIFY).
-// Mapping Debut-Antunes modes to BR2 mode names by frequency order is
-// VERIFY (different guitars). Mode 4 (310.2 Hz) has no BR2 counterpart
-// with a usable Gamma_00 (BR2 289 Hz has M_eff 2.7 kg, the bridge sits near
-// a node), so it keeps the previous 0.02 m^2: UNSOURCED.
+// Target: the measured monopole source strength Gamma_00 (volume velocity
+// per bridge force, m^3 s^-1 N^-1) of guitar BR2, I. A. Perry, "Sound
+// radiation measurements on guitars and other stringed musical
+// instruments", Cardiff PhD 2015 (CC BY-NC-ND): T(1,1)1 = 8.4e-3 (text
+// p.106-107); other peaks read off Fig. 5.7 (p.104, log axis, VERIFY
+// +-20 %): 176 Hz ~7e-3, 225 Hz ~5e-3, 265 Hz ~1.4e-3, T(1,2)2 410 Hz
+// ~3e-3, peaks 500-1300 Hz ~0.3e-3 (T(3,1) 0.345e-3, Table 5.1 p.137).
+// T(2,1) (208 Hz, p.108) is a monopole dip, not a peak.
+// At resonance v_n = F/r_n, r_n = m_n w_n / Q_n (this file's Debut-Antunes
+// m_n, zeta_n), so A_n = Gamma_00,peak * r_n puts each mode's resonant
+// Gamma_00 at the measured value on this body.
+// Sign: T(1,1)1 opposite to T(1,1)2, W. H. Roberts, Cardiff PhD 2015,
+// p.120 (modal sum p ~ sum_n G00_n Y_n, eq. 7.25, the same form as ours).
+// Check against Fig. 5.7 between the two modes (120 Hz, measured ~1.0e-3):
+// opposite signs give 0.79e-3, equal signs 0.08e-3 (a cancellation dip
+// the measurement does not show). Others positive, Hill et al. 2004 /
+// Roberts convention (strongest radiator positive).
+// Mapping Debut-Antunes mode n to the n-th BR2 monopole peak by frequency
+// order is VERIFY (different guitars).
 inline constexpr std::array<double, 10> kClassicalGuitarBodyModeAreasM2{{
-    -0.031, 0.017, 0.003, 0.020, 0.055, 0.023, 0.023, 0.023, 0.023, 0.023,
+    -0.0566, 0.0234, 0.0185, 0.0228, 0.0887, 0.0084, 0.0198, 0.0097, 0.0066, 0.0153,
 }};
 
 [[nodiscard]] inline std::string formula(const ClassicalGuitar& guitar) {

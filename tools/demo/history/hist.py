@@ -13,9 +13,9 @@ if inst=='violin':
     TG={('/workspace/scores/caprice24v.csv','1.5'):['v29_dry','v38_dry','v29_room','v38_room'],('/workspace/scores/caprice24v.csv','1.61745'):['v41_dry','v42_dry','v43_dry','v44_dry','v41_room','v42_room','v43_room','v44_room']}
     title='Violin check history: ONE diag run for all metrics + trend/cycle + note-to-note, ref vt6/real.wav. Timing row: per-version tempo runs (v29/v38 x1.5, v41-v44 x1.617); v5-v21 tempo unknown -> n/a'
 else:
-    cols=[('old solo q=90 (Oct 14)','g_old'),('solo new q=90','g_new'),('pro1 dry q=72','gp1_dry'),('pro1 studio q=72','gp1_room'),('pro2 dry q=72','gp2_dry'),('pro2 studio q=72','gp2_room'),('pro3 dry q=72','gp3_dry'),('pro3 studio q=72','gp3_room')]
-    real='greal.wav';score='/workspace/gp/guitar72.csv';tempo='1';dur=13;lag=2.5;out='/workspace/guitar-history3.png'
-    TG={('/workspace/scores/guitar.csv','1'):['g_old','g_new'],('/workspace/gp/guitar72.csv','1'):['gp1_dry','gp1_room','gp2_dry','gp2_room','gp3_dry','gp3_room']}
+    cols=[('old solo q=90 (Oct 14)','g_old'),('solo new q=90','g_new'),('pro1 dry q=72','gp1_dry'),('pro1 studio q=72','gp1_room'),('pro2 dry q=72','gp2_dry'),('pro2 studio q=72','gp2_room'),('pro3 dry q=72','gp3_dry'),('pro3 studio q=72','gp3_room'),('pro4 dry q=72','gp4_dry'),('pro4 studio q=72','gp4_room')]
+    real='greal.wav';score='/workspace/gp/guitar72.csv';tempo='1';dur=13;lag=2.5;out='/workspace/guitar-history4.png'
+    TG={('/workspace/scores/guitar.csv','1'):['g_old','g_new'],('/workspace/gp/guitar72.csv','1'):['gp1_dry','gp1_room','gp2_dry','gp2_room','gp3_dry','gp3_room','gp4_dry','gp4_room']}
     title='Guitar check history: ONE diag run + trend/cycle + note-to-note, ref Greeninger CC0 (Romance, 1.9-14.9 s). Timing row: per-version grid (old q=90, pro q=72)'
 args=['python3','/workspace/audiodiag/diag.py','--clip',f'real={real}']+sum([['--clip',f'{k}={k}.wav'] for _,k in cols],[])+['--ref','real','--dur',str(dur),'--score',score,'--tempo',tempo,'--out',f'/tmp/{inst}_hist.pdf','--png-dir',f'/tmp/{inst}_hist']
 o=subprocess.run(args,capture_output=True,text=True).stdout

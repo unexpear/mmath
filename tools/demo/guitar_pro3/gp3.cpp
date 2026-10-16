@@ -1,4 +1,4 @@
-// Guitar pro check 3 harness (gp2 + per-mode body areas, Perry/Roberts 2015). Was gp2:
+// Guitar pro check 3/4 harness (gp2 + per-mode body areas, Perry/Roberts 2015). Was gp2:
 // pluck point from bridge, let-ring). No per-note peak normalisation: each
 // pluck uses the score velocity as displacement amplitude (1e-4 m * vel/127,
 // same scale as solo4). Usage: gp2 score.csv out.f64 totalSeconds [pluckFromBridgeM]
