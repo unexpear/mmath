@@ -1578,3 +1578,11 @@ stick-slip capture still uses rigid ends. Snare wires, shell air, a bass-drum po
 gap are not in the drum kit. A double-slip wolf cycle is not stepped. A
 measured classical-guitar mode table and a fret table are not in this layer. An
 electric-guitar pickup and the other 83 piano keys are not in this layer.
+
+## Caprice 24 demo tempo and metronome (v41)
+
+- Score: Paganini Op.1 No.24, Tema, "Quasi presto", 2/4, no metronome mark (Ricordi first edition, IMSLP https://imslp.org/wiki/24_Caprices_for_Solo_Violin,_Op.1_(Paganini,_Niccol%C3%B2); Mutopia 2015 engraving https://www.mutopiaproject.org/ftp/PaganiniN/O1/Caprice_24/Caprice_24-a4.pdf).
+- Demo tempo: quarter = 115 (Mike's choice). MIDI is 186 (set_tempo 322580 us), so tempoScale = 186/115 = 1.61745. Commons recordings measured ~106-125 (Steinaco PD ~121; Yonemoto CC BY 2.0 ~106-120); estimates, onset detection rough.
+- Rubato (phraseArchDepth) 0 and timing jitter off (vm 5): v37/v38 rubato 0.15 + 2% jitter gave 25 ms onset SD vs grid (73% within 30 ms); steady render 11 ms SD, 99.4% within 30 ms.
+- Metronome: harness overlay `tools/demo/caprice24/metronome.py`, click every 60/115 s, accent per 2/4 bar. Listening aid, not part of the engine sound.
+- Run: `demo41.cmd studio.raw dry.raw 2` (leg25 harness).
