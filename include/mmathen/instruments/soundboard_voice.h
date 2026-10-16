@@ -48,7 +48,33 @@ class SoundboardVoice final : public IVoice {
       std::span<const BodyModeSpec> modes, double radiatingAreaM2,
       double distanceMeters, double airPressurePa, double temperatureKelvin,
       SampleRateHz rate) {
+    if (!std::isfinite(radiatingAreaM2) || !(radiatingAreaM2 > 0.0))
+      return Result<SoundboardVoice, QuantityError>::failure(
+          QuantityError::InvalidArgument);
+    std::vector<double> areas(modes.size(), radiatingAreaM2);
+    return create(course, pluck, loss, modes,
+                  std::span<const double>(areas), distanceMeters,
+                  airPressurePa, temperatureKelvin, rate);
+  }
+
+  // Per-mode effective area A_n (m^2, signed). The pressure is
+  //   p(t) = rho / (4 pi r) * d/dt [ sum_n A_n v_n ](t - r/c),
+  // the monopole volume velocity U = sum A_n v_n of each mode's bridge
+  // velocity v_n. This is the "effective area" (source strength per unit
+  // bridge velocity) of Christensen's A/m, Hill et al. (2004) and Roberts
+  // (2015, Cardiff PhD, Sec. 7.2, eq. 7.25 monopole term). A sign gives the
+  // phase of the mode's volume flow relative to its bridge motion.
+  [[nodiscard]] static Result<SoundboardVoice, QuantityError> create(
+      const StringCourse& course, const Excitation& pluck, LossModel loss,
+      std::span<const BodyModeSpec> modes, std::span<const double> modeAreasM2,
+      double distanceMeters, double airPressurePa, double temperatureKelvin,
+      SampleRateHz rate) {
     using R = Result<SoundboardVoice, QuantityError>;
+    if (modeAreasM2.size() != modes.size())
+      return R::failure(QuantityError::InvalidArgument);
+    for (double a : modeAreasM2)
+      if (!std::isfinite(a)) return R::failure(QuantityError::InvalidArgument);
+    const double radiatingAreaM2 = 1.0;  // areas carried per mode below
     const double fs = rate.value();
     if (!std::isfinite(fs) || !(fs > 0.0) || modes.empty() ||
         !std::isfinite(radiatingAreaM2) || !(radiatingAreaM2 > 0.0) ||
@@ -80,7 +106,8 @@ class SoundboardVoice final : public IVoice {
       const double omega = resonator.value().omega0;
       const double sigma = omega / (2.0 * resonator.value().qualityFactor);
       if (!(sigma < omega)) return R::failure(QuantityError::DomainError);
-      built.push_back(Mode{omega, sigma, resonator.value().modalMassKg, {}});
+      built.push_back(Mode{omega, sigma, resonator.value().modalMassKg,
+                           modeAreasM2[built.size()], {}});
       resonators.push_back(resonator.value());
     }
     auto air = makeAir(TemperatureKelvin{temperatureKelvin});
@@ -148,19 +175,22 @@ class SoundboardVoice final : public IVoice {
       const double force = impedance_ * (velocityIn - velocityOut);
       if (!std::isfinite(force)) return R::failure(QuantityError::RangeError);
       double velocity = 0.0;
+      double volume = 0.0;
       for (Mode& mode : modes_) {
         auto stepped = stepConstantForceOscillator(
             mode.state, mode.omega, mode.sigma, force / mode.mass, dt);
         if (!stepped.ok()) return R::failure(stepped.error());
         mode.state = stepped.value();
         velocity += mode.state.velocity;
+        volume += mode.area * mode.state.velocity;
       }
       if (!std::isfinite(velocity)) return R::failure(QuantityError::RangeError);
-      const double acceleration = (velocity - previousVelocity_) * fs;
+      const double acceleration = (volume - previousVolume_) * fs;
       bridgeDisplacement_ += velocity * dt;
       previousArrival_ = arrival;
       previousOutgoing_ = outgoing;
       previousVelocity_ = velocity;
+      previousVolume_ = volume;
       const double delayed = radiation_[radiationPos_];
       radiation_[radiationPos_] = acceleration;
       radiationPos_ = (radiationPos_ + 1) % radiation_.size();
@@ -175,6 +205,7 @@ class SoundboardVoice final : public IVoice {
     previousArrival_ = 0.0;
     previousOutgoing_ = 0.0;
     previousVelocity_ = 0.0;
+    previousVolume_ = 0.0;
     for (Mode& mode : modes_) mode.state = {};
     std::fill(radiation_.begin(), radiation_.end(), 0.0);
     radiationPos_ = 0;
@@ -196,6 +227,7 @@ class SoundboardVoice final : public IVoice {
     double omega = 0.0;
     double sigma = 0.0;
     double mass = 0.0;
+    double area = 0.0;
     OscillatorState state;
   };
 
@@ -221,6 +253,7 @@ class SoundboardVoice final : public IVoice {
   double previousArrival_ = 0.0;
   double previousOutgoing_ = 0.0;
   double previousVelocity_ = 0.0;
+  double previousVolume_ = 0.0;
   std::vector<Mode> modes_;
   std::vector<double> radiation_;
   std::size_t radiationPos_ = 0;

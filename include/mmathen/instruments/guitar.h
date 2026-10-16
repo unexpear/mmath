@@ -208,10 +208,7 @@ tuneClassicalGuitarString(const ClassicalGuitar& guitar,
 // bridge. Q = 1/(2 zeta) is the standard relation for light damping, so
 // zeta = 1.5 % gives Q = 33.3. These are the modes of one measured
 // instrument, not of the Yamaha C40II whose scale is stored above.
-// The bridge-to-listener radiation weighting is UNSOURCED: SoundboardVoice
-// radiates the summed bridge acceleration through one caller-supplied
-// area, the same for every mode. No per-mode radiation efficiency is
-// published here.
+// Per-mode radiation: see kClassicalGuitarBodyModeAreasM2 below.
 struct DebutAntunesGuitarMode {
   double frequencyHz;
   double dampingPercent;
@@ -233,6 +230,34 @@ inline constexpr std::array<DebutAntunesGuitarMode, 10> kDebutAntunes2020GuitarB
   }
   return modes;
 }
+
+// Per-mode monopole effective area A_n (m^2, signed) for the ten modes
+// above, for SoundboardVoice's per-mode overload: U = sum A_n v_n.
+// Sources (both Cardiff PhD theses, 2015, CC BY-NC-ND, same guitar BR2):
+//  I. A. Perry, "Sound radiation measurements on guitars and other
+//   stringed musical instruments": monopole source strength Gamma_00
+//   (volume velocity per bridge force, m^3 s^-1 N^-1) of BR2 at the bridge,
+//   T(1,1)1 = 8.4e-3 (text p.106-107), T(3,1) = 0.345e-3 at 446 Hz
+//   (Table 5.1, p.137); T(1,1)2 ~7e-3, T(1,2)2 ~3e-3, T(2,1) no monopole
+//   peak (~0.3e-3) read off Fig. 5.7 (p.104), log axis, VERIFY +-20 %.
+//  W. H. Roberts, "Physical modelling of the guitar and banjo": BR2 modal
+//   f0, Q, M_eff, Table 4.3 (p.72); T(1,1)1 and T(1,1)2 of opposite
+//   polarity (p.120); statistical monopole limits +-0.04 m^2 for
+//   0.5-1.5 kHz, Table 7.1 (p.125).
+// At resonance v = F Q/(M w), so A = Gamma_00 * M w / Q (BR2 values):
+//   T(1,1)1 91.4 Hz, Q 45, M 0.292 kg -> A = 8.4e-3 * 3.73  = 0.031 m^2
+//   T(1,1)2 178.6 Hz, Q 46, M 0.102   -> A = 7e-3   * 2.49  = 0.017
+//   T(2,1)  206.5 Hz, Q 56, M 0.423   -> A = 0.3e-3 * 9.80  = 0.003
+//   T(1,2)2 411.3 Hz, Q 45, M 0.319   -> A = 3e-3   * 18.3  = 0.055
+// Modes above 500 Hz: rms of Roberts' uniform +-0.04 m^2 = 0.04/sqrt(3)
+// = 0.023 m^2, sign positive (Roberts draws the sign at random; VERIFY).
+// Mapping Debut-Antunes modes to BR2 mode names by frequency order is
+// VERIFY (different guitars). Mode 4 (310.2 Hz) has no BR2 counterpart
+// with a usable Gamma_00 (BR2 289 Hz has M_eff 2.7 kg, the bridge sits near
+// a node), so it keeps the previous 0.02 m^2: UNSOURCED.
+inline constexpr std::array<double, 10> kClassicalGuitarBodyModeAreasM2{{
+    -0.031, 0.017, 0.003, 0.020, 0.055, 0.023, 0.023, 0.023, 0.023, 0.023,
+}};
 
 [[nodiscard]] inline std::string formula(const ClassicalGuitar& guitar) {
   std::string text = guitar.name == nullptr ? std::string{}
