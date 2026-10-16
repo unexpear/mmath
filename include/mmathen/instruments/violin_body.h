@@ -20,8 +20,9 @@
 
 namespace mmathen {
 
-inline constexpr double kViolinBridgeRockingHz = 2900.0;  // Woodhouse euphonics 7.5 fit (one violin)
-// Hill damping from Woodhouse 2005 eq. (19): zeta_b = Re(R_inf) * I * Omega_b / 2, with the rotational body admittance Re(R_inf) ~ 100 rad m^-1 s^-1 N^-1 (Woodhouse 2005, value used for a ~2.5 kHz hill) and bridge moment of inertia I = 4.3e-7 kg m^2 (euphonics 7.5 fit). Q = 1/(2 zeta_b) ~ 1.28.
+// Measured bridge-hill maximum ~2.5 kHz: E. V. Jansson, "Violin quality and bridge mobility", JASA 105, 1999 (Stradivarius; soloist violins, Acustica 83, 337-341, 1997). Woodhouse euphonics 7.5 example fit was 2.9 kHz (one violin).
+inline constexpr double kViolinBridgeRockingHz = 2500.0;  // Jansson 1997/1999 measured
+// Hill damping from Woodhouse 2005 eq. (19): zeta_b = Re(R_inf) * I * Omega_b / 2, with the rotational body admittance Re(R_inf) ~ 100 rad m^-1 s^-1 N^-1 (Woodhouse 2005, value used for a ~2.5 kHz hill) and bridge moment of inertia I = 4.3e-7 kg m^2 (euphonics 7.5 fit). Q = 1/(2 zeta_b) ~ 1.48 at 2.5 kHz (1.28 at the old 2.9 kHz).
 inline constexpr double kWoodhouseRotationalAdmittance = 100.0;   // Woodhouse 2005 (Acta Acustica 91)
 inline constexpr double kViolinBridgeInertiaKgM2 = 4.3e-7;          // euphonics 7.5 fit
 [[nodiscard]] inline double violinBridgeHillQ(double rockingHz = kViolinBridgeRockingHz) {
