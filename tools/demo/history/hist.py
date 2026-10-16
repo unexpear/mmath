@@ -7,11 +7,11 @@ from scipy.ndimage import uniform_filter1d
 import matplotlib;matplotlib.use('Agg');import matplotlib.pyplot as plt
 inst=sys.argv[1]
 if inst=='violin':
-    C=[('v5','v5'),('v10','v10'),('v19','v19'),('v20','v20'),('v21','v21'),('v29','v29'),('v37/38','v38'),('v41','v41'),('v42','v42')]
+    C=[('v5','v5'),('v10','v10'),('v19','v19'),('v20','v20'),('v21','v21'),('v29','v29'),('v37/38','v38'),('v41','v41'),('v42','v42'),('v43','v43')]
     cols=[(f'{n} dry',f'{k}_dry') for n,k in C]+[(f'{n} studio',f'{k}_room') for n,k in C]
-    real='vreal.wav';score='/workspace/scores/caprice24v.csv';tempo='1.5';dur=15;lag=1.95;out='/workspace/violin-history42.png'
-    TG={('/workspace/scores/caprice24v.csv','1.5'):['v29_dry','v38_dry','v29_room','v38_room'],('/workspace/scores/caprice24v.csv','1.61745'):['v41_dry','v42_dry','v41_room','v42_room']}
-    title='Violin check history: ONE diag run for all metrics + trend/cycle + note-to-note, ref vt6/real.wav. Timing row: per-version tempo runs (v29/v38 x1.5, v41/v42 x1.617); v5-v21 tempo unknown -> n/a'
+    real='vreal.wav';score='/workspace/scores/caprice24v.csv';tempo='1.5';dur=15;lag=1.95;out='/workspace/violin-history43.png'
+    TG={('/workspace/scores/caprice24v.csv','1.5'):['v29_dry','v38_dry','v29_room','v38_room'],('/workspace/scores/caprice24v.csv','1.61745'):['v41_dry','v42_dry','v43_dry','v41_room','v42_room','v43_room']}
+    title='Violin check history: ONE diag run for all metrics + trend/cycle + note-to-note, ref vt6/real.wav. Timing row: per-version tempo runs (v29/v38 x1.5, v41-v43 x1.617); v5-v21 tempo unknown -> n/a'
 else:
     cols=[('old solo q=90 (Oct 14)','g_old'),('solo new q=90','g_new'),('pro1 dry q=72','gp1_dry'),('pro1 studio q=72','gp1_room'),('pro2 dry q=72','gp2_dry'),('pro2 studio q=72','gp2_room')]
     real='greal.wav';score='/workspace/gp/guitar72.csv';tempo='1';dur=13;lag=2.5;out='/workspace/guitar-history2.png'
