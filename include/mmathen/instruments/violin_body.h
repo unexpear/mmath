@@ -30,6 +30,17 @@ inline constexpr double kViolinBridgeInertiaKgM2 = 4.3e-7;          // euphonics
   return 1.0 / (2.0 * zeta);
 }
 inline const double kViolinBridgeHillQ = violinBridgeHillQ();
+// Hill height. Woodhouse 2005 (Acta Acustica 91, 155-165) Fig. 2, the
+// measured bowing-direction input admittance of a violin bridge, digitised
+// (upper envelope of the trace, 200 Hz-8 kHz; VERIFY +-2 dB): band power
+// 2-3 kHz re 0.5-1.5 kHz = +0.4 dB. Jansson (KTH "Acoustics for violin and
+// guitar makers" ch. 7, 25 soloist violins): "the BH maximum is level with
+// the P1 peak", consistent. The plain rocking low-pass (gain Q at f0) plus
+// this chain's signature modes gives -5.2 dB on the same measure, so the
+// hill carries an extra band-pass term (same f0, same Q) with gain
+// (G - 1); G = 3.6 makes the filter chain BridgeHill * SignatureModes match
+// +0.4 dB (computed offline from the filter formulas, tests below).
+inline constexpr double kViolinBridgeHillGain = 3.6;  // fitted to Woodhouse 2005 Fig. 2 digitised, VERIFY
 inline constexpr double kViolinBridgeEffectiveMassKg = 1.2e-3;  // Jansson bridge-tuning paper (estimate)
 
 // Rayleigh Helmholtz frequency with end-corrected neck length.
@@ -40,14 +51,17 @@ inline constexpr double kViolinBridgeEffectiveMassKg = 1.2e-3;  // Jansson bridg
 }
 
 // Second-order bridge-hill transfer (string force -> body force), bilinear
-// with prewarping at the resonance. Unity gain at DC.
+// with prewarping at the resonance. Unity gain at DC; |H(f0)| = hypot(Q, G-1).
 class BridgeHillFilter {
  public:
-  BridgeHillFilter(double sampleRate, double rockingHz = kViolinBridgeRockingHz, double q = kViolinBridgeHillQ) {
+  BridgeHillFilter(double sampleRate, double rockingHz = kViolinBridgeRockingHz, double q = kViolinBridgeHillQ,
+                   double hillGain = kViolinBridgeHillGain) {
     const double w = constants::twoPi * rockingHz;
     const double k = w / std::tan(w / (2.0 * sampleRate));
     const double a0 = k * k + k * w / q + w * w;
-    b0_ = w * w / a0; b1_ = 2.0 * b0_; b2_ = b0_;
+    // low-pass w^2 + (G-1) band-pass k w/q over the same denominator
+    const double bp = (hillGain - 1.0) * k * w / q / a0;
+    b0_ = w * w / a0 + bp; b1_ = 2.0 * w * w / a0; b2_ = w * w / a0 - bp;
     a1_ = (2.0 * w * w - 2.0 * k * k) / a0;
     a2_ = (k * k - k * w / q + w * w) / a0;
   }

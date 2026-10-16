@@ -86,4 +86,28 @@ inline constexpr double kClassicalGuitarRoundPluckFromBridgeM = 0.13;  // Traube
   return out;
 }
 
+// Bass damping. Classical-guitar practice: when the bass moves to a
+// different bass string, the previous bass note is damped as (or right
+// after) the new one is played: thumb rest stroke onto the higher
+// adjacent string, back of the thumb, or a left-hand finger, so bass notes
+// do not overlap. D. Niedt, "String Damping" parts 1-4 (douglasniedt.com,
+// part 3: "with this technique there is no overlap of the two notes";
+// Right-Hand Thumb Technique: the thumb "frequently damps bass strings
+// that, if allowed to ring, would muddy the harmony or bass line").
+// Rule: a note on a bass string (4, 5, 6) ends at the next onset on any
+// bass string. Treble strings keep let-ring. Which strings count as bass
+// (4-6) is the usual thumb assignment (p plays 4-6), VERIFY per piece.
+inline constexpr int kClassicalGuitarFirstBassString = 4;
+[[nodiscard]] inline std::vector<double> letRingEndsBassDamped(const std::vector<double>& onsetSeconds,
+                                                               const std::vector<int>& stringNumber, double endSeconds,
+                                                               int firstBassString = kClassicalGuitarFirstBassString) {
+  std::vector<double> out = letRingEnds(onsetSeconds, stringNumber, endSeconds);
+  for (std::size_t i = 0; i < onsetSeconds.size(); ++i) {
+    if (stringNumber[i] < firstBassString) continue;
+    for (std::size_t j = i + 1; j < onsetSeconds.size(); ++j)
+      if (stringNumber[j] >= firstBassString && onsetSeconds[j] > onsetSeconds[i]) { out[i] = std::min(out[i], onsetSeconds[j]); break; }
+  }
+  return out;
+}
+
 }  // namespace mmathen

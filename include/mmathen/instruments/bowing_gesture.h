@@ -11,7 +11,7 @@
 //  - Helmholtz amplitude ~ v / beta (Cremer, "Physics of the Violin", ch. 3),
 //    so the level change in dB is split between speed and beta.
 // UNSOURCED (marked): the 0.6/0.4 speed/beta split of the level change, the
-// force fraction 0.15-0.35 of Schelleng's maximum, and the contact-point
+// geometric force interpolation p->f, the 0.9 Schelleng cap, and the contact-point
 // drift (seeded Ornstein-Uhlenbeck, tau 1.5 s, 8 % of beta) that varies on
 // its own timescale independent of dynamics.
 #include <algorithm>
@@ -24,8 +24,20 @@ namespace mmathen {
 
 struct BowingGestureParams {
   double speedPiano = 0.08, speedForte = 0.5;           // m/s, Askenfelt 1989 range VERIFY
-  double betaPiano = 0.16, betaForte = 0.07;            // Schoonderwaldt & Demoucron 2009 range VERIFY
-  double forceFracPiano = 0.15, forceFracForte = 0.35;  // of Schelleng max, UNSOURCED
+  // Measured detache on a violin: bow-bridge distance 30-50 mm piano,
+  // 20-30 mm mezzo, 10-20 mm forte; bow force ~0.5 N piano rising to ~2 N
+  // forte. A. Askenfelt, "Measurement of the bowing parameters in violin
+  // playing", STL-QPSR 29(1), 1-30 (1988), sec. 1 / Fig. 3 (open G, two
+  // players); also JASA 86, 503 (1989). beta = distance / 325 mm string
+  // (standard violin vibrating length): 40 mm -> 0.123, 15 mm -> 0.046
+  // (mid-range values).
+  double betaPiano = 0.123, betaForte = 0.046;          // Askenfelt 1988 measured
+  double forceNewtonsPiano = 0.5, forceNewtonsForte = 2.0;  // Askenfelt 1988 measured
+  // The model's Helmholtz motion needs F below Schelleng's maximum; the
+  // measured force is capped at this fraction of it (players stay inside
+  // the playable range, Askenfelt 1989 "safety margins"). 0.9 UNSOURCED.
+  double forceCapOfSchellengMax = 0.9;
+  double forceFracPiano = 0.15, forceFracForte = 0.35;  // legacy, used only if forceNewtons* <= 0; UNSOURCED
   double speedShare = 0.6;                              // UNSOURCED
   double driftTauSeconds = 1.5, driftFraction = 0.08;   // UNSOURCED
   // Contact point follows the dynamic with a lag (players move the bow
@@ -56,8 +68,14 @@ class BowingGestureModel {
     drift_ = a * drift_ + std::sqrt(1.0 - a * a) * p_.driftFraction * gauss();
     beta = std::clamp(beta * (1.0 + drift_), 0.04, 0.25);
     BowStroke s = violinBowStroke(course, beta, speed);
-    const double frac = p_.forceFracPiano + d * (p_.forceFracForte - p_.forceFracPiano);
-    s.normalForceNewtons *= frac / kViolinBowForceFraction;
+    if (p_.forceNewtonsPiano > 0.0 && p_.forceNewtonsForte > 0.0) {
+      const double maxF = s.normalForceNewtons / kViolinBowForceFraction;
+      const double f = p_.forceNewtonsPiano * std::pow(p_.forceNewtonsForte / p_.forceNewtonsPiano, d);
+      s.normalForceNewtons = std::min(f, p_.forceCapOfSchellengMax * maxF);
+    } else {
+      const double frac = p_.forceFracPiano + d * (p_.forceFracForte - p_.forceFracPiano);
+      s.normalForceNewtons *= frac / kViolinBowForceFraction;
+    }
     return s;
   }
   double drift() const noexcept { return drift_; }

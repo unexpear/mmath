@@ -256,6 +256,36 @@ inline constexpr std::array<double, 10> kClassicalGuitarBodyModeAreasM2{{
     -0.0566, 0.0234, 0.0185, 0.0228, 0.0887, 0.0084, 0.0198, 0.0097, 0.0066, 0.0153,
 }};
 
+// Composite body with the measured BR2 low modes. W. H. Roberts, Cardiff
+// PhD 2015, Table 4.3 (p.72): the lowest eight modes of classical guitar
+// BR2 (f0, Q, M_eff at the bridge). Debut-Antunes has nothing between 230
+// and 310 Hz, where BR2 has 257.7 and 288.9 Hz modes; with them the
+// model's monopole at 270-300 Hz moves from 0.2-0.3e-3 to 0.7-0.9e-3
+// m^3/s/N against Perry's measured 1.0-1.4e-3 (Fig. 5.7, same guitar).
+// Below 500 Hz: BR2 (radiation and admittance from one instrument).
+// From 500 Hz: Debut-Antunes modes 6-10 (Roberts measured only to 411 Hz).
+// Areas: Gamma_00 peak (Perry Fig. 5.7 / p.106, read at each BR2 mode,
+// VERIFY +-20 %) x r_n = M w / Q; 206.5 Hz is T(2,1), the monopole dip
+// (~0.2e-3). Signs as kClassicalGuitarBodyModeAreasM2.
+struct Roberts2015GuitarMode { double frequencyHz; double q; double effectiveMassKg; };
+inline constexpr std::array<Roberts2015GuitarMode, 8> kRoberts2015BR2GuitarBody{{
+    {91.4, 45, 0.292}, {178.6, 46, 0.102}, {206.5, 56, 0.423}, {224.1, 31, 0.645},
+    {257.7, 29, 1.120}, {288.9, 23, 2.705}, {359.2, 58, 1.016}, {411.3, 45, 0.319},
+}};
+inline constexpr std::array<double, 13> kClassicalGuitarBR2CompositeAreasM2{{
+    -0.0313, 0.0174, 0.0020, 0.1465, 0.0938, 0.2135, 0.0237, 0.0550, 0.0084, 0.0198, 0.0097, 0.0066, 0.0153,
+}};
+[[nodiscard]] inline std::array<BodyModeSpec, 13> classicalGuitarBR2CompositeBodyModes() {
+  std::array<BodyModeSpec, 13> modes{};
+  for (std::size_t i = 0; i < 8; ++i) {
+    const auto& r = kRoberts2015BR2GuitarBody[i];
+    modes[i] = BodyModeSpec{r.frequencyHz, r.q, r.effectiveMassKg};
+  }
+  const auto debut = classicalGuitarBodyModes();
+  for (std::size_t i = 0; i < 5; ++i) modes[8 + i] = debut[5 + i];
+  return modes;
+}
+
 [[nodiscard]] inline std::string formula(const ClassicalGuitar& guitar) {
   std::string text = guitar.name == nullptr ? std::string{}
                                             : std::string{guitar.name};

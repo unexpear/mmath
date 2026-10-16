@@ -1422,7 +1422,7 @@ TEST_CASE("violin bridge hill: peak near rocking frequency, -12 dB/oct above", "
   };
   CHECK(std::abs(mag(100.0)) < 0.1);
   CHECK(std::abs(kViolinBridgeHillQ - 1.48) < 0.02);  // Woodhouse 2005 eq. 19 at 2.5 kHz (Jansson hill)
-  CHECK(std::abs(mag(kViolinBridgeRockingHz) - 20 * std::log10(kViolinBridgeHillQ)) < 0.5);
+  CHECK(std::abs(mag(kViolinBridgeRockingHz) - 20 * std::log10(std::hypot(kViolinBridgeHillQ, kViolinBridgeHillGain - 1.0))) < 0.5);
   const double d = mag(8000.0) - mag(16000.0);
   CHECK(d > 9.0);                               // ~12 dB/octave rolloff
   // Rayleigh A0 for a 2 l cavity, 2 x 6 cm^2 holes, 2.5 cm effective length -> a few hundred Hz
@@ -1498,6 +1498,8 @@ TEST_CASE("bowing gesture: louder = faster, closer, more force, inside Schelleng
     CHECK(s.normalForceNewtons < 2 * Z * s.speedMetersPerSecond / (s.bridgeFraction * (s.friction.staticCoefficient - s.friction.slidingCoefficient)));
   }
   CHECK(20 * std::log10((ff.speedMetersPerSecond / ff.bridgeFraction) / (pp.speedMetersPerSecond / pp.bridgeFraction)) > 0);
+  // Askenfelt 1988: piano force 0.5 N where Schelleng allows it
+  CHECK(pp.normalForceNewtons <= 0.5 + 1e-12);
 }
 
 #include "mmathen/music/performance_dynamics.h"

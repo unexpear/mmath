@@ -31,3 +31,15 @@ TEST_CASE("Guitar per-mode areas: Perry/Roberts BR2 values, T(1,1)1 opposite pol
   REQUIRE_THAT(-a[0], Catch::Matchers::WithinRel(8.4e-3 * 0.40 * tau * 89.4 * 0.03, 0.01));
   REQUIRE_THAT(a[4], Catch::Matchers::WithinRel(3.0e-3 * 1.06 * tau * 403.5 * 0.011, 0.01));
 }
+TEST_CASE("Bass damping: bass note ends at next bass-string onset, treble lets ring") {
+  // strings: 6 (bass), 2 (treble), 5 (bass), 6
+  auto e = letRingEndsBassDamped({0.0, 0.5, 1.0, 2.0}, {6, 2, 5, 6}, 3.0);
+  REQUIRE(e[0] == 1.0); REQUIRE(e[1] == 3.0); REQUIRE(e[2] == 2.0); REQUIRE(e[3] == 3.0);
+}
+TEST_CASE("BR2 composite body: Roberts Table 4.3 below 500 Hz, Debut above") {
+  const auto m = classicalGuitarBR2CompositeBodyModes();
+  REQUIRE(m[4].resonanceHz == 257.7); REQUIRE(m[5].modalMassKg == 2.705);
+  REQUIRE(m[8].resonanceHz == 511.4);
+  REQUIRE(kClassicalGuitarBR2CompositeAreasM2[0] < 0.0);
+  for (std::size_t i = 1; i < m.size(); ++i) REQUIRE(m[i].resonanceHz > m[i - 1].resonanceHz);
+}
