@@ -7,14 +7,16 @@ from scipy.ndimage import uniform_filter1d
 import matplotlib;matplotlib.use('Agg');import matplotlib.pyplot as plt
 inst=sys.argv[1]
 if inst=='violin':
-    C=[('v5','v5'),('v10','v10'),('v19','v19'),('v20','v20'),('v21','v21'),('v29','v29'),('v37/38','v38'),('v41','v41')]
+    C=[('v5','v5'),('v10','v10'),('v19','v19'),('v20','v20'),('v21','v21'),('v29','v29'),('v37/38','v38'),('v41','v41'),('v42','v42')]
     cols=[(f'{n} dry',f'{k}_dry') for n,k in C]+[(f'{n} studio',f'{k}_room') for n,k in C]
-    real='vreal.wav';score='/workspace/scores/caprice24v.csv';tempo='1.5';dur=15;lag=1.95;out='/workspace/violin-history41.png'
-    title='Violin check history: ONE run, current diag.py + trend/cycle + note-to-note, ref vt6/real.wav (timing grid = tempo 1.5, no arch: exact for v41 only after x1.078; see report)'
+    real='vreal.wav';score='/workspace/scores/caprice24v.csv';tempo='1.5';dur=15;lag=1.95;out='/workspace/violin-history42.png'
+    TG={('/workspace/scores/caprice24v.csv','1.5'):['v29_dry','v38_dry','v29_room','v38_room'],('/workspace/scores/caprice24v.csv','1.61745'):['v41_dry','v42_dry','v41_room','v42_room']}
+    title='Violin check history: ONE diag run for all metrics + trend/cycle + note-to-note, ref vt6/real.wav. Timing row: per-version tempo runs (v29/v38 x1.5, v41/v42 x1.617); v5-v21 tempo unknown -> n/a'
 else:
-    cols=[('old solo q=90 (Oct 14)','g_old'),('solo new q=90','g_new'),('pro1 dry q=72','gp1_dry'),('pro1 studio q=72','gp1_room')]
-    real='greal.wav';score='/workspace/gp/guitar72.csv';tempo='1';dur=13;lag=2.5;out='/workspace/guitar-history1.png'
-    title='Guitar check history: ONE run, current diag.py + trend/cycle + note-to-note, ref Greeninger CC0 (Romance, 1.9-14.9 s). Timing grid q=72 (old q=90 clips: timing n/a)'
+    cols=[('old solo q=90 (Oct 14)','g_old'),('solo new q=90','g_new'),('pro1 dry q=72','gp1_dry'),('pro1 studio q=72','gp1_room'),('pro2 dry q=72','gp2_dry'),('pro2 studio q=72','gp2_room')]
+    real='greal.wav';score='/workspace/gp/guitar72.csv';tempo='1';dur=13;lag=2.5;out='/workspace/guitar-history2.png'
+    TG={('/workspace/scores/guitar.csv','1'):['g_old','g_new'],('/workspace/gp/guitar72.csv','1'):['gp1_dry','gp1_room','gp2_dry','gp2_room']}
+    title='Guitar check history: ONE diag run + trend/cycle + note-to-note, ref Greeninger CC0 (Romance, 1.9-14.9 s). Timing row: per-version grid (old q=90, pro q=72)'
 args=['python3','/workspace/audiodiag/diag.py','--clip',f'real={real}']+sum([['--clip',f'{k}={k}.wav'] for _,k in cols],[])+['--ref','real','--dur',str(dur),'--score',score,'--tempo',tempo,'--out',f'/tmp/{inst}_hist.pdf','--png-dir',f'/tmp/{inst}_hist']
 o=subprocess.run(args,capture_output=True,text=True).stdout
 D={}
@@ -33,6 +35,14 @@ def extra(p):
     seg=x[:];P=np.abs(librosa.stft(seg.astype(np.float32),n_fft=4096))**2;f=librosa.fft_frequencies(sr=fs,n_fft=4096);P=P.sum(1)
     share=100*P[(f>=400)&(f<500)].sum()/P[(f>=100)&(f<10000)].sum()
     return {'LU range (rep.lu, 0.4 s)':lu(x,fs),'3 s loudness std (dB)':s.std(),f'Loudness cycle ac @{lag} s':a[int(round(lag/0.05))],'Trend span, 4 s-smoothed (dB)':np.ptp(Ls[k]),'Note-to-note level std (dB)':np.std(np.diff(Lv)),'400-500 Hz energy share (%)':share}
+TM='Onset deviation sd vs model timing (ms)'
+for (sc,tp),ks in TG.items():
+    a2=['python3','/workspace/audiodiag/diag.py','--clip',f'real={real}']+sum([['--clip',f'{k}={k}.wav'] for k in ks],[])+['--ref','real','--dur',str(dur),'--score',sc,'--tempo',tp,'--out',f'/tmp/t_{inst}.pdf','--png-dir',f'/tmp/t_{inst}']
+    for l in subprocess.run(a2,capture_output=True,text=True).stdout.splitlines():
+        q=l.split(' | ')
+        if len(q)>=6 and q[0]==TM and q[1] in ks: D[(q[0],q[1])]=(q[2],q[3],q[5])
+for _,k in cols:
+    if not any(k in v for v in TG.values()): D.pop((TM,k),None)
 E={k:extra(f'{k}.wav') for k in ['real']+[k for _,k in cols] if k!='real'} ;E['real']=extra(real)
 def band(v,r,m=''):
     if 'cycle' in m and np.isfinite(v): d=abs(v-r); return '#9be59b' if d<=0.1 else '#ffe08a' if d<=0.25 else '#ff9b9b'
