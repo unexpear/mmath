@@ -45,7 +45,7 @@ void push(std::vector<PhraseNote>& notes, const ScoreNote& src, double start, do
 }
 // Sweep overrides (harness only): WP_P scales the blowing pressure,
 // WP_AIM the flute jet aim (thicknesses), WP_TURB the reed/jet turbulence,
-// WP_CUT the reflection corner (Hz); WP_WFIT 0/1 clarinet wall fit; trumpet: WP_BRASS brassiness, WP_LIPR lip/partial ratio.
+// WP_CUT the reflection corner (Hz); flute: WP_RMAG reflection magnitude, WP_FWFIT 0/1 wall fit; WP_WFIT 0/1 clarinet wall fit; trumpet: WP_BRASS brassiness, WP_LIPR lip/partial ratio.
 double env(const char* k, double d) { const char* v = std::getenv(k); return v ? std::atof(v) : d; }
 double total(const std::vector<ScoreNote>& s) { double t = 0; for (auto& n : s) t += n.seconds; return t; }
 int main(int argc, char** argv) {
@@ -85,8 +85,8 @@ int main(int argc, char** argv) {
     FluteSpec spec{longest * 1.04, 2.8e-4, kAir, kTemp, 1.2e-5, thickness, span, sigma};
     auto fl = U(makeFlute(spec));
     auto pressureFor = [&](double f) { const double v = 2.0 * span * f / sigma; return 0.5 * fl.airDensityKgPerM3 * v * v; };
-    ValveBlow jet = sustained(pressureFor(lowest) * 0.5, 1800.0, kFluteAttack); jet.frames = (std::uint64_t)std::llround(T * kFs);
-    jet.reflectionMagnitude = 0.985; jet.initialDisplacementMeters = 0.0; jet.jetAimMeters = env("WP_AIM", 0.40) * thickness; jet.reflectionCutoffHz = env("WP_CUT", 1800.0);
+    ValveBlow jet = sustained(pressureFor(lowest) * 0.5, kFluteReflectionCutoffHz, kFluteAttack); jet.frames = (std::uint64_t)std::llround(T * kFs);
+    jet.reflectionMagnitude = env("WP_RMAG", 0.985); jet.wallFitFundamental = env("WP_FWFIT", 0.0) > 0.5; jet.initialDisplacementMeters = 0.0; jet.jetAimMeters = env("WP_AIM", kFluteJetAimFraction) * thickness; jet.reflectionCutoffHz = env("WP_CUT", kFluteReflectionCutoffHz);
     jet.jetNoiseMeters = 0.035 * thickness; jet.reedTurbulence = env("WP_TURB", kFluteJetTurbulence);
     jet.lockedBreathFraction = kFluteLockedBreathFraction; jet.endCorrectionMeters = end;
     auto voice = U(BoreValveVoice::fromFlute(fl, jet, kRate));

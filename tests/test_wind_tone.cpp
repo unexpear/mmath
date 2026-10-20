@@ -1564,13 +1564,13 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // argument: 0.40 left the 200 Hzâ€“6 kHz median under âˆ’50 dB, and 0.48
   // still read âˆ’50.4 dB on the written file once partial peaks were
   // interpolated. The fraction is not a measured jet-noise ratio.
-  ValveBlow jet = sustained(overpressure, 1800.0, kFluteAttack);
+  ValveBlow jet = sustained(overpressure, kFluteReflectionCutoffHz, kFluteAttack);
   jet.reflectionMagnitude = 0.985;
   // The standing wave grows from the jet noise. A half-thickness
   // initial deflection was already a periodic jet, and the pressure
   // ramp then faded that tone in.
   jet.initialDisplacementMeters = 0.0;
-  jet.jetAimMeters = 0.40 * thickness;
+  jet.jetAimMeters = kFluteJetAimFraction * thickness;
   jet.jetNoiseMeters = 0.035 * thickness;
   jet.reedTurbulence = kFluteJetTurbulence;
   jet.lockedBreathFraction = kFluteLockedBreathFraction;  // see the song flute: Iowa MIS reference
@@ -1750,8 +1750,10 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // under âˆ’30 dB. The 1800 Hz corner reaches a limit cycle about 21 dB
   // louder; the last decibel of that growth lands near 300 ms.
   // Terrien's 10â€“30 ms is the significant rise, not this hold.
+  // Winds pro4 aim 1.00 / 3000 Hz (kFluteJetAimFraction) holds at 440 ms;
+  // the excerpt's 10-90% attack reads 105 ms against 137.5 recorded.
   CHECK(fluteMs > 20.0);
-  CHECK(fluteMs < 420.0);
+  CHECK(fluteMs < 500.0);
   // The 1 dB hold is later than the pressure rise. Trumpet measured
   // 80 ms on a 40 ms rise with the lip free; the old 25 ms snap held
   // near 60 ms. Trombone measured 345 ms on the 128 ms rise. The wider
@@ -1977,11 +1979,11 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     // is sized from the construction pressure, so that pressure is half
     // the lowest note's, which is a longer delay than the dip.
     const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
-    ValveBlow jet = sustained(pressureFor(lowest) * 0.50, 1800.0, kFluteAttack);
+    ValveBlow jet = sustained(pressureFor(lowest) * 0.50, kFluteReflectionCutoffHz, kFluteAttack);
     jet.frames = frames;
     jet.reflectionMagnitude = 0.985;
     jet.initialDisplacementMeters = 0.0;
-    jet.jetAimMeters = 0.40 * thickness;
+    jet.jetAimMeters = kFluteJetAimFraction * thickness;
     jet.jetNoiseMeters = 0.035 * thickness;
     jet.reedTurbulence = kFluteJetTurbulence;
     // Locked breath 0.063 = 0.56 less 19 dB: at 0.56 the songs read a
@@ -2201,11 +2203,11 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     // is sized from the construction pressure, so that pressure is half
     // the lowest note's, which is a longer delay than the dip.
     const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
-    ValveBlow jet = sustained(pressureFor(lowest) * 0.50, 1800.0, kFluteAttack);
+    ValveBlow jet = sustained(pressureFor(lowest) * 0.50, kFluteReflectionCutoffHz, kFluteAttack);
     jet.frames = frames;
     jet.reflectionMagnitude = 0.985;
     jet.initialDisplacementMeters = 0.0;
-    jet.jetAimMeters = 0.40 * thickness;
+    jet.jetAimMeters = kFluteJetAimFraction * thickness;
     jet.jetNoiseMeters = 0.035 * thickness;
     jet.reedTurbulence = kFluteJetTurbulence;
     // Locked breath 0.063 = 0.56 less 19 dB: at 0.56 the songs read a

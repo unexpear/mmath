@@ -88,6 +88,24 @@ inline constexpr double kSaxophoneLockedBreathFraction = 0.0176;
 // A4 ff. Jet turbulence 0.56 UNSOURCED.
 inline constexpr double kFluteJetTurbulence = 0.56;
 inline constexpr double kFluteLockedBreathFraction = 0.063;
+// Flute jet aim (ValveBlow::jetAimMeters, as a fraction of the lip
+// thickness) and reflection corner, both TUNED. Fletcher and Douglas
+// (JASA 68, 767, 1980): a jet centred on the edge suppresses the even
+// harmonics and an offset raises them, so the offset sets H2. Winds pro4
+// sweep on the transcribed flute excerpt, H2/H3/H4 re H1 (dB), 1-3 kHz and
+// 3-8 kHz band (dB), against the recording -6.0/-12.3/-20.0, -9.6, -30.3:
+//   aim 0.40, 1800 Hz (old):  -13.6/-24.0/-23.3, -13.5, -29.6
+//   aim 0.80, 1800 Hz:         -8.3/-19.3/-31.3,  -9.2, -30.9
+//   aim 0.40, 4500 Hz:        -14.6/-13.2/-19.6, -11.9, -24.3
+//   aim 0.80, 3000 Hz:         -7.9/-21.7/-24.1,  -8.7, -27.7
+//   aim 1.00, 3000 Hz:         -7.0/-16.0/-24.6,  -7.3, -27.2
+//   aim 1.20, 3000 Hz:         -7.5/-15.1/-23.4,  -6.6, -29.3
+//   aim 1.00, 2500 / 3500 Hz:  -7.5/-16.3/-24.6 / -6.5/-17.2/-23.3
+// Aim 1.00 with 3000 Hz has the smallest summed error; pitch median 2.5 c
+// on every run. The Kirchhoff wall fit (wallFitFundamental) on the flute
+// moved H3 by +-5 dB between neighbouring corners and is left off.
+inline constexpr double kFluteJetAimFraction = 1.00;
+inline constexpr double kFluteReflectionCutoffHz = 3000.0;
 // Lip jet fraction. Fletcher and Rossing, chap. 13, call the flow
 // turbulent and print no ratio. 0.20 UNSOURCED.
 inline constexpr double kTrumpetReedTurbulence = 0.20;
