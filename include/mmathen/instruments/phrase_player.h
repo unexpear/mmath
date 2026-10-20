@@ -44,7 +44,24 @@ struct PhraseNote {
   // The strongest spectral peak, not the autocorrelation. An octave
   // error has autocorrelation near 1 at twice the true period.
   bool gradePeak = false;
+  // Breath release (reed woodwinds with the airway): a note before a rest
+  // or the phrase end is stopped by lowering the mouth pressure over this
+  // time instead of by the tongue. 0 = tongue stop. See kReedBreathReleaseSec.
+  double releaseSec = 0.0;
 };
+
+// Li, Almeida, Smith and Wolfe (JASA 139, 825-838, 2016): clarinettists end
+// staccato notes with the tongue (exponential decay ~400 dB/s, the bore's
+// bandwidth); "in all other cases, notes are stopped by decreasing" the
+// mouth pressure, with a decay time about twice the tongue-stopped one
+// (Li et al., ISMRA 2016, Fig. 4: ~0.3 s for a written C4). The pressure
+// fall is linear over kReedBreathReleaseSec, TUNED to that decay time:
+// winds pro3 sweep, last note of the clarinet / alto sax excerpts, time
+// from the note end to -30 dB: tongue stop 216 / 183 ms; breath release
+// 0.06 s -> 66 / 63, 0.12 -> 121 / 118, 0.25 -> 251 / 243, 0.40 -> 401 / 388.
+// Target: Li's written C4 tongue stop, -260 dB/s (30 dB in 115 ms), times
+// two = 230 ms. (The model's own tongue-stop tail is slower than Li's.)
+constexpr double kReedBreathReleaseSec = 0.25;
 
 // The score with the phrase lead-in (kPhraseLeadInSeconds, wind_presets.h)
 // in front, unless it already opens on a rest at least that long. The
@@ -130,7 +147,6 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       }
     }
     const bool afterScore = frame >= scoreFrames;
-    const PhraseNote& note = notes[static_cast<std::size_t>(sounding)];
     if (airway != nullptr) {
       const auto next = static_cast<std::size_t>(active) + 1;
       const PhraseNote& here = notes[static_cast<std::size_t>(active)];
@@ -138,13 +154,14 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
         const std::uint64_t noteEnd =
             next < notes.size() ? static_cast<std::uint64_t>(notes[next].startSec * rateHz) : scoreFrames;
         const bool restNext = next >= notes.size() || notes[next].rest;
-        if (restNext && noteEnd >= kTongue && frame >= noteEnd - kTongue) tongueShut = true;
+        if (restNext && noteEnd >= kTongue && frame >= noteEnd - kTongue && !(here.releaseSec > 0.0 && !fluteJet))
+          tongueShut = true;
       }
       airway->setTongueTarget(tongueShut ? 0.0 : 1.0);
     }
     const double time = static_cast<double>(frame) / rateHz;
     bool stolenBreath = false;
-    if (airway != nullptr && !afterScore && !note.rest) {
+    if (airway != nullptr && !afterScore && !notes[static_cast<std::size_t>(sounding)].rest) {
       const auto next = static_cast<std::size_t>(active) + 1;
       if (next < notes.size() && !notes[next].rest) {
         const auto join = static_cast<std::uint64_t>(notes[next].startSec * rateHz);
@@ -159,7 +176,29 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     }
     // The note after a breath is tongued, as after a written rest.
     if (stolenBreath) airway->setTongueTarget(0.0);
-    const bool breathOff = note.rest || afterScore || stolenBreath;
+    // Breath release: after a reed note that is ended by the breath, the
+    // pressure falls over its releaseSec while the fingering stays.
+    int releasing = -1;
+    double releaseLeft = 0.0;
+    if (airway != nullptr && !fluteJet && !stolenBreath) {
+      const PhraseNote& here = notes[static_cast<std::size_t>(active)];
+      const int prevIdx = here.rest ? active - 1 : (afterScore ? active : -1);
+      if (prevIdx >= 0) {
+        const PhraseNote& prev = notes[static_cast<std::size_t>(prevIdx)];
+        const double end = here.rest && prevIdx < active ? here.startSec : static_cast<double>(scoreFrames) / rateHz;
+        const double since = time - end;
+        if (!prev.rest && prev.lipHz == 0.0 && prev.releaseSec > 0.0 && since >= 0.0 && since < prev.releaseSec) {
+          releasing = prevIdx;
+          releaseLeft = 1.0 - since / prev.releaseSec;
+        }
+      }
+    }
+    if (releasing >= 0) {
+      sounding = releasing;
+      if (!tongueShut) airway->setTongueTarget(1.0);  // a closure for the next note still wins
+    }
+    const PhraseNote& note = notes[static_cast<std::size_t>(sounding)];
+    const bool breathOff = releasing < 0 && (note.rest || afterScore || stolenBreath);
     // Once the breath is off, the lip seals and the wall is Kirchhoff
     // at this fingering's impedance peak. The next blow restores the
     // mild playing pole. The radiated sample is not scaled.
@@ -177,7 +216,7 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
         }
       }
     }
-    double env = breathOff ? 0.0 : note.gain;
+    double env = breathOff ? 0.0 : note.gain * (releasing >= 0 ? releaseLeft : 1.0);
     const bool dipping = airway == nullptr && fluteJet && note.tongue && sounding > 0 && !note.rest &&
                          time < note.startSec + 0.020;
     if (dipping) env *= 0.55;
@@ -200,7 +239,7 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     if (!(voice.setBlowingPressure(breathOff ? 0.0 : note.pressure * env))) return {};
     if (note.lipHz > 0.0) if (!(voice.setLipResonanceHz(note.lipHz))) return {};
     if constexpr (requires(Voice& probe) { probe.setJetDelaySamples(0.0); }) {
-      if (!fluteJet || note.rest) {
+      if (!fluteJet || note.rest || breathOff) {  // no breath, no jet to time
         if (fluteJet && note.jetSamples > 0.0) if (!(voice.setJetDelaySamples(note.jetSamples))) return {};
       } else {
       double jetNote = note.jetSamples;

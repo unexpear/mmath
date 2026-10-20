@@ -38,7 +38,10 @@ double impedancePeakHz(double length, double apex, int mode, double targetHz) {
 void push(std::vector<PhraseNote>& notes, const ScoreNote& src, double start, double length, double lip, double pressure, double jet) {
   PhraseNote n; n.name = src.name; n.startSec = start; n.targetHz = src.hertz; n.lengthM = length; n.lipHz = lip;
   n.pressure = src.hertz > 0.0 ? pressure : 0.0; n.jetSamples = jet; n.tongue = src.tongued; n.vibrato = src.vibrato;
-  n.dynamic = src.dynamic; n.rest = !(src.hertz > 0.0); notes.push_back(n);
+  n.dynamic = src.dynamic; n.rest = !(src.hertz > 0.0);
+  const char* rel = std::getenv("WP_REL");  // breath release (s), reeds; 0 = tongue stop
+  n.releaseSec = rel ? std::atof(rel) : kReedBreathReleaseSec;
+  notes.push_back(n);
 }
 // Sweep overrides (harness only): WP_P scales the blowing pressure,
 // WP_AIM the flute jet aim (thicknesses), WP_TURB the reed/jet turbulence,
@@ -56,24 +59,24 @@ int main(int argc, char** argv) {
     double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, clarinetSoundingLengthMeters(s.hertz));
     ClarinetSpec spec{longest * 1.04, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0, 1.0e-6, 1.0e-4, 1.0e-3, 0.11};
     auto cl = U(makeClarinet(spec));
-    ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack); blow.frames = (std::uint64_t)std::llround(T * kFs);
+    ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack); blow.frames = (std::uint64_t)std::llround((T + 0.5) * kFs);  // breath may outlast the score (release)
     blow.reedTurbulence = env("WP_TURB", kClarinetReedTurbulence); blow.reflectionCutoffHz = env("WP_CUT", 1500.0); blow.lockedBreathFraction = kClarinetLockedBreathFraction;
     auto voice = U(BoreValveVoice::fromClarinet(cl, blow, kRate));
     double start = 0, held = longest;
     for (auto& s : song) { const double L = s.hertz > 0 ? clarinetSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4000.0 * env("WP_P", 1.0), 0); if (s.hertz > 0) held = L; start += s.seconds; }
-    out = playPhrase(voice, notes, T, false, 0.0, &airway, kFs);
+    out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs);
   } else if (which == "saxophone") {
     const auto song = ensureLeadIn(excerpts::kProSaxophone); T = total(song);
     double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, saxophoneSoundingLengthMeters(s.hertz));
     SaxophoneSpec spec{longest * 1.08, 0.20, 1.6e-4, kAir, kTemp, 1.8e-5, 7500.0, 2.0e-6, 1.4e-4, 7.0e-4, 0.09};
     auto sax = U(makeSaxophone(spec));
-    ValveBlow blow = sustained(4200.0, 1500.0, kSaxophoneAttack); blow.frames = (std::uint64_t)std::llround(T * kFs);
+    ValveBlow blow = sustained(4200.0, 1500.0, kSaxophoneAttack); blow.frames = (std::uint64_t)std::llround((T + 0.5) * kFs);
     blow.initialDisplacementMeters = 1.0e-5; blow.reedTurbulence = env("WP_TURB", kSaxophoneReedTurbulence); blow.reflectionCutoffHz = env("WP_CUT", 1500.0);
     blow.lockedBreathFraction = kSaxophoneLockedBreathFraction; blow.spectrumBreakHz = 837.0;
     auto voice = U(ConeValveVoice::fromSaxophone(sax, blow, kRate));
     double start = 0, held = longest;
     for (auto& s : song) { const double L = s.hertz > 0 ? saxophoneSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4200.0 * env("WP_P", 1.0), 0); if (s.hertz > 0) held = L; start += s.seconds; }
-    out = playPhrase(voice, notes, T, false, 0.0, &airway, kFs);
+    out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs);
   } else if (which == "flute") {
     const auto song = ensureLeadIn(excerpts::kProFlute); T = total(song);
     const double span = 7.0e-3, sigma = 0.45, thickness = 1.0e-3, end = fluteEndCorrectionMeters();
@@ -93,7 +96,7 @@ int main(int argc, char** argv) {
       const double j = s.hertz > 0 ? kFs * U(fluteConvectionTime(fl, p)) : hJ;
       push(notes, s, start, L, 0, (p > 0 ? p : hP) * env("WP_P", 1.0), j); if (s.hertz > 0) { hL = L; hJ = j; hP = p; } start += s.seconds;
     }
-    out = playPhrase(voice, notes, T, true, 0.0, &airway, kFs);
+    out = playPhrase(voice, notes, T, true, 0.50, &airway, kFs);
   } else if (which == "trumpet") {
     const auto song = ensureLeadIn(excerpts::kProTrumpet); T = total(song);
     auto tp = U(makeTrumpet(phraseTrumpetSpec(speed, kAir, kTemp)));
