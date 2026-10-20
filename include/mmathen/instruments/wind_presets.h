@@ -277,13 +277,15 @@ inline double clarinetSoundingLengthMeters(double frequency) {
         // 3000 Hz lone-pole pass; those rows are held length x 2^(c/1200).
         // F4 moved +62 / -59 / -31 c over 0.219 / 0.2269 / 0.2229 m across
         // passes and is back at 0.219.
+        // B4 (Silent Night alto, interpolated) read +32 c: interpolated
+        // length x 2^(32/1200).
         {220.00, 0.371149}, {293.66, 0.270847}, {329.63, 0.23842},
         {349.23, 0.219000}, {369.99, 0.2160}, {392.00, 0.201376}, {440.00, 0.177866},
         // Winds pro1 rows (TUNED, same method): the held A4 product read
         // flat 32-212 cents above A4 and F#4 +28 c on the transcribed
         // Serolillo phrase. Each row is the held length x 2^(cents/1200),
         // one pass.
-        {523.25, 0.14437}, {587.33, 0.12491}, {622.25, 0.11790}, {659.26, 0.11122},
+        {493.88, 0.15767}, {523.25, 0.14437}, {587.33, 0.12491}, {622.25, 0.11790}, {659.26, 0.11122},
         {698.46, 0.10436}, {783.99, 0.09144}, {932.33, 0.07118},  // A#5: second pass, -72 c
     };
     for (const Length& row : table)
@@ -377,6 +379,11 @@ struct BrassFinger {
       // A4 for When the Saints: the Bb4 row scaled sat 27.8 cents flat;
       // (L + apex) shortened by that measured ratio.
       {440.00, 1.0776, 3},
+      // Jingle Bells (tools/demo/christmas): D4 scaled from the F4 row read
+      // +68 c, E5 scaled from F5 -39 c, C#5 scaled from D5 -27 c; each row
+      // is that scaled length (cone + apex for a cone mode) times
+      // 2^(cents/1200), one pass.
+      {293.66, 1.1281, 0}, {659.26, 1.4699, 6}, {554.37, 1.4568, 5},
   };
   inline BrassFinger trumpetFinger(double hertz) {
       for (const BrassFinger& row : kTrumpetFingers)

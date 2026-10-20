@@ -7,6 +7,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <mmathen/instruments/bore_valve.h>
@@ -35,6 +38,25 @@ double impedancePeakHz(double length, double apex, int mode, double targetHz) {
   for (int n = 2; n <= 8; ++n) { const double f = conePartial(length, apex, n); if (std::fabs(f - targetHz) < gap) { best = f; gap = std::fabs(f - targetHz); } }
   return best;
 }
+// WP_SONGFILE: play a score from a text file instead of the excerpt, one
+// note per line "name hertz seconds tongued(0/1) vibrato(0/1) dynamic",
+// hertz 0 = rest, '#' starts a comment (tools/demo/christmas/*.txt).
+static std::deque<std::string> gSongText;
+template <typename Song> std::vector<ScoreNote> songFor(const Song& def) {
+  const char* f = std::getenv("WP_SONGFILE");
+  if (f == nullptr || *f == 0) return ensureLeadIn(def);
+  std::vector<ScoreNote> v; std::ifstream in(f); std::string line;
+  if (!in) { std::fprintf(stderr, "cannot open %s\n", f); std::exit(4); }
+  while (std::getline(in, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    std::istringstream ss(line); std::string n, d; double hz = 0, sec = 0; int t = 0, vb = 0;
+    if (!(ss >> n >> hz >> sec >> t >> vb >> d)) continue;
+    gSongText.push_back(n); const char* np = gSongText.back().c_str();
+    gSongText.push_back(d); const char* dp = gSongText.back().c_str();
+    v.push_back(ScoreNote{np, hz, sec, t != 0, vb != 0, dp});
+  }
+  return ensureLeadIn(v);
+}
 void push(std::vector<PhraseNote>& notes, const ScoreNote& src, double start, double length, double lip, double pressure, double jet) {
   PhraseNote n; n.name = src.name; n.startSec = start; n.targetHz = src.hertz; n.lengthM = length; n.lipHz = lip;
   n.pressure = src.hertz > 0.0 ? pressure : 0.0; n.jetSamples = jet; n.tongue = src.tongued; n.vibrato = src.vibrato;
@@ -55,7 +77,7 @@ int main(int argc, char** argv) {
   std::vector<double> out; std::vector<PhraseNote> notes; double T = 0;
   PlayerAirway airway(PlayerAirwaySpec{});
   if (which == "clarinet") {
-    const auto song = ensureLeadIn(excerpts::kProClarinet); T = total(song);
+    const auto song = songFor(excerpts::kProClarinet); T = total(song);
     double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, clarinetSoundingLengthMeters(s.hertz));
     ClarinetSpec spec{longest * 1.04, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0, 1.0e-6, 1.0e-4, 1.0e-3, 0.11};
     auto cl = U(makeClarinet(spec));
@@ -66,7 +88,7 @@ int main(int argc, char** argv) {
     for (auto& s : song) { const double L = s.hertz > 0 ? clarinetSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4000.0 * env("WP_P", 1.0), 0); if (s.hertz > 0) held = L; start += s.seconds; }
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs);
   } else if (which == "saxophone") {
-    const auto song = ensureLeadIn(excerpts::kProSaxophone); T = total(song);
+    const auto song = songFor(excerpts::kProSaxophone); T = total(song);
     double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, saxophoneSoundingLengthMeters(s.hertz));
     SaxophoneSpec spec{longest * 1.08, 0.20, 1.6e-4, kAir, kTemp, 1.8e-5, 7500.0, 2.0e-6, 1.4e-4, 7.0e-4, 0.09};
     auto sax = U(makeSaxophone(spec));
@@ -78,7 +100,7 @@ int main(int argc, char** argv) {
     for (auto& s : song) { const double L = s.hertz > 0 ? saxophoneSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4200.0 * env("WP_P", 1.0), 0); if (s.hertz > 0) held = L; start += s.seconds; }
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs);
   } else if (which == "flute") {
-    const auto song = ensureLeadIn(excerpts::kProFlute); T = total(song);
+    const auto song = songFor(excerpts::kProFlute); T = total(song);
     const double span = 7.0e-3, sigma = 0.45, thickness = 1.0e-3, end = fluteEndCorrectionMeters();
     auto bore = [&](double f) { return fluteSoundingLengthMeters(speed, f, end); };
     double longest = 0, lowest = 1e9; for (auto& s : song) if (s.hertz > 0) { longest = std::max(longest, bore(s.hertz)); lowest = std::min(lowest, s.hertz); }
@@ -98,7 +120,7 @@ int main(int argc, char** argv) {
     }
     out = playPhrase(voice, notes, T, true, 0.50, &airway, kFs);
   } else if (which == "trumpet") {
-    const auto song = ensureLeadIn(excerpts::kProTrumpet); T = total(song);
+    const auto song = songFor(excerpts::kProTrumpet); T = total(song);
     auto tp = U(makeTrumpet(phraseTrumpetSpec(speed, kAir, kTemp)));
     const double tpP = 2800.0 * env("WP_P", 1.0);
     ValveBlow lip = sustained(tpP, 10000.0, kTrumpetAttack); lip.frames = (std::uint64_t)std::llround(T * kFs);
@@ -114,7 +136,7 @@ int main(int argc, char** argv) {
     }
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs);
   } else if (which == "trombone") {
-    const auto song = ensureLeadIn(excerpts::kProTrombone); T = total(song);
+    const auto song = songFor(excerpts::kProTrombone); T = total(song);
     const bool measured = argc > 3 && std::strcmp(argv[3], "measured") == 0;
     double longest = kPhraseTromboneLengthMeters;
     if (!measured) for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, tromboneFinger(s.hertz).length * 1.04);
