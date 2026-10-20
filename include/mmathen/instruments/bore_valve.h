@@ -477,7 +477,15 @@ struct TripLoss {
   void reset() { state = 0.0; }
 
   [[nodiscard]] double step(double x) {
-    if (!(pole > 0.0)) return gain * x;
+    // A wire still carries its state, so a pole engaged later (the
+    // brass ring wall at a tongue stop) starts from the wave it is
+    // given. A stale state there was a one-sample step in the bell
+    // flow: winds pro6 trumpet clicks at every tongue stop, the bulk
+    // of its 8-16 kHz band (-24.7 dB, -37.0 without them).
+    if (!(pole > 0.0)) {
+      state = x;
+      return gain * x;
+    }
     const double y = (1.0 - pole) * x + pole * state;
     state = y;
     return gain * y;
