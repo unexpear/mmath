@@ -165,7 +165,12 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     // mild playing pole. The radiated sample is not scaled.
     if (note.lipHz > 0.0) {
       if constexpr (requires(Voice& probe) { probe.engageRingWall(0.0); }) {
-        if (breathOff && note.peakHz > 0.0) {
+        // A tongue stop seals the lip as a breath stop does (the airflow
+        // is cut at the teeth), so the bore rings on the same Kirchhoff
+        // wall, the published bandwidth (winds pro2: on the playing pole
+        // a 40 ms stop dipped a trumpet only 4 dB; the CC reference dips
+        // 15-21 dB).
+        if ((breathOff || tongueShut) && note.peakHz > 0.0) {
           if (!(voice.engageRingWall(note.peakHz))) return {};
         } else {
           if (!(voice.restorePlayingWall())) return {};

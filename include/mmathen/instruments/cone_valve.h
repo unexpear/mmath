@@ -561,6 +561,8 @@ class ConeValveVoice final : public IVoice {
   bool useMeasuredTromboneBore() {
     measuredTrombone_ = true;
     for (auto& slot : kernelCache_) slot = {};
+    slideCache_.clear();
+    slideKey_ = -1;
     brass_bore::Fingering fg; fg.trombone = true;
     return useMeasuredTrumpetBore(fg);
   }
@@ -600,6 +602,26 @@ class ConeValveVoice final : public IVoice {
   // The p+ history is kept, so the bore carries over the change.
   bool selectMeasuredFingering(double lengthMeters) {
     if (!(measuredBase_ > 0.0)) return false;
+    if (measuredTrombone_) {
+      // The slide is continuous: the length is read as fractional
+      // semitones of slide, cached to 1 cent (winds pro2; integer
+      // positions left partial 3 about 90 cents sharp on E3-B2).
+      double s = 12.0 * std::log2(lengthMeters / measuredBase_);
+      s = std::max(0.0, std::min(7.0, s));
+      const long key = std::lround(100.0 * s);
+      if (key == slideKey_) return true;
+      auto& slot = slideCache_[key];
+      if (slot.first.empty()) {
+        brass_bore::Fingering fg{false, false, false, true, brass_bore::tromboneSlideMeters(key / 100.0)};
+        auto k = brass_bore::makeKernels(rate_.value(), density_, speed_, fg, 8192, 32768, measuredBell_);
+        slot = {std::move(k.reflection), std::move(k.mouthFlow)};
+      }
+      if (slideKey_ < 0) slideCache_[0] = {rf_, uf_};
+      rf_ = slot.first;
+      uf_ = slot.second;
+      slideKey_ = key;
+      return true;
+    }
     int n = static_cast<int>(std::lround(12.0 * std::log2(lengthMeters / measuredBase_)));
     n = std::max(0, std::min(6, n));
     static constexpr int kMask[7] = {0, 2, 1, 3, 6, 5, 7};
@@ -1220,6 +1242,8 @@ class ConeValveVoice final : public IVoice {
   }
   double measuredBase_ = 0.0;
   int measuredMask_ = -1;
+  long slideKey_ = -1;
+  std::map<long, std::pair<std::vector<double>, std::vector<double>>> slideCache_;
   std::pair<std::vector<double>, std::vector<double>> kernelCache_[8];
   bool rfOn_ = false;
   bool steepRfOn_ = false;

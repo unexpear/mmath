@@ -1,10 +1,14 @@
 """Winds pro-check scoreboard: model phrase vs CC/PD reference, same transcribed notes.
-Usage: wpscore.py out.png tag inst[,inst...]  (model files wp1_<inst>.f64 or tag_<inst>.f64)"""
+Usage: wpscore.py out.png tag[+tag...] inst[,inst...] [wind_excerpts.h]
+Model files <tag>_<inst>.f64 (48 kHz, 0.56 s lead-in), references ref_<inst>.wav.
+Notes are read from the repo's tests/wind_excerpts.h (kPro<Inst>); the
+default path is relative to this script (tools/demo/winds_pro1)."""
+import os
 import sys,re,numpy as n,soundfile as sf,librosa
 import matplotlib;matplotlib.use('Agg');import matplotlib.pyplot as plt
 LEAD=0.56
 def notes_of(inst):
-  t=open('/tmp/exc.txt').read();blk=t.split(f'kPro{inst.capitalize()}[]')[1].split('};')[0]
+  t=open(EXC).read();blk=t.split(f'kPro{inst.capitalize()}[]')[1].split('};')[0]
   out=[];s=0.0
   for nm,hz,d,tg in re.findall(r'\{"([^"]+)", ([\d.]+), ([\d.]+), (true|false)',blk):
     hz=float(hz);d=float(d)
@@ -50,6 +54,15 @@ def metrics(x,fs,notes,off):
   d['Note level std (dB)']=n.std(lev) if lev else n.nan
   return d
 out,tag,insts=sys.argv[1],sys.argv[2],sys.argv[3].split(',')
+EXC=sys.argv[4] if len(sys.argv)>4 else os.path.join(os.path.dirname(os.path.abspath(__file__)),'..','..','..','tests','wind_excerpts.h')
+def pitch_report(i,tg):
+  N=notes_of(i);x,fs=load(f'{tg}_{i}.f64')
+  f0,v,_=librosa.pyin(x.astype(n.float32),fmin=60,fmax=2000,sr=fs,frame_length=2048,hop_length=256);tt=n.arange(len(f0))*256/fs
+  r=[]
+  for a,b,hz,_t in N:
+    m=(tt>a+LEAD+0.25*(b-a))&(tt<b+LEAD-0.15*(b-a))&v
+    r.append(f"{librosa.hz_to_note(hz)}:{1200*n.log2(n.nanmedian(f0[m])/hz):+.0f}" if m.sum()>2 else f"{librosa.hz_to_note(hz)}:--")
+  print('pitch',i,tg,' '.join(r))
 rows={};cols=[]
 for i in insts:
   N=notes_of(i)
@@ -59,6 +72,7 @@ for i in insts:
   for tg in tag.split('+'):
     M=metrics(*load(f'{tg}_{i}.f64'),N,LEAD)
     for k in M: rows[k][i+' '+tg]=M[k]
+    if os.environ.get('WP_PITCH'): pitch_report(i,tg)
     cols.append(i+' '+tg)
 for k in rows: print(k,'|',' | '.join(f'{rows[k][c]:.4g}' for c in cols))
 fig,ax=plt.subplots(figsize=(2.0*len(cols)+4,0.42*len(rows)+1.2));ax.axis('off')

@@ -106,11 +106,17 @@ inline double fluteSoundingLengthMeters(double speed, double frequency, double e
 // 0.75 c / 2.75 m. Arguments, not a measured trombone (UNSOURCED).
 inline constexpr double kTromboneLipTuningLengthMeters = 2.75;
 inline constexpr double kTromboneLipMassKg = 6.0e-5;
-inline TromboneSpec phraseTromboneSpec(double speed, double airPa, double tempK) {
+// lengthMeters sizes the tube buffer, as the trumpet's: the longest
+// sounding length a phrase asks for. Winds pro1: E3-B2 (Rimsky-Korsakov,
+// the trombone reference) need 3.3-4.6 m on the mode-3 rows and the fixed
+// 3.05 m tube refused them, so that phrase rendered nothing.
+inline constexpr double kPhraseTromboneLengthMeters = 3.05;
+inline TromboneSpec phraseTromboneSpec(double speed, double airPa, double tempK,
+                                       double lengthMeters = kPhraseTromboneLengthMeters) {
   const double mass = kTromboneLipMassKg;
   const double lip0 = 0.75 * speed / kTromboneLipTuningLengthMeters;
   const double omega = constants::twoPi * lip0;
-  return TromboneSpec{3.05, 0.0, 3.0e-4, airPa, tempK, 0.0, 1.0e-6,
+  return TromboneSpec{lengthMeters, 0.0, 3.0e-4, airPa, tempK, 0.0, 1.0e-6,
                       2.5e-5, 1.5e-2, mass, omega * omega * mass,
                       2.0e-5, 0.0005};
 }

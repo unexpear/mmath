@@ -66,7 +66,7 @@ constexpr double kTromboneNeckMeters = 0.60;
 constexpr double kTromboneBellMeters = 0.502;
 constexpr double kTromboneClosedMeters =
     kTromboneBackboreMeters + kTromboneCylinderMeters + kTromboneNeckMeters + kTromboneBellMeters;
-inline double tromboneSlideMeters(int semitones) {
+inline double tromboneSlideMeters(double semitones) {
   return 0.5 * kTromboneClosedMeters * (std::pow(2.0, semitones / 12.0) - 1.0);
 }
 inline std::vector<Segment> bbTromboneProfile(double& mouthRadius, double slide) {
@@ -274,6 +274,46 @@ inline Kernels makeKernels(double fs, double rho, double c, Fingering fg = {}, s
     kr.mouthFlow[t] = su / n;
   }
   return kr;
+}
+
+// Impedance peak of the measured trombone with the slide out by
+// slideMeters: the |Zin| maximum (mouthpiece cup included, as makeKernels)
+// within +-6 % of guessHz, 0.05 % grid, parabolic in log|Z|.
+inline double tromboneImpedancePeakHz(double slideMeters, double guessHz, double rho, double c) {
+  Fingering fg; fg.trombone = true; fg.slideMeters = slideMeters;
+  const double cup = 2.0 / 3.0 * 3.14159265358979323846 * std::pow(kTromboneRimRadius, 3);
+  const double zcRef = rho * c / (3.14159265358979323846 * kTromboneThroatRadius * kTromboneThroatRadius);
+  const int m = 240;
+  std::vector<double> mag(m + 1);
+  for (int i = 0; i <= m; ++i) {
+    std::complex<double> z;
+    evaluate(guessHz * (0.94 + 0.12 * i / m), rho, c, zcRef, cup, fg, &z, nullptr, nullptr);
+    mag[i] = std::log(std::abs(z) + 1e-30);
+  }
+  int k = 1;
+  for (int i = 1; i < m; ++i) if (mag[i] > mag[k]) k = i;
+  const double den = mag[k - 1] - 2 * mag[k] + mag[k + 1];
+  const double d = std::fabs(den) > 1e-18 ? 0.5 * (mag[k - 1] - mag[k + 1]) / den : 0.0;
+  return guessHz * (0.94 + 0.12 * (k + d) / m);
+}
+// Slide extension that puts impedance peak `partial` (2 = Bb2 closed) at
+// targetHz. A trombonist sets the slide by ear; positions are not stops,
+// so the slide is continuous here instead of the 0-6 equal-tempered
+// semitones of tromboneSlideMeters. The peak falls monotonically as the
+// slide comes out; bisection over 0 to 7 semitones of slide. -1 if the
+// target is outside that reach.
+inline double tromboneSlideForPeakHz(double targetHz, int partial, double rho, double c) {
+  const double p0 = tromboneImpedancePeakHz(0.0, partial * 58.27, rho, c);
+  auto peakAt = [&](double x) {
+    return tromboneImpedancePeakHz(x, p0 * kTromboneClosedMeters / (kTromboneClosedMeters + 2.0 * x), rho, c);
+  };
+  double lo = 0.0, hi = tromboneSlideMeters(7.0);
+  if (targetHz > peakAt(lo) || targetHz < peakAt(hi)) return -1.0;
+  for (int it = 0; it < 30; ++it) {
+    const double mid = 0.5 * (lo + hi);
+    if (peakAt(mid) > targetHz) lo = mid; else hi = mid;
+  }
+  return 0.5 * (lo + hi);
 }
 
 }  // namespace mmathen::brass_bore
