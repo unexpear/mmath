@@ -136,13 +136,19 @@ inline constexpr double kFluteReflectionCutoffHz = 3000.0;
 // convection time stays tuned (the harness keeps the jet delay of the
 // nominal pressure). Aim TUNED to VSCO 2 CE Flute susNV soft (v1) A4-A5:
 // H2 re H1 median -23 dB, H3 -26 dB; aim 1.0 read -6/-16, 0.3 read
-// -17/-19, 0.1 read -27/-17. Locked breath raised above the v1 median
+// -17/-19, 0.1 read -27/-17, 0.15 -24/-15. Reflection corner: the jet law
+// here is homogeneous in blowing pressure, so the weaker jet-edge
+// saturation of soft playing (harmonic content rising with pressure,
+// Fletcher and Rossing ch. 16) does not appear by itself; a lower corner
+// stands in for it (TUNED stand-in, not the mechanism): aim 0.15 with
+// 3000 / 1500 / 1000 Hz read H3 -15 / -21 / -21 dB, pitch +0.2 c. Locked breath raised above the v1 median
 // inter-harmonic level (-37 dB; 0.047 read -38, 0.12 read -30) on
 // request for a breathy soft tone: TUNED, not measured.
 struct FluteVoicing {
   double pressureScale;
   double aimFraction;
   double lockedBreathFraction;
+  double reflectionCutoffHz;
 };
 [[nodiscard]] inline FluteVoicing fluteVoicingFor(const char* dynamic) {
   const auto is = [&](const char* d) {
@@ -151,10 +157,10 @@ struct FluteVoicing {
     while (*a && *a == *b) { ++a; ++b; }
     return *a == 0 && *b == 0;
   };
-  if (is("pp")) return {0.55, 0.20, 0.14};   // pressure VERIFY, aim/breath TUNED
-  if (is("p")) return {0.70, 0.30, 0.10};    // pressure VERIFY, aim/breath TUNED
-  if (is("mp")) return {0.85, 0.60, kFluteLockedBreathFraction};  // UNSOURCED midpoint
-  return {1.0, kFluteJetAimFraction, kFluteLockedBreathFraction};
+  if (is("pp")) return {0.55, 0.10, 0.14, 1500.0};  // pressure VERIFY, rest TUNED
+  if (is("p")) return {0.70, 0.15, 0.10, 1500.0};   // pressure VERIFY, rest TUNED
+  if (is("mp")) return {0.85, 0.60, kFluteLockedBreathFraction, 2250.0};  // UNSOURCED midpoints
+  return {1.0, kFluteJetAimFraction, kFluteLockedBreathFraction, kFluteReflectionCutoffHz};
 }
 // Lip jet fraction. Fletcher and Rossing, chap. 13, call the flow
 // turbulent and print no ratio. 0.20 UNSOURCED.

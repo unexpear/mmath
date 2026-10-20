@@ -18,8 +18,27 @@
 // The sample is the batter head's outward volume acceleration, delayed
 // by r/c:
 //   p(t) = ρ a_out(t − r/c) / (4 π r).
-// The resonant head is driven by the cavity and is not struck. Snare
-// wires are not in this step. A bass-drum port is not invented.
+// The resonant head is driven by the cavity and is not struck. A
+// bass-drum port is not invented.
+//
+// Snare wires (attachSnareWires, optional; without it the voice is
+// unchanged). Each strand is a lumped mass on its own spring (a resonance
+// of the tensioned coil) pressed onto the outside of the resonant head
+// with preload force F0 by the snare strainer. Contact is one-sided
+// Hunt-Crossley, F = K d^alpha (1 + lambda d'), d = d0 + h - u (h the
+// head's outward displacement at the strand, u the strand's). The strand
+// takes F - F0, the head -(F - F0) through its mode shapes, as in Bilbao's
+// snare model (S. Bilbao, "Time domain simulation and sound synthesis for
+// the snare drum", JASA 131(1), 914-925, 2012: wires as separate
+// vibrating objects in one-sided collision with the snare head).
+// Local radiation (with wires, or enableLocalRadiation): above ka = 1 a
+// head is not compact and a point force radiates as on an infinite
+// membrane, volume acceleration F / sigma (areal density sigma): the mass
+// law of a point-driven infinite plate (Cremer, Heckl and Petersson,
+// Structure-Borne Sound, 3rd ed., ch. 7), half-space p = rho F / (2 pi r
+// sigma) (VERIFY baffle factor). The mallet force on the batter and the
+// strand forces on the snare head add this term through a first-order
+// high-pass at ka = 1 (below it the modal monopole carries the sound).
 
 #include <algorithm>
 #include <cmath>
@@ -39,6 +58,23 @@
 #include "mallet_voice.h"
 
 namespace mmathen {
+
+// Snare strands for CavityDrumVoice::attachSnareWires. Strands lie on a
+// line grid across the snare head: positions at x in +-spanFraction a,
+// spread over count contact points. Strand resonances are log-spaced
+// lowestHz..highestHz. Values are the caller's (see snareWireSet()).
+struct SnareWires {
+  int count = 0;
+  double strandMassKg = 0.0;
+  double lowestHz = 0.0;
+  double highestHz = 0.0;
+  double strandQ = 0.0;
+  double contactStiffness = 0.0;  // N / m^alpha
+  double contactExponent = 1.5;
+  double contactDampingPerMeterPerSecond = 0.0;  // Hunt-Crossley lambda (s/m)
+  double preloadMeters = 0.0;     // strand pressed into the head at rest
+  double spanFraction = 0.6;
+};
 
 class CavityDrumVoice final : public IVoice {
  public:
@@ -102,8 +138,15 @@ class CavityDrumVoice final : public IVoice {
     double lowest = normals.value().front().frequencyHz;
     for (const Normal& mode : normals.value())
       lowest = std::min(lowest, mode.frequencyHz);
-    return R::success(CavityDrumVoice{rate, strike, scale, delay, lowest,
-                                      std::move(axes), std::move(normals).value()});
+    CavityDrumVoice voice{rate, strike, scale, delay, lowest,
+                          std::move(axes), std::move(normals).value()};
+    voice.batterDensity_ = batter.arealDensity.value();
+    voice.resonantDensity_ = resonant != nullptr ? resonant->arealDensity.value() : 0.0;
+    voice.radius_ = radius;
+    voice.speed_ = speed.value().value();
+    voice.rho_ = rho.value().value();
+    voice.distance_ = distanceMeters;
+    return R::success(std::move(voice));
   }
 
   [[nodiscard]] SampleRateHz sampleRate() const override { return rate_; }
@@ -137,6 +180,38 @@ class CavityDrumVoice final : public IVoice {
       auto force = mallet_detail::feltForce(malletY_ - atStrike,
                                             malletV_ - rateAtStrike, strike_);
       if (!force.ok()) return R::failure(force.error());
+      // Strand contact forces (net of preload) on the resonant-head axes.
+      std::vector<double> axisForce;
+      double strandSum = 0.0;
+      if (!wires_.empty()) {
+        axisForce.assign(nAxis, 0.0);
+        for (Strand& st : wires_) {
+          double w = 0.0, wv = 0.0;
+          for (std::size_t i = 0; i < nAxis; ++i) {
+            if (st.phi[i] == 0.0) continue;
+            w += q[i] * st.phi[i];
+            wv += vq[i] * st.phi[i];
+          }
+          // Positive modal displacement is into the cavity: outward h = -w.
+          const double pen = wire_.preloadMeters - w - st.s.displacement;
+          const double penRate = -wv - st.s.velocity;
+          double f = 0.0;
+          if (pen > 0.0) {
+            const double factor = std::max(0.0, 1.0 + wire_.contactDampingPerMeterPerSecond * penRate);
+            f = wire_.contactStiffness * std::pow(pen, wire_.contactExponent) * factor;
+          }
+          if (!std::isfinite(f)) return R::failure(QuantityError::RangeError);
+          const double net = f - preloadForce_;
+          auto moved = stepConstantForceOscillator(st.s, st.omega, st.sigma,
+                                                   net / wire_.strandMassKg, dt);
+          if (!moved.ok()) return R::failure(moved.error());
+          st.s = moved.value();
+          // The head is pushed inward (into the cavity, +q) by the strand.
+          for (std::size_t i = 0; i < nAxis; ++i)
+            if (st.phi[i] != 0.0) axisForce[i] += net * st.phi[i];
+          strandSum += net;
+        }
+      }
       std::vector<double> specific(nMode, 0.0);
       std::vector<double> acceleration(nMode, 0.0);
       for (std::size_t k = 0; k < nMode; ++k) {
@@ -144,6 +219,7 @@ class CavityDrumVoice final : public IVoice {
         for (std::size_t i = 0; i < nAxis; ++i) {
           const double root = std::sqrt(axes_[i].mass);
           drive += modes_[k].y[i] * force.value() * axes_[i].phiStrike / root;
+          if (!axisForce.empty()) drive += modes_[k].y[i] * axisForce[i] / root;
         }
         specific[k] = drive;
         const double omega = modes_[k].omega;
@@ -172,6 +248,21 @@ class CavityDrumVoice final : public IVoice {
       radiation_[radiationPos_] = outward;
       radiationPos_ = (radiationPos_ + 1) % radiation_.size();
       out[frame] = scale_ * delayed;
+      if (local_) {
+        // Point forces on the heads, infinite-membrane volume acceleration
+        // F / sigma (outward: both forces push their head inward).
+        double a = -force.value() / batterDensity_;
+        if (resonantDensity_ > 0.0) a += -strandSum / resonantDensity_;
+        const double y = hpA_ * (hpY_ + a - hpX_);
+        hpX_ = a;
+        hpY_ = y;
+        if (localLine_.empty()) localLine_.assign(radiation_.size(), 0.0);
+        const double late = localLine_[localPos_];
+        localLine_[localPos_] = y;
+        localPos_ = (localPos_ + 1) % localLine_.size();
+        out[frame] += localScale_ * late;
+        if (!std::isfinite(out[frame])) return R::failure(QuantityError::RangeError);
+      }
     }
     return R::success(n);
   }
@@ -182,8 +273,53 @@ class CavityDrumVoice final : public IVoice {
     malletV_ = strike_.speedMetersPerSecond;
     std::fill(radiation_.begin(), radiation_.end(), 0.0);
     radiationPos_ = 0;
+    for (Strand& st : wires_) st.s = {};
+    hpX_ = hpY_ = 0.0;
+    std::fill(localLine_.begin(), localLine_.end(), 0.0);
+    localPos_ = 0;
   }
 
+  // Snare strands on the resonant head (false without a resonant head or
+  // on bad values). Also switches on local radiation.
+  [[nodiscard]] bool attachSnareWires(const SnareWires& w) {
+    if (!(resonantDensity_ > 0.0) || w.count < 1 || !(w.strandMassKg > 0.0) ||
+        !(w.lowestHz > 0.0) || !(w.highestHz >= w.lowestHz) || !(w.strandQ > 0.5) ||
+        !(w.contactStiffness > 0.0) || !(w.contactExponent >= 1.0) ||
+        w.contactDampingPerMeterPerSecond < 0.0 || w.preloadMeters < 0.0 ||
+        !(w.spanFraction > 0.0) || !(w.spanFraction < 1.0))
+      return false;
+    wires_.clear();
+    const int rows = std::max(1, static_cast<int>(std::lround(std::sqrt(static_cast<double>(w.count)))));
+    for (int j = 0; j < w.count; ++j) {
+      // Strand j of `count`, laid on `rows` parallel lines (y), contact
+      // point spread along each (x), all inside spanFraction a.
+      const int row = j % rows, col = j / rows, cols = (w.count + rows - 1) / rows;
+      const double y = rows > 1 ? (2.0 * row / (rows - 1) - 1.0) * 0.5 * w.spanFraction : 0.0;
+      const double x = cols > 1 ? (2.0 * col / (cols - 1) - 1.0) * w.spanFraction : 0.0;
+      const double r = std::hypot(x, y), theta = std::atan2(y, x);
+      Strand st;
+      st.phi.assign(axes_.size(), 0.0);
+      for (std::size_t i = 0; i < axes_.size(); ++i)
+        if (!axes_[i].batter)
+          st.phi[i] = std::cyl_bessel_j(static_cast<double>(axes_[i].m), axes_[i].alpha * r) *
+                      std::cos(axes_[i].m * theta);
+      const double t = w.count > 1 ? static_cast<double>(j) / (w.count - 1) : 0.0;
+      const double f = w.lowestHz * std::pow(w.highestHz / w.lowestHz, t);
+      st.omega = constants::twoPi * f;
+      st.sigma = st.omega / (2.0 * w.strandQ);
+      wires_.push_back(std::move(st));
+    }
+    wire_ = w;
+    preloadForce_ = w.contactStiffness * std::pow(w.preloadMeters, w.contactExponent);
+    enableLocalRadiation();
+    return true;
+  }
+  void enableLocalRadiation() {
+    local_ = true;
+    const double fc = speed_ / (constants::twoPi * radius_);  // ka = 1
+    hpA_ = 1.0 / (1.0 + constants::twoPi * fc / rate_.value());
+    localScale_ = rho_ / (constants::twoPi * distance_);
+  }
   [[nodiscard]] double fundamentalHz() const noexcept { return fundamentalHz_; }
   [[nodiscard]] std::size_t normalCount() const noexcept { return modes_.size(); }
   [[nodiscard]] double normalHz(std::size_t index) const noexcept {
@@ -201,6 +337,14 @@ class CavityDrumVoice final : public IVoice {
     double volume = 0.0;
     double phiStrike = 0.0;
     bool batter = true;
+    int m = 0;
+    double alpha = 0.0;
+  };
+  struct Strand {
+    std::vector<double> phi;  // resonant-head mode shapes at the contact
+    double omega = 0.0, sigma = 0.0;
+    OscillatorState s;
+    double lastPen = 0.0;
   };
 
   struct Normal {
@@ -256,7 +400,7 @@ class CavityDrumVoice final : public IVoice {
                    : 0.0;
         if (!std::isfinite(phi) || !std::isfinite(volume))
           return R::failure(QuantityError::RangeError);
-        axes.push_back(Axis{omega, sigma, mass, volume, phi, batter});
+        axes.push_back(Axis{omega, sigma, mass, volume, phi, batter, m, alpha.value()});
       }
     }
     return R::success(0.0);
@@ -420,6 +564,15 @@ class CavityDrumVoice final : public IVoice {
   std::size_t radiationPos_ = 0;
   double malletY_ = 0.0;
   double malletV_ = 0.0;
+  double batterDensity_ = 0.0, resonantDensity_ = 0.0, radius_ = 0.0, speed_ = 343.0,
+         rho_ = 1.2, distance_ = 1.0;
+  std::vector<Strand> wires_;
+  SnareWires wire_{};
+  double preloadForce_ = 0.0;
+  bool local_ = false;
+  double hpA_ = 0.0, localScale_ = 0.0, hpX_ = 0.0, hpY_ = 0.0;
+  std::vector<double> localLine_;
+  std::size_t localPos_ = 0;
 };
 
 }  // namespace mmathen

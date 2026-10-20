@@ -7,9 +7,13 @@
 //   band1 cello notes|score ...          same, bowed cello (cello_voice.h):
 //     each note a new bow stroke on its string (rigid-bridge force), all
 //     forces through one CelloBody. Level = vel / 80 (bow speed, beta).
+//   band1 snare notes|score ...          snare drum (snare_drum.h), snares
+//     on; stick speed 6 (vel/127)^2 m/s (UNSOURCED mapping); each hit
+//     rendered 0.8 s. notes: speeds 1, 3, 6 m/s and 3 m/s snares off.
 #include <mmathen/instruments/double_bass_pizz.h>
 #include <mmathen/instruments/piano_voice.h>
 #include <mmathen/instruments/cello_voice.h>
+#include <mmathen/instruments/snare_drum.h>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -115,6 +119,22 @@ static int renderCello(const std::vector<Ev>& ev, double total, const char* out)
   std::printf("cello notes=%zu fail=%d\n", ev.size(), fail);
   FILE* o = std::fopen(out, "wb"); std::fwrite(mix.data(), 8, mix.size(), o); std::fclose(o); return fail ? 3 : 0;
 }
+static int renderSnare(const std::vector<Ev>& ev, double total, const char* out, bool offLast) {
+  const size_t N = (size_t)(total * FS); std::vector<double> mix(N, 0.0); int fail = 0;
+  const double amp = std::getenv("SD_AMP") ? std::atof(std::getenv("SD_AMP")) : 1.0;
+  for (size_t k = 0; k < ev.size(); ++k) {
+    const Ev& e = ev[k]; const double x = e.v / 127.0;
+    auto v = snareDrumHit(6.0 * x * x, !(offLast && k + 1 == ev.size()), SampleRateHz{FS});
+    if (!v.ok()) { ++fail; continue; }
+    auto voice = std::move(v).value();
+    const size_t a = (size_t)(e.s * FS); if (a >= N) continue;
+    const size_t len = std::min((size_t)(0.8 * FS), N - a); std::vector<double> y(len);
+    if (!voice.renderBlock(y.data(), FrameCount{len}).ok()) { ++fail; continue; }
+    for (size_t i = 0; i < len; ++i) mix[a + i] += amp * y[i];
+  }
+  std::printf("snare notes=%zu fail=%d\n", ev.size(), fail);
+  FILE* o = std::fopen(out, "wb"); std::fwrite(mix.data(), 8, mix.size(), o); std::fclose(o); return fail ? 3 : 0;
+}
 int main(int argc, char** argv) {
   if (argc < 4) return 1;
   std::vector<Ev> ev; double total = 0;
@@ -129,6 +149,11 @@ int main(int argc, char** argv) {
     return renderPiano(ev, total, argv[3]);
   }
   const bool vcl = !std::strcmp(argv[1], "cello");
+  const bool snr = !std::strcmp(argv[1], "snare");
+  if (snr && !std::strcmp(argv[2], "notes")) {  // 6 (v/127)^2 = 1, 3, 6 m/s; last 3 m/s snares off
+    double s = 0.3; for (int v : {52, 90, 127, 90}) { ev.push_back({s, 0.8, 0, v}); s += 1.5; } total = s + 0.5;
+    return renderSnare(ev, total, argv[3], true);
+  }
   if (vcl && !std::strcmp(argv[2], "notes")) {  // C2..G4, the Sarabande compass
     double s = 0.3; for (int m : {36, 38, 40, 41, 43, 45, 47, 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67}) { ev.push_back({s, 1.3, m, 40}); s += 2.0; } total = s + 0.7;
     return renderCello(ev, total, argv[3]);
@@ -140,5 +165,5 @@ int main(int argc, char** argv) {
   }
   FILE* in = std::fopen(argv[3], "r"); if (!in) return 1; total = std::atof(argv[5]);
   Ev e; while (std::fscanf(in, "%lf,%lf,%d,%d", &e.s, &e.d, &e.m, &e.v) == 4) ev.push_back(e);
-  return piano ? renderPiano(ev, total, argv[4]) : vcl ? renderCello(ev, total, argv[4]) : renderBass(ev, total, argv[4]);
+  return piano ? renderPiano(ev, total, argv[4]) : vcl ? renderCello(ev, total, argv[4]) : snr ? renderSnare(ev, total, argv[4], false) : renderBass(ev, total, argv[4]);
 }

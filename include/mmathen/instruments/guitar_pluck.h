@@ -42,6 +42,21 @@ inline constexpr std::array<WoodhouseGuitarString, 6> kWoodhouse2004NylonStrings
 
 inline constexpr double kClassicalGuitarRoundPluckFromBridgeM = 0.13;  // Traube 2005
 
+// Per-string tension: D'Addario EJ45 Pro-Arte Normal Tension chart
+// (daddario.com product page, J4501-J4506, lb at standard pitch on a
+// 25.5 in scale): E4 16.2, B3 12.0, G3 11.9, D3 15.6, A2 15.9, E2 14.2 lb.
+// At fixed density T scales with L^2, so the 650 mm scale is (650 /
+// 647.7)^2 = 1.007 times the chart. Linear density follows from the
+// course pitch: mu = T / (2 L f)^2. (Before this, the band/guitar
+// harnesses gave every string 2 g/m, i.e. 23 N on E2 and 367 N on E4.)
+inline constexpr std::array<double, 6> kDAddarioEJ45TensionLb{{16.2, 12.0, 11.9, 15.6, 15.9, 14.2}};
+[[nodiscard]] inline double classicalGuitarStringTensionN(int stringNumber, double scaleM = 0.650) {
+  const double lbf = 4.4482216152605;  // N per lbf
+  const double chartScale = 25.5 * 0.0254;
+  return kDAddarioEJ45TensionLb[static_cast<std::size_t>(stringNumber - 1)] * lbf *
+         (scaleM / chartScale) * (scaleM / chartScale);
+}
+
 // Woodhouse loss factor for string number 1..6 at frequency f (Hz) on a
 // string with tension T (N) and linear density mu (kg/m).
 [[nodiscard]] inline double woodhouseLossFactor(int stringNumber, double f, double T, double mu) {

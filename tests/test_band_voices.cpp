@@ -13,6 +13,8 @@
 #include <mmathen/instruments/piano_voice.h>
 #include <mmathen/instruments/cello_voice.h>
 #include <mmathen/instruments/wind_presets.h>
+#include <mmathen/instruments/snare_drum.h>
+#include <mmathen/instruments/guitar_pluck.h>
 
 using namespace mmathen;
 
@@ -244,4 +246,61 @@ TEST_CASE("soft flute voicing centres the jet and lowers the pressure", "[band][
   CHECK(pv.lockedBreathFraction > kFluteLockedBreathFraction);
   CHECK(mf.aimFraction == kFluteJetAimFraction);
   CHECK(none.pressureScale == 1.0);
+}
+
+TEST_CASE("cello player intonation keeps open strings and lowers stopped notes", "[band][cello]") {
+  for (double c : kCelloIntonationCents) CHECK((c > 0.0 && c < 15.0));
+  CHECK(kCelloBowForceFraction > kViolinBowForceFraction);
+  auto vc = cello();
+  REQUIRE(vc.ok());
+  // Open C2 and a stopped D2 both build (the stop never sits below the open string).
+  for (double f : {65.41, 73.42}) {
+    auto note = makeCelloNote(vc.value(), f, 0.5, 0.5, SampleRateHz{kBandFs}, false);
+    REQUIRE(note.ok());
+  }
+}
+
+TEST_CASE("EJ45 tensions scale to the classical scale length", "[band][guitar]") {
+  const double lbf = 4.4482216152605;
+  CHECK(std::fabs(classicalGuitarStringTensionN(1, 25.5 * 0.0254) - 16.2 * lbf) < 1e-9);
+  const double t6 = classicalGuitarStringTensionN(6);
+  CHECK(t6 > 55.0);
+  CHECK(t6 < 70.0);
+  CHECK(std::fabs(classicalGuitarStringTensionN(3) / classicalGuitarStringTensionN(3, 0.325) - 4.0) < 1e-9);
+}
+
+TEST_CASE("snare wires brighten the drum and the hit decays", "[band][snare]") {
+  auto on = snareDrumHit(3.0, true, SampleRateHz{kBandFs});
+  auto off = snareDrumHit(3.0, false, SampleRateHz{kBandFs});
+  REQUIRE(on.ok());
+  REQUIRE(off.ok());
+  auto von = std::move(on).value();
+  auto voff = std::move(off).value();
+  std::vector<double> a(14400), b(14400);
+  REQUIRE(von.renderBlock(a.data(), FrameCount{a.size()}).ok());
+  REQUIRE(voff.renderBlock(b.data(), FrameCount{b.size()}).ok());
+  double hiOn = 0, hiOff = 0, early = 0, late = 0;
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    REQUIRE(std::isfinite(a[i]));
+    if (i < 2400) early += a[i] * a[i];
+    if (i >= 12000) late += a[i] * a[i];
+  }
+  for (double f = 3000.0; f <= 6000.0; f += 500.0) {
+    hiOn += bandAmplitude(a, 0, 4800, f);
+    hiOff += bandAmplitude(b, 0, 4800, f);
+  }
+  CHECK(hiOn > 10.0 * hiOff);
+  CHECK(early > 100.0 * late);
+  // Without a resonant head there is nothing for the wires to lie on.
+  auto kit = yamahaTourCustomKit();
+  REQUIRE(kit.ok());
+  const MembraneShell& shell = kit.value().snare55;
+  const double sb = kMylarDensityKgPerM3 * kSnareBatterThicknessM;
+  auto head = tuneMembraneHead(shell, kSnareBatterHz, sb * 0.999, sb * 1.001, 100.0, 10000.0);
+  REQUIRE(head.ok());
+  const MalletStrike stick{0.3, 0.0, kSnareStickMassKg, 3.0, kSnareStickStiffness, 1.5, 0.0, kSnareHeadQ};
+  auto lone = CavityDrumVoice::create(head.value(), nullptr, shell, stick, 2, 2, SampleRateHz{kBandFs * 8}, 101325.0, 293.15, 1.0);
+  REQUIRE(lone.ok());
+  auto lv = std::move(lone).value();
+  CHECK_FALSE(lv.attachSnareWires(snareWireSet()));
 }

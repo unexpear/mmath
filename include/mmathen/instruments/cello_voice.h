@@ -154,6 +154,20 @@ inline constexpr double kCelloBetaForte = 0.07;  // VERIFY (0.09 gave env mean d
 inline constexpr double kCelloBetaPiano = 0.11;  // VERIFY
 inline constexpr double kCelloBowSpeed = 0.15;   // m/s, VERIFY (Askenfelt 1989 range 0.05-1)
 inline constexpr double kCelloAttackSeconds = 0.08;   // UNSOURCED
+// Bow force as a fraction of Schelleng's maximum (the violin stock is
+// 0.2). Guettler (Acta Acustica 88, 2002): the Helmholtz build-up shortens
+// as force rises inside the playable region. TUNED: 0.2 gave a 10-90 %
+// harmonic rise of 951 ms on open C2 and 780 ms on D2 (Sarabande PD
+// reference, notes C2-B2 after a gap: median 565 ms); 0.4 gives 387 /
+// 264 ms; 0.6 made the rise irregular (F2 346 ms, G4 283 ms).
+inline constexpr double kCelloBowForceFraction = 0.4;  // TUNED
+// Player intonation. A cellist tunes the open strings and places the
+// fingers by ear, so the stop is set to sound the written pitch. The
+// engine's bowed pitch sits above the loop tuning by these amounts per
+// string (measured on this voice at force 0.4, beta 0.11, vibrato
+// averaged, parabolic FFT peak over H1-H4): the stop is lowered by them.
+// TUNED (measured on the model, not a property of real strings).
+inline constexpr std::array<double, 4> kCelloIntonationCents = {10.5, 7.8, 4.9, 4.4};  // TUNED
 inline constexpr double kCelloReleaseSeconds = 0.12;  // UNSOURCED
 
 // Highest open string at or below f (the fingering a hymn line uses).
@@ -171,15 +185,22 @@ inline constexpr double kCelloReleaseSeconds = 0.12;  // UNSOURCED
     bool vibrato = true) {
   using R = Result<OversampledBowedStringVoice, QuantityError>;
   const int k = celloCourseFor(cello, hz);
-  const StringCourse& c = cello.courses[static_cast<std::size_t>(k)];
+  // The player's peg tuning: the whole course is lowered by the
+  // intonation offset (tension scaled with frequency squared).
+  StringCourse c = cello.courses[static_cast<std::size_t>(k)];
+  const double tune = std::pow(2.0, -kCelloIntonationCents[static_cast<std::size_t>(k)] / 1200.0);
+  c.tuning.frequency = FrequencyHz{c.tuning.frequency.value() * tune};
+  c.tension = TensionNewtons{c.tension.value() * tune * tune};
   const double lv = std::clamp(level, 0.05, 2.0);
   const double ldb = 20.0 * std::log10(lv);
   const double x = std::clamp(0.5 - ldb / 24.0, 0.0, 1.0);  // +-12 dB span (UNSOURCED)
   const double beta = kCelloBetaForte + x * (kCelloBetaPiano - kCelloBetaForte);
   auto loss = celloStringLoss(c);
   if (!loss.ok()) return R::failure(loss.error());
+  BowStroke stroke = violinBowStroke(c, beta, kCelloBowSpeed * lv);
+  stroke.normalForceNewtons *= kCelloBowForceFraction / kViolinBowForceFraction;
   auto v = OversampledBowedStringVoice::create(
-      c, violinBowStroke(c, beta, kCelloBowSpeed * lv), loss.value(), 0.0, 4, 0, rate,
+      c, stroke, loss.value(), 0.0, 4, 0, rate,
       static_cast<std::uint64_t>(std::max(0.0, seconds) * rate.value()), 4);
   if (!v.ok()) return R::failure(v.error());
   OversampledBowedStringVoice voice = std::move(v).value();
@@ -188,7 +209,7 @@ inline constexpr double kCelloReleaseSeconds = 0.12;  // UNSOURCED
                   0.2, kCelloReleaseSeconds};
   if (!voice.setExpression(e)) return R::failure(QuantityError::InvalidArgument);
   voice.setBridgeForceOutput(true);
-  if (!voice.setStoppedFrequency(hz)) return R::failure(QuantityError::DomainError);
+  if (!voice.setStoppedFrequency(std::max(hz * tune, c.tuning.frequency.value()))) return R::failure(QuantityError::DomainError);
   return R::success(std::move(voice));
 }
 

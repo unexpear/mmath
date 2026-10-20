@@ -7,6 +7,7 @@
 #include <mmathen/instruments/plucked_string.h>
 #include <mmathen/instruments/soundboard_voice.h>
 #include <cstdio>
+#include <cstdlib>
 #include <cmath>
 #include <vector>
 #include <optional>
@@ -14,16 +15,20 @@
 using namespace mmathen;
 static const double FS = 48000.0;
 double midiHz(int m) { return 440.0 * std::pow(2.0, (m - 69) / 12.0); }
-StringCourse classical(const char* label) {
+// Strings at the EJ45 chart tension (guitar_pluck.h); mu = T / (2 L f)^2.
+// GP_UNIFORM=1 restores the old 2 g/m set (A/B only).
+StringCourse classical(const char* label, int stringNumber) {
   auto g = classicalGuitar(); const auto* s = findClassicalGuitarString(g.value(), label);
   const double L = g.value().vibratingLength.value(); const double f = makePitch(label).value().frequency.value();
-  const double t = 2.0e-3 * (2 * L * f) * (2 * L * f);
-  return tuneClassicalGuitarString(g.value(), *s, 1.0, 3.0, t * 0.5, t * 1.5).value();
+  if (std::getenv("GP_UNIFORM")) { const double t = 2.0e-3 * (2 * L * f) * (2 * L * f);
+    return tuneClassicalGuitarString(g.value(), *s, 1.0, 3.0, t * 0.5, t * 1.5).value(); }
+  const double T = classicalGuitarStringTensionN(stringNumber, L), mu = 1e3 * T / ((2 * L * f) * (2 * L * f));
+  return tuneClassicalGuitarString(g.value(), *s, mu * 0.995, mu * 1.005, T * 0.99, T * 1.01).value();
 }
 int main(int argc, char** argv) {
   FILE* in = std::fopen(argv[1], "r"); const double total = std::atof(argv[3]);
   const double dB = argc > 4 ? std::atof(argv[4]) : kClassicalGuitarRoundPluckFromBridgeM;
-  std::vector<StringCourse> open; for (const char* l : {"E2","A2","D3","G3","B3","E4"}) open.push_back(classical(l));
+  std::vector<StringCourse> open; { int sn = 6; for (const char* l : {"E2","A2","D3","G3","B3","E4"}) open.push_back(classical(l, sn--)); }
   struct N { double s; int m, v, str; std::optional<StringCourse> c; };
   std::vector<N> notes; double s, d; int m, v;
   while (std::fscanf(in, "%lf,%lf,%d,%d", &s, &d, &m, &v) == 4) {
