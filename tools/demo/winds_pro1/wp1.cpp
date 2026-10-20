@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
     out = playPhrase(voice, notes, T, true, 0.50, &airway, kFs);
   } else if (which == "trumpet") {
     const auto song = songFor(excerpts::kProTrumpet); T = total(song);
-    auto tp = U(makeTrumpet(phraseTrumpetSpec(speed, kAir, kTemp)));
+    auto tp = U(makeTrumpet(phraseTrumpetSpec(speed, kAir, kTemp, env("WP_TLEN", kPhraseTrumpetLengthMeters))));
     const double tpP = 2800.0 * env("WP_P", 1.0);
     ValveBlow lip = sustained(tpP, 10000.0, kTrumpetAttack); lip.frames = (std::uint64_t)std::llround(T * kFs);
     lip.reflectionMagnitude = 0.999; lip.initialDisplacementMeters = 0.0; lip.tongueReleaseFrames = 0;
@@ -129,8 +129,8 @@ int main(int argc, char** argv) {
     auto voice = U(ConeValveVoice::fromTrumpet(tp, 0.26, lip, kRate)); if (env("WP_LIPQ", 0.0) > 0.0 && !voice.setLipQualityFactor(env("WP_LIPQ", 0.0))) return 4; if (env("WP_LIPC", 0.0) > 0.5) { if (!voice.setLipCollision(true)) return 5; }
     double start = 0; BrassFinger held = kTrumpetFingers[0];
     for (auto& s : song) {
-      const BrassFinger r = s.hertz > 0 ? trumpetFinger(s.hertz) : held;
-      const double lipHz = r.mode == 0 ? 0.75 * speed / r.length : env("WP_LIPR", 0.80) * conePartial(r.length, 0.26, r.mode);
+      BrassFinger r = s.hertz > 0 ? trumpetFinger(s.hertz) : held; if (s.hertz > 0 && std::fabs(s.hertz - env("WP_ROWHZ", -1.0)) < 0.05) { r.length = env("WP_ROWL", r.length); r.mode = (int)env("WP_ROWM", r.mode); }
+      const double lipHz = r.mode == 0 ? 0.75 * speed / r.length : env("WP_LIPR", trumpetLipPartialRatio(r.mode)) * conePartial(r.length, 0.26, r.mode);
       push(notes, s, start, r.length, lipHz, tpP, 0); notes.back().peakHz = impedancePeakHz(r.length, 0.26, r.mode, r.hertz);
       if (s.hertz > 0) held = r; start += s.seconds;
     }

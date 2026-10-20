@@ -375,7 +375,7 @@ struct BrassFinger {
   // Promenade order stays finite. F5 at 1.39 m into D5 at 1.38 m dies
   // on the open-valve slur; 1.410 into 1.386 completes. Mode 0 is the
   // open second-register recipe, lip = 0.75 c/L. Any other mode sets
-  // the lip at 0.8 of that cone partial.
+  // the lip at trumpetLipPartialRatio(mode) of that cone partial.
   inline constexpr BrassFinger kTrumpetFingers[] = {
       // G4 was the mode-0 recipe (0.804 m, lip 0.75 c/L) and played 8-12 dB
       // under the cone-mode notes in Jingle Bells (winds pro6). It is now
@@ -384,18 +384,45 @@ struct BrassFinger {
       // same recipe locked to a lower partial on the pro phrase and keeps
       // the mode-0 row; E4 and F#4 are mode 3 rows scaled from F4 (mode 3
       // trial 1.4010 m) and G4 and corrected by the +2 c / -6 c they read.
-      {392.00, 1.2198, 3}, {349.23, 0.912, 0}, {466.16, 1.023, 3},
-      {523.25, 1.560, 5}, {698.46, 1.410, 6}, {587.33, 1.386, 5},
+      // Mode 3 rows retuned for the 0.70 lip ratio (christmas-jb3): each
+      // (L + apex) x 2^(cents/1200) for the cents read at 0.70 in Jingle
+      // Bells, one pass: G4 0, Bb4 -18 (its B4 read -18), A4 -15, F#4 -3,
+      // E4 -25, D4 -4 (D4 trial 1.665 m).
+      {392.00, 1.2198, 3}, {349.23, 0.912, 0}, {466.16, 1.0097, 3},
+      {523.25, 1.5464, 5}, {698.46, 1.410, 6}, {587.33, 1.3671, 5},
       // A4 for When the Saints: the Bb4 row scaled sat 27.8 cents flat;
       // (L + apex) shortened by that measured ratio.
-      {440.00, 1.0776, 3},
+      {440.00, 1.0661, 3},
       // Jingle Bells (tools/demo/christmas): D4 scaled from the F4 row read
       // +68 c, E5 scaled from F5 -39 c, C#5 scaled from D5 -27 c; each row
       // is that scaled length (cone + apex for a cone mode) times
       // 2^(cents/1200), one pass.
-      {293.66, 1.1281, 0}, {659.26, 1.4699, 6}, {554.37, 1.4568, 5},
-      {329.63, 1.5018, 3}, {369.99, 1.3025, 3},
+      // D4 was the mode-0 row (1.1281 m, F4 scaled) and E4 mode 3 at
+      // 1.5018 m with the 0.80 lip: both played biphonic (D4 295 + 409 Hz,
+      // E4 332 + 423 Hz, harmonic-energy fraction 1-10 %), the 'fully
+      // wrong' trumpet of christmas-jb2. A real Bb trumpet plays both as
+      // its 3rd partial (D4 1+2 valves, E4 valve 2), so they are mode 3
+      // rows here; a grid of 1.55-1.83 m x lip 0.6-1.1 locked single-pitch
+      // only at lip 0.6-0.7 (tools/demo/winds_pro1, d4/e4 grid).
+      // C5, C#5, D5 (mode 5) retuned for the 0.76 lip by the -13/-5/-20 c
+      // they read at 0.76 in Jingle Bells, one pass.
+      {293.66, 1.6606, 3}, {659.26, 1.4699, 6}, {554.37, 1.4518, 5},
+      {329.63, 1.4766, 3}, {369.99, 1.2998, 3},
   };
+  // Lip natural frequency over the bore partial it drives. An
+  // outward-striking lip plays just above its own resonance, so the lip
+  // sits below the impedance peak (Yoshikawa, JASA 97, 1929 (1995);
+  // Cullen, Gilbert & Campbell, Acta Acustica 86, 704 (2000)). The values
+  // are TUNED: at 0.80 the mode 3 notes (D4-B4) came out near-sinusoidal
+  // (H2 -3 to -11 dB, H3 -6 to -10 dB re H1) and D4/E4 split into two
+  // pitches; at 0.70 they lock single-pitch with H2 +3 to +9 dB, H3 -3 to
+  // +12 dB, the side of a played trumpet (H2 +8, H3 +7 on the CC
+  // reference). Mode 5 (C5-D5) broke up at 0.70; a 0.74-0.84 sweep gave
+  // H2 +1 to +3 dB at 0.76 (-2 to -6 at 0.80). Mode 6 (E5, F5) split
+  // below 0.78 and keeps 0.80.
+  inline constexpr double trumpetLipPartialRatio(int mode) {
+    return mode <= 3 ? 0.70 : (mode == 5 ? 0.76 : 0.80);
+  }
   inline BrassFinger trumpetFinger(double hertz) {
       for (const BrassFinger& row : kTrumpetFingers)
         if (std::fabs(row.hertz - hertz) < 0.02) return row;

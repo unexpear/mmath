@@ -2053,7 +2053,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     for (const auto& src : excerpts::kTrumpet) {
       const Finger row = src.hertz > 0.0 ? find(src.hertz) : held;
       const double lipHz =
-          row.mode == 0 ? 0.75 * speed / row.length : 0.80 * conePartial(row.length, 0.26, row.mode);
+          row.mode == 0 ? 0.75 * speed / row.length : trumpetLipPartialRatio(row.mode) * conePartial(row.length, 0.26, row.mode);
       push(notes, src, start, row.length, lipHz, 2800.0, 0.0, 25.0, 0.01);
       notes.back().peakHz = impedancePeakHz(row.length, 0.26, row.mode, row.hertz);
       if (src.hertz > 0.0) held = row;
@@ -2287,7 +2287,7 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     for (const auto& src : song) {
       const Finger row = src.hertz > 0.0 ? find(src.hertz) : held;
       const double lipHz =
-          row.mode == 0 ? 0.75 * speed / row.length : 0.80 * conePartial(row.length, 0.26, row.mode);
+          row.mode == 0 ? 0.75 * speed / row.length : trumpetLipPartialRatio(row.mode) * conePartial(row.length, 0.26, row.mode);
       if (measured)
         push(notes, src, start, row.length,
              voice.tuneAdachiSatoLipHz(src.hertz > 0.0 ? src.hertz : row.hertz, row.length,
@@ -2687,7 +2687,7 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
         const Finger row =
             find(trumpetRows, static_cast<int>(std::size(trumpetRows)), src.hertz);
         const double lip = row.mode == 0 ? 0.75 * speed / row.length
-                                         : 0.80 * conePartial(row.length, 0.26, row.mode);
+                                         : trumpetLipPartialRatio(row.mode) * conePartial(row.length, 0.26, row.mode);
         const double peak = impedancePeakHz(row.length, 0.26, row.mode, src.hertz);
         const auto frames = static_cast<std::uint64_t>(std::llround(src.seconds * kFs));
         ValveBlow blow = sustained(2800.0, 10000.0, kTrumpetAttack);

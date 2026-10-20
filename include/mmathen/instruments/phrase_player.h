@@ -247,12 +247,19 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       const PhraseNote& prev = notes[static_cast<std::size_t>(sounding - 1)];
       length = prev.lengthM + (note.lengthM - prev.lengthM) * alpha;
     }
+    double vibrato = 1.0;
     if (note.vibrato && !note.rest && time > note.startSec + 0.20) {
-      length *= 1.0 - depth * std::sin(constants::twoPi * kVibratoHz * time);
+      vibrato = 1.0 - depth * std::sin(constants::twoPi * kVibratoHz * time);
+      length *= vibrato;
     }
     if (!(voice.setSoundingLength(length))) return {};
     if (!(voice.setBlowingPressure(breathOff ? 0.0 : note.pressure * env))) return {};
-    if (note.lipHz > 0.0) if (!(voice.setLipResonanceHz(note.lipHz))) return {};
+    // Brass vibrato is made at the lips and jaw (Fletcher & Rossing, The
+    // Physics of Musical Instruments, 2nd ed., sec. 14.7, VERIFY section):
+    // the lip resonance moves with the pitch. Moving only the bore pulled
+    // the bore partial away from a fixed lip and the 1.2 s vibrato notes
+    // of Jingle Bells (E4, G4) lost the lock and died (-45 dB end vs mid).
+    if (note.lipHz > 0.0) if (!(voice.setLipResonanceHz(note.lipHz / vibrato))) return {};
     if constexpr (requires(Voice& probe) { probe.setJetDelaySamples(0.0); }) {
       if (!fluteJet || note.rest || breathOff) {  // no breath, no jet to time
         if (fluteJet && note.jetSamples > 0.0) if (!(voice.setJetDelaySamples(note.jetSamples))) return {};
