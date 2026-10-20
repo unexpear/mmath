@@ -1,0 +1,1 @@
+Sleigh bells pro check 1. Reference: Wikimedia Commons File:Sleigh_bells.wav (CC0, The Midnite Wolf, AKG C414). Harness sb1.cpp (engine include/mmathen/instruments/sleigh_bell.h). Render: sb1 sbpro1.f64 9.8 6 3. Scoreboard: python3 sbscore.py out.png title ref.wav name=clip.f64

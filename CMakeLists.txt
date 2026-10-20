@@ -172,6 +172,7 @@ if(BUILD_TESTING)
     tests/test_realtime_io.cpp
     tests/test_desktop_tuner.cpp
     tests/test_guitar_pluck.cpp
+    tests/test_sleigh_bell.cpp
     tests/headers/th_result.cpp
     tests/headers/th_scalar.cpp
     tests/headers/th_constants.cpp
