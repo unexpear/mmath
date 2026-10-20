@@ -110,25 +110,70 @@ struct SleighBellDesign {
 };
 struct SleighBellPartial { double hz; double levelDb; double decayDbPerS; };
 // MEASURED from the CC0 reference (see header). Levels: dB re the strongest.
-inline constexpr std::array<SleighBellPartial, 7> kSleighBellMeasuredPartials{{
+// Index 0 and 6 are the ear's two bending modes; 7 and 8 (17.0, 17.69 kHz)
+// are further measured top-octave peaks, decay taken as 16.8 kHz's (VERIFY).
+inline constexpr std::array<SleighBellPartial, 9> kSleighBellMeasuredPartials{{
     {2514, -5.8, 40.7}, {5959, -4.7, 29.7}, {6659, 0.0, 31.9}, {7084, -2.4, 35.9},
-    {10228, -0.3, 41.6}, {10686, -0.4, 47.8}, {16796, -6.5, 52.5},
+    {10228, -0.3, 41.6}, {10686, -0.4, 47.8}, {16796, -6.5, 52.5}, {17000, -10.9, 52.5}, {17690, -7.0, 52.5},
 }};
 inline constexpr double kSleighBellShakeHz = 3.36;         // MEASURED: envelope-modulation peak of the reference
 // Peak hand acceleration A (2 pi f)^2 must exceed g to lift the pellet: at
 // 3.36 Hz that needs A > 22 mm. 25 mm is just above. UNSOURCED.
 inline constexpr double kSleighBellShakeAmplitudeM = 0.025;
+// Minimum-jerk strokes peak at 10/sqrt(3) A / T^2 (T = stroke time, 77 ms
+// at duty 0.52): lift needs A > 10.2 mm. 15 mm is the smallest of the
+// 10/15/20/25 mm sweep that lifts it and matched all 7 reference peaks. TUNED.
+inline constexpr double kSleighBellStrokeAmplitudeM = 0.015;
 // Free-ring decays measured on the reference are biased slow by re-hits; a
 // model run with them reads slower on the same measure (x1 -> -15..-23 dB/s, x2 -> -47..-64 vs real -29..-40), and bells
 // riveted to a leather strap lose energy into it. Decay rates x1.4: TUNED.
 inline constexpr double kSleighBellStrapDampingFactor = 1.4;
-inline constexpr double kSleighBellSizeScatter = 0.02;     // fractional sd across a strap, UNSOURCED
+// Bell-to-bell scatter of mode frequency, MEASURED from -3 dB peak widths
+// of the reference (32768-pt mean spectrum): ear mode 2514 Hz 2.9 % wide
+// -> sd 1.25 %; cap/shell partial 6659 Hz 0.87 % -> sd 0.37 % (FWHM /
+// 2.355, assuming the width is scatter, not damping: Q from the measured
+// decay would give < 0.01 %). Ears are set by the slot, which varies most
+// (Bergum: slot length sets pitch).
+inline constexpr double kSleighBellEarScatter = 0.0125;
+inline constexpr double kSleighBellShellScatter = 0.0037;
+// Hand motion. Shaking is a sequence of point-to-point strokes; each stroke
+// follows the minimum-jerk profile x = A (10 s^3 - 15 s^4 + 6 s^5), s = t/T
+// (T. Flash and N. Hogan, "The coordination of arm movements", J.
+// Neurosci. 5, 1688-1703, 1985). Up stroke, pause, down stroke, pause.
+// Stroke share of the cycle MEASURED from the reference: frames within
+// 10 dB of each cycle's peak = 0.52 of the cycle.
+inline constexpr double kSleighBellStrokeDuty = 0.52;
 
 struct ShakeGesture {
   double rateHz = kSleighBellShakeHz;
-  double amplitudeM = kSleighBellShakeAmplitudeM;
+  double amplitudeM = kSleighBellStrokeAmplitudeM;  // use kSleighBellShakeAmplitudeM for the sinusoid
   double lateralFraction = 0.3;  // sideways share of the hand motion, UNSOURCED
+  bool minimumJerkStrokes = true; // false: plain sinusoid (pro1)
+  double strokeDuty = kSleighBellStrokeDuty;
 };
+// Hand acceleration (m/s^2) at time t: vertical, and the lateral component.
+[[nodiscard]] inline double shakeAcceleration(const ShakeGesture& g, double t, bool lateral) {
+  const double w = 6.283185307179586 * g.rateHz;
+  if (!g.minimumJerkStrokes)
+    return lateral ? -g.lateralFraction * g.amplitudeM * w * w * std::cos(w * t)
+                   : -g.amplitudeM * w * w * std::sin(w * t);
+  const double period = 1.0 / g.rateHz, T = 0.5 * g.strokeDuty * period;
+  double ph = std::fmod(t + (lateral ? 0.25 * period : 0.0), period);
+  if (ph < 0) ph += period;
+  double sign = 1.0;
+  if (ph >= 0.5 * period) { ph -= 0.5 * period; sign = -1.0; }
+  if (ph >= T) return 0.0;  // pause
+  const double s = ph / T, A = g.amplitudeM * (lateral ? g.lateralFraction : 1.0);
+  return sign * A / (T * T) * (60.0 * s - 180.0 * s * s + 120.0 * s * s * s);
+}
+// Contact effective mass. A hit on an ear (thin cantilever) moves only the
+// ear: tip effective mass of a cantilever = 33/140 of its mass (Rayleigh,
+// static-deflection shape; e.g. Blevins, "Formulas for natural frequency
+// and mode shape", 1979). Hits elsewhere use the whole shell mass. Ear
+// width and the ear zone (top cap, n_z > 0.6) are UNSOURCED.
+inline constexpr double kSleighBellEarWidthM = 0.008;
+inline constexpr double kSleighBellEarZoneCos = 0.6;
+inline constexpr double kCantileverTipMassFraction = 33.0 / 140.0;
 
 class SleighBellStrap {
  public:
@@ -142,14 +187,16 @@ class SleighBellStrap {
     eStar_ = 1.0 / ((1 - d_.shellNu * d_.shellNu) / d_.shellE + (1 - d_.pelletNu * d_.pelletNu) / d_.pelletE);
     // ear length from the measured fundamental (TUNED), second ear mode from theory
     earLengthM_ = cantileverLengthForHz(kSleighBellMeasuredPartials[0].hz, d_.shellE, d_.shellRho, d_.wallM);
+    const double earTip = kCantileverTipMassFraction * d_.shellRho * earLengthM_ * kSleighBellEarWidthM * d_.wallM;
+    mStarEar_ = pelletMass_ * earTip / (pelletMass_ + earTip);
     for (int b = 0; b < bells; ++b) {
       Bell bell;
-      const double scale = 1.0 + kSleighBellSizeScatter * gauss();  // bigger bell -> lower
+      const double earScale = 1.0 + kSleighBellEarScatter * gauss(), shellScale = 1.0 + kSleighBellShellScatter * gauss();
       for (std::size_t k = 0; k < kSleighBellMeasuredPartials.size(); ++k) {
         const auto& p = kSleighBellMeasuredPartials[k];
         double f = p.hz;
         if (k == 0) f = cantileverStripHz(0, d_.shellE, d_.shellRho, d_.wallM, earLengthM_);
-        f /= scale;
+        f /= (k == 0 || k == 6) ? earScale : shellScale;
         Mode m;
         m.w = 6.283185307179586 * f;
         const double t60 = 60.0 / (p.decayDbPerS * kSleighBellStrapDampingFactor);
@@ -170,14 +217,12 @@ class SleighBellStrap {
   // Render `n` samples of a steady shake, starting at the current time.
   void render(double* out, std::size_t n, const ShakeGesture& g) {
     const double dt = 1.0 / fs_, rIn = d_.outerRadiusM - d_.wallM, lim = rIn - d_.pelletRadiusM;
-    const double w = 6.283185307179586 * g.rateHz;
     for (std::size_t i = 0; i < n; ++i, t_ += dt) {
       double y = 0.0;
       for (Bell& b : bells_) {
         const double tt = t_ + b.lag;
-        // shell acceleration (hand): vertical z plus lateral x, 90 deg apart
-        const double az = -g.amplitudeM * w * w * std::sin(w * tt);
-        const double ax = -g.lateralFraction * g.amplitudeM * w * w * std::cos(w * tt);
+        // shell acceleration (hand): vertical z plus lateral x
+        const double az = shakeAcceleration(g, tt, false), ax = shakeAcceleration(g, tt, true);
         b.v[0] += -ax * dt; b.v[2] += (-9.81 - az) * dt;
         for (int k = 0; k < 3; ++k) b.p[k] += b.v[k] * dt;
         const double r = std::sqrt(b.p[0] * b.p[0] + b.p[1] * b.p[1] + b.p[2] * b.p[2]);
@@ -192,7 +237,7 @@ class SleighBellStrap {
             const double J = pelletMass_ * (1.0 + d_.restitution) * vn;
             if (vn > 1e-3) {
               ++impacts_;
-              const double tau = hertzContactSeconds(mStar_, rStar_, eStar_, vn);
+              const double tau = hertzContactSeconds(nrm[2] > kSleighBellEarZoneCos ? mStarEar_ : mStar_, rStar_, eStar_, vn);
               for (std::size_t m = 0; m < b.modes.size(); ++m) {
                 Mode& md = b.modes[m];
                 md.y1 += md.gain * J * halfSinePulseWeight(md.w, tau) * std::sin(md.w / fs_);
@@ -221,7 +266,7 @@ class SleighBellStrap {
   double fs_;
   SleighBellDesign d_;
   std::uint64_t s_;
-  double pelletMass_ = 0, mStar_ = 0, rStar_ = 0, eStar_ = 0, earLengthM_ = 0, t_ = 0;
+  double pelletMass_ = 0, mStar_ = 0, mStarEar_ = 0, rStar_ = 0, eStar_ = 0, earLengthM_ = 0, t_ = 0;
   std::uint64_t impacts_ = 0;
   std::vector<Bell> bells_;
 };
