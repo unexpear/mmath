@@ -109,6 +109,7 @@ if(BUILD_TESTING)
     tests/test_voice_render.cpp
     tests/test_plucked_string.cpp
     tests/test_contact_voice.cpp
+    tests/test_band_voices.cpp
     tests/test_wind_tone.cpp
     tests/test_soundboard.cpp
     tests/test_cavity_drum.cpp

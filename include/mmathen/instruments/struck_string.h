@@ -296,62 +296,95 @@ class HammeredStringVoice final : public IVoice {
     return R::success(std::move(voice));
   }
 
+  // One sample of hammer and string against a bridge moving at
+  // bridgeVelocity (the body's velocity from the previous sample). Returns
+  // the force the string puts on the bridge, Z (2 v+ - v_bridge). The
+  // voice's own board is not stepped: renderBlock does that, and a caller
+  // that couples several strings to one shared board (piano unisons) steps
+  // the strings here and sums the forces on that board.
+  [[nodiscard]] Result<double, QuantityError> stepString(double bridgeVelocity) {
+    using Rs = Result<double, QuantityError>;
+    const double dt = 1.0 / rate_.value();
+    const double twoZ = 2.0 * impedance_;
+    const double delayedBridge = bridge_[bridgePos_];
+    const double delayedNut = nut_[nutPos_];
+    const double filtered = applyFilter(delayedBridge);
+    if (!std::isfinite(filtered)) return Rs::failure(QuantityError::RangeError);
+    const double incomingBridge = bridgeVelocity - filtered;
+    const double incomingNut = -delayedNut;
+    const double history = incomingBridge + incomingNut;
+    const double compression = hammerY_ - stringY_;
+    double force = 0.0;
+    if (compression > 0.0) {
+      const double amplitude = stiffness_ * std::pow(compression, exponent_);
+      if (!std::isfinite(amplitude) || amplitude < 0.0)
+        return Rs::failure(QuantityError::RangeError);
+      if (viscous_ == 0.0) {
+        force = amplitude;
+      } else {
+        const double openFactor = 1.0 + viscous_ * (hammerV_ - history);
+        if (openFactor > 0.0) {
+          const double denom = 1.0 + amplitude * viscous_ / twoZ;
+          force = amplitude * openFactor / denom;
+        }
+      }
+    }
+    if (!std::isfinite(force) || force < 0.0)
+      return Rs::failure(QuantityError::RangeError);
+    const double added = force / twoZ;
+    const double stringVelocity = history + added;
+    const double outgoingBridge = incomingNut + added;
+    const double outgoingNut = incomingBridge + added;
+    if (!std::isfinite(stringVelocity) || !std::isfinite(outgoingBridge) ||
+        !std::isfinite(outgoingNut))
+      return Rs::failure(QuantityError::RangeError);
+    bridge_[bridgePos_] = outgoingBridge;
+    nut_[nutPos_] = outgoingNut;
+    bridgePos_ = (bridgePos_ + 1) % bridge_.size();
+    nutPos_ = (nutPos_ + 1) % nut_.size();
+    hammerV_ += (-force / mass_) * dt;
+    hammerY_ += hammerV_ * dt;
+    stringY_ += stringVelocity * dt;
+    if (!std::isfinite(hammerY_) || !std::isfinite(hammerV_) ||
+        !std::isfinite(stringY_))
+      return Rs::failure(QuantityError::RangeError);
+    const double bridgeForce = impedance_ * (2.0 * filtered - bridgeVelocity);
+    if (!std::isfinite(bridgeForce)) return Rs::failure(QuantityError::RangeError);
+    return Rs::success(bridgeForce);
+  }
+
   [[nodiscard]] SampleRateHz sampleRate() const override { return rate_; }
 
   [[nodiscard]] Result<FrameCount, QuantityError> renderBlock(
       double* out, FrameCount n) override {
+    return renderUnison(std::span<HammeredStringVoice>(), out, n);
+  }
+
+  // A unison: this voice and `others` all end on this voice's board, so
+  // the bridge force is the sum of every string's force and every string
+  // sees the one bridge velocity (Weinreich, JASA 62, 1474 (1977): the
+  // coupled strings of a mistuned unison give the double decay). The
+  // others' own boards are not stepped. Same rate required.
+  [[nodiscard]] Result<FrameCount, QuantityError> renderUnison(
+      std::span<HammeredStringVoice> others, double* out, FrameCount n) {
     using R = Result<FrameCount, QuantityError>;
     const std::uint64_t count = static_cast<std::uint64_t>(n.value());
     if (count == 0) return R::success(n);
     if (out == nullptr) return R::failure(QuantityError::InvalidArgument);
+    for (const HammeredStringVoice& other : others)
+      if (&other == this || other.rate_.value() != rate_.value())
+        return R::failure(QuantityError::InvalidArgument);
     const double fs = rate_.value();
     const double dt = 1.0 / fs;
-    const double twoZ = 2.0 * impedance_;
     for (std::uint64_t i = 0; i < count; ++i) {
-      const double delayedBridge = bridge_[bridgePos_];
-      const double delayedNut = nut_[nutPos_];
-      const double filtered = applyFilter(delayedBridge);
-      if (!std::isfinite(filtered)) return R::failure(QuantityError::RangeError);
-      const double incomingBridge = bridgeVelocity_ - filtered;
-      const double incomingNut = -delayedNut;
-      const double history = incomingBridge + incomingNut;
-      const double compression = hammerY_ - stringY_;
-      double force = 0.0;
-      if (compression > 0.0) {
-        const double amplitude = stiffness_ * std::pow(compression, exponent_);
-        if (!std::isfinite(amplitude) || amplitude < 0.0)
-          return R::failure(QuantityError::RangeError);
-        if (viscous_ == 0.0) {
-          force = amplitude;
-        } else {
-          const double openFactor = 1.0 + viscous_ * (hammerV_ - history);
-          if (openFactor > 0.0) {
-            const double denom = 1.0 + amplitude * viscous_ / twoZ;
-            force = amplitude * openFactor / denom;
-          }
-        }
+      auto stringStep = stepString(bridgeVelocity_);
+      if (!stringStep.ok()) return R::failure(stringStep.error());
+      double bridgeForce = stringStep.value();
+      for (HammeredStringVoice& other : others) {
+        auto otherStep = other.stepString(bridgeVelocity_);
+        if (!otherStep.ok()) return R::failure(otherStep.error());
+        bridgeForce += otherStep.value();
       }
-      if (!std::isfinite(force) || force < 0.0)
-        return R::failure(QuantityError::RangeError);
-      const double added = force / twoZ;
-      const double stringVelocity = history + added;
-      const double outgoingBridge = incomingNut + added;
-      const double outgoingNut = incomingBridge + added;
-      if (!std::isfinite(stringVelocity) || !std::isfinite(outgoingBridge) ||
-          !std::isfinite(outgoingNut))
-        return R::failure(QuantityError::RangeError);
-      bridge_[bridgePos_] = outgoingBridge;
-      nut_[nutPos_] = outgoingNut;
-      bridgePos_ = (bridgePos_ + 1) % bridge_.size();
-      nutPos_ = (nutPos_ + 1) % nut_.size();
-      hammerV_ += (-force / mass_) * dt;
-      hammerY_ += hammerV_ * dt;
-      stringY_ += stringVelocity * dt;
-      if (!std::isfinite(hammerY_) || !std::isfinite(hammerV_) ||
-          !std::isfinite(stringY_))
-        return R::failure(QuantityError::RangeError);
-      const double bridgeForce = impedance_ * (2.0 * filtered - bridgeVelocity_);
-      if (!std::isfinite(bridgeForce)) return R::failure(QuantityError::RangeError);
       double bridgeVelocity = 0.0;
       double volume = 0.0;
       for (BodyMode& mode : modes_) {

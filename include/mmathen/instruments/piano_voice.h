@@ -2,10 +2,12 @@
 // Piano note: any key of a piano from the Chabassier Table III strings,
 // struck by a Hunt-Crossley felt hammer, radiated through a modal
 // soundboard (docs/48, band pro check). Each string of the unison is a
-// HammeredStringVoice (struck_string.h) on its own copy of the board, so
-// the strings of a unison are not coupled at the bridge (no Weinreich
-// double decay from coupling; the mistuning still beats). That is a known
-// gap, not hidden.
+// HammeredStringVoice (struck_string.h); all of them load one board at one
+// bridge point (renderUnison), so the mistuned unison couples there
+// (Weinreich 1977). The strings of other keys do not share it.
+// This extends PR #2's hammered piano (tests/test_contact_voice.cpp: one
+// Table III string, linear felt, a single body mode at f0), which scored
+// worse on the VSCO scoreboard (band-scoreboard2.png); the class is the same.
 //
 // Strings. chabassier2013Strings() prints five rows (D#1 C2 F3 C#5 G6).
 // Other keys are INTERPOLATED on the key axis between neighbouring rows:
@@ -47,10 +49,13 @@
 // The plate alone is too mobile (bridge and ribs add mass and
 // stiffness): the modal masses are scaled together so that the mean
 // |Y| at the bridge point, over f0/1.5 to 1.5 f0 of the key (kept inside
-// 100 Hz-2.5 kHz), is kPianoBridgeMobility, 1/(10^3 kg/s) (Giordano,
+// 100 Hz-2.5 kHz), is kPianoBridgeMobility, 5e-4 m/(N s), i.e. 2x10^3 kg/s (Giordano,
 // JASA 102, 1159 (1997) and JASA 103, 2128 (1998); Wogram 1980;
 // Askenfelt 2006: bridge impedance near 10^3 kg/s from 100 Hz to about
-// 2.5 kHz on upright pianos).
+// 2.5 kHz on upright pianos, varying by about a factor 2 with position).
+// Sweep at x0.1 felt: 1e-3 / 5e-4 / 2.5e-4 gave median T60 -1.40 / -0.79
+// / -0.45 oct against the reference; 5e-4 is the stiffest inside the
+// cited factor 2, so it is used (TUNED within the range).
 // Bridge point for a key: a straight treble bridge from (0.25 a, 0.80 b)
 // at C8 to (0.78 a, 0.30 b) at A0 (UNSOURCED geometry).
 //
@@ -78,11 +83,17 @@ inline constexpr double kPianoBoardA = 1.40, kPianoBoardB = 1.00, kPianoBoardH =
 inline constexpr double kSpruceEL = 11.6e9, kSpruceRho = 420.0;
 inline constexpr double kPianoBoardMaxHz = 3000.0;
 inline constexpr int kPianoBoardMaxModes = 120;
-// Chaigne & Askenfelt's K is a grand's C2/C4/C7 hammer. Scaled by 0.1:
-// TUNED to the VSCO upright (centroid +0.86 oct over the reference at 1.0,
-// +0.31 at 0.1; softer/worn upright felt, UNSOURCED as a cause).
-inline constexpr double kPianoUprightFeltScale = 0.1;
-inline constexpr double kPianoBridgeMobility = 1.0e-3;  // m/(N s), Giordano 1997/1998
+// Chaigne & Askenfelt's K is a grand's C2/C4/C7 hammer. Scaled down,
+// TUNED to the VSCO upright (dyn2) spectral centroid, at bridge mobility
+// 5e-4: x1.0 +0.86 oct, x0.1 +0.34, x0.03 +0.02, x0.01 -0.45 oct (median
+// A1-A6). At x0.03 A6 is a thump (centroid 272 Hz vs 1493), so the scale
+// rises to 0.1 from A5 (key 81) to A6 (key 93). Softer/worn upright felt
+// is a guess at the cause, UNSOURCED.
+[[nodiscard]] inline double pianoUprightFeltScale(int midi) {
+  const double t = std::clamp((midi - 81) / 12.0, 0.0, 1.0);
+  return 0.03 * std::pow(0.1 / 0.03, t);
+}
+inline constexpr double kPianoBridgeMobility = 5.0e-4;  // m/(N s), Giordano 1997/1998, factor 2 stiffer than 1e-3
 
 // mp: pp p mp mf f ff -> m/s (Askenfelt & Jansson 1991 range, VERIFY).
 [[nodiscard]] inline double pianoHammerSpeed(int dynamicStep) {
@@ -192,13 +203,14 @@ class PianoNoteVoice {
  public:
   [[nodiscard]] static Result<PianoNoteVoice, QuantityError> create(int midi, double speed, SampleRateHz rate,
                                                                     double distanceMeters = 1.0,
-                                                                    double feltStiffnessScale = kPianoUprightFeltScale) {
+                                                                    double feltStiffnessScale = 0.0) {  // 0: pianoUprightFeltScale(midi)
     using R = Result<PianoNoteVoice, QuantityError>;
     auto base = pianoStringForKey(midi);
     if (!base.ok()) return R::failure(base.error());
     const double fac = base.value().densityFactor;
     const int strings = fac > kPianoMonochordFactor ? 1 : (fac > 1.0 ? 2 : 3);
     const PianoHammer hammer = pianoHammerForKey(midi);
+    if (!(feltStiffnessScale > 0.0)) feltStiffnessScale = pianoUprightFeltScale(midi);
     PianoNoteVoice note;
     note.board_ = std::make_unique<PianoBoard>(pianoBoardAtKey(midi));
     if (note.board_->modes.empty()) return R::failure(QuantityError::RangeError);
@@ -226,14 +238,13 @@ class PianoNoteVoice {
     }
     return R::success(std::move(note));
   }
-  // Adds the note into out[0..n).
+  // Adds the note into out[0..n): every string of the unison on the first
+  // string's board (HammeredStringVoice::renderUnison).
   [[nodiscard]] Result<FrameCount, QuantityError> renderAdd(double* out, std::size_t n) {
     std::vector<double> tmp(n);
-    for (auto& v : voices_) {
-      auto r = v.renderBlock(tmp.data(), FrameCount{n});
-      if (!r.ok()) return r;
-      for (std::size_t i = 0; i < n; ++i) out[i] += tmp[i];
-    }
+    auto r = voices_.front().renderUnison(std::span<HammeredStringVoice>(voices_).subspan(1), tmp.data(), FrameCount{n});
+    if (!r.ok()) return r;
+    for (std::size_t i = 0; i < n; ++i) out[i] += tmp[i];
     return Result<FrameCount, QuantityError>::success(FrameCount{n});
   }
   [[nodiscard]] int strings() const { return static_cast<int>(voices_.size()); }
