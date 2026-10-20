@@ -202,6 +202,21 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     // Once the breath is off, the lip seals and the wall is Kirchhoff
     // at this fingering's impedance peak. The next blow restores the
     // mild playing pole. The radiated sample is not scaled.
+    // A reed on the cone, stopped by the tongue, rings on the same
+    // Kirchhoff wall at its fingering: the playing loss is the
+    // regeneration-tuned pole, and on it a 40 ms stop dipped the alto
+    // sax 11 dB where the Lick_Alto_Sax reference dips 21 dB (18 dB on
+    // this wall, winds pro6). The breath release keeps the playing wall.
+    if (note.lipHz == 0.0 && !note.rest && !fluteJet && airway != nullptr) {
+      if constexpr (requires(Voice& probe) { probe.engageRingWall(0.0); }) {
+        const double ringHz = note.peakHz > 0.0 ? note.peakHz : note.targetHz;
+        if (tongueShut && releasing < 0 && ringHz > 0.0) {
+          if (!(voice.engageRingWall(ringHz))) return {};
+        } else {
+          if (!(voice.restorePlayingWall())) return {};
+        }
+      }
+    }
     if (note.lipHz > 0.0) {
       if constexpr (requires(Voice& probe) { probe.engageRingWall(0.0); }) {
         // A tongue stop seals the lip as a breath stop does (the airflow
