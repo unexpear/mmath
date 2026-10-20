@@ -1,4 +1,5 @@
-// Band pro-check voices: double bass pizzicato and the per-key piano.
+// Band pro-check voices: double bass pizzicato, the per-key piano, the
+// bowed cello voice and the soft flute voicing.
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
@@ -10,6 +11,8 @@
 #include <mmathen/instruments/double_bass.h>
 #include <mmathen/instruments/double_bass_pizz.h>
 #include <mmathen/instruments/piano_voice.h>
+#include <mmathen/instruments/cello_voice.h>
+#include <mmathen/instruments/wind_presets.h>
 
 using namespace mmathen;
 
@@ -203,4 +206,42 @@ TEST_CASE("double bass pizzicato picks the string and rings its pitch", "[band][
   auto stop = doubleBassPizzLoss(e1.value().course, true);
   REQUIRE(open.ok());
   REQUIRE(stop.ok());
+}
+
+TEST_CASE("cello voice bows its string at pitch and radiates through the body", "[band][cello]") {
+  auto vc = cello();
+  REQUIRE(vc.ok());
+  CHECK(celloCourseFor(vc.value(), 65.41) == 0);
+  CHECK(celloCourseFor(vc.value(), 130.81) == 1);
+  CHECK(celloCourseFor(vc.value(), 261.63) == 3);
+  const auto modes = celloBodyModes();
+  CHECK(std::fabs(modes[0].hz - 104.0) < 1e-12);  // A0, Bynum and Rossing
+  CHECK(std::fabs(modes[4].hz - 226.0) < 1e-12);  // A1
+  const double f = 196.0;  // G3 on the D string
+  auto note = makeCelloNote(vc.value(), f, 1.5, 0.5, SampleRateHz{kBandFs}, false);
+  REQUIRE(note.ok());
+  auto v = std::move(note).value();
+  std::vector<double> force(96000), p(96000, 0.0);
+  REQUIRE(v.renderBlock(force.data(), FrameCount{force.size()}).ok());
+  auto made = CelloBody::create(SampleRateHz{kBandFs});
+  REQUIRE(made.ok());
+  auto body = std::move(made).value();
+  REQUIRE(body.processAdd(force.data(), p.data(), p.size()));
+  for (double y : p) REQUIRE(std::isfinite(y));
+  const double heard = bandPeak(p, 24000, 38400, f * 0.97, f * 1.03);
+  CHECK(std::fabs(1200.0 * std::log2(heard / f)) < 12.0);
+  // Bowed (sustained) while the bow is on, decaying after it lifts.
+  CHECK(bandAmplitude(p, 24000, 19200, f) > 1.5 * bandAmplitude(p, 86400, 9600, f));
+}
+
+TEST_CASE("soft flute voicing centres the jet and lowers the pressure", "[band][flute]") {
+  const FluteVoicing pp = fluteVoicingFor("pp"), pv = fluteVoicingFor("p"),
+                     mf = fluteVoicingFor("mf"), none = fluteVoicingFor(nullptr);
+  CHECK(pp.aimFraction < pv.aimFraction);
+  CHECK(pv.aimFraction < mf.aimFraction);
+  CHECK(pp.pressureScale < pv.pressureScale);
+  CHECK(pv.pressureScale < 1.0);
+  CHECK(pv.lockedBreathFraction > kFluteLockedBreathFraction);
+  CHECK(mf.aimFraction == kFluteJetAimFraction);
+  CHECK(none.pressureScale == 1.0);
 }

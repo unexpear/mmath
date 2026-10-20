@@ -108,15 +108,17 @@ int main(int argc, char** argv) {
     auto fl = U(makeFlute(spec));
     auto pressureFor = [&](double f) { const double v = 2.0 * span * f / sigma; return 0.5 * fl.airDensityKgPerM3 * v * v; };
     ValveBlow jet = sustained(pressureFor(lowest) * 0.5, kFluteReflectionCutoffHz, kFluteAttack); jet.frames = (std::uint64_t)std::llround(T * kFs);
-    jet.reflectionMagnitude = env("WP_RMAG", 0.985); jet.wallFitFundamental = env("WP_FWFIT", 0.0) > 0.5; jet.initialDisplacementMeters = 0.0; jet.jetAimMeters = env("WP_AIM", kFluteJetAimFraction) * thickness; jet.reflectionCutoffHz = env("WP_CUT", kFluteReflectionCutoffHz);
+    // WP_SONGFILE dynamics: soft voicing (wind_presets.h fluteVoicingFor) from the first note.
+    const FluteVoicing voicing = fluteVoicingFor(std::getenv("WP_SONGFILE") ? song.back().dynamic : "");
+    jet.reflectionMagnitude = env("WP_RMAG", 0.985); jet.wallFitFundamental = env("WP_FWFIT", 0.0) > 0.5; jet.initialDisplacementMeters = 0.0; jet.jetAimMeters = env("WP_AIM", voicing.aimFraction) * thickness; jet.reflectionCutoffHz = env("WP_CUT", kFluteReflectionCutoffHz);
     jet.jetNoiseMeters = env("WP_JN", 0.035) * thickness; jet.reedTurbulence = env("WP_TURB", kFluteJetTurbulence);
-    jet.lockedBreathFraction = env("WP_LBF", kFluteLockedBreathFraction); jet.endCorrectionMeters = end;
+    jet.lockedBreathFraction = env("WP_LBF", voicing.lockedBreathFraction); jet.endCorrectionMeters = end;
     auto voice = U(BoreValveVoice::fromFlute(fl, jet, kRate));
     double start = 0, hL = longest, hJ = 0, hP = pressureFor(lowest);
     for (auto& s : song) {
       const double p = s.hertz > 0 ? pressureFor(s.hertz) : 0.0, L = s.hertz > 0 ? bore(s.hertz) : hL;
       const double j = s.hertz > 0 ? kFs * U(fluteConvectionTime(fl, p)) : hJ;
-      push(notes, s, start, L, 0, (p > 0 ? p : hP) * env("WP_P", 1.0), j); if (s.hertz > 0) { hL = L; hJ = j; hP = p; } start += s.seconds;
+      push(notes, s, start, L, 0, (p > 0 ? p : hP) * env("WP_P", 1.0) * (std::getenv("WP_SONGFILE") ? fluteVoicingFor(s.dynamic).pressureScale : 1.0), j); if (s.hertz > 0) { hL = L; hJ = j; hP = p; } start += s.seconds;
     }
     out = playPhrase(voice, notes, T, true, 0.50, &airway, kFs);
   } else if (which == "trumpet") {

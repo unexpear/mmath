@@ -129,6 +129,33 @@ inline constexpr double kFluteLockedBreathFraction = 0.047;
 // moved H3 by +-5 dB between neighbouring corners and is left off.
 inline constexpr double kFluteJetAimFraction = 1.00;
 inline constexpr double kFluteReflectionCutoffHz = 3000.0;
+// Soft flute voicing by score dynamic. Fletcher and Douglas (JASA 68,
+// 1980): the jet offset sets the even harmonics; Fletcher (JASA 57, 233,
+// 1975): soft playing lowers the blowing pressure (about a factor 2 from
+// pp to ff at one pitch, VERIFY) while the player shortens the jet so the
+// convection time stays tuned (the harness keeps the jet delay of the
+// nominal pressure). Aim TUNED to VSCO 2 CE Flute susNV soft (v1) A4-A5:
+// H2 re H1 median -23 dB, H3 -26 dB; aim 1.0 read -6/-16, 0.3 read
+// -17/-19, 0.1 read -27/-17. Locked breath raised above the v1 median
+// inter-harmonic level (-37 dB; 0.047 read -38, 0.12 read -30) on
+// request for a breathy soft tone: TUNED, not measured.
+struct FluteVoicing {
+  double pressureScale;
+  double aimFraction;
+  double lockedBreathFraction;
+};
+[[nodiscard]] inline FluteVoicing fluteVoicingFor(const char* dynamic) {
+  const auto is = [&](const char* d) {
+    if (dynamic == nullptr) return false;
+    const char* a = dynamic; const char* b = d;
+    while (*a && *a == *b) { ++a; ++b; }
+    return *a == 0 && *b == 0;
+  };
+  if (is("pp")) return {0.55, 0.20, 0.14};   // pressure VERIFY, aim/breath TUNED
+  if (is("p")) return {0.70, 0.30, 0.10};    // pressure VERIFY, aim/breath TUNED
+  if (is("mp")) return {0.85, 0.60, kFluteLockedBreathFraction};  // UNSOURCED midpoint
+  return {1.0, kFluteJetAimFraction, kFluteLockedBreathFraction};
+}
 // Lip jet fraction. Fletcher and Rossing, chap. 13, call the flow
 // turbulent and print no ratio. 0.20 UNSOURCED.
 inline constexpr double kTrumpetReedTurbulence = 0.20;

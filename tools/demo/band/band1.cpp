@@ -4,8 +4,12 @@
 //   band1 bass score in.csv out.f64 T    csv rows start,dur,midi,vel
 //   band1 piano notes|score ...          same, piano (PianoNoteVoice); the
 //     damper falls at the written end (or the next strike of the key).
+//   band1 cello notes|score ...          same, bowed cello (cello_voice.h):
+//     each note a new bow stroke on its string (rigid-bridge force), all
+//     forces through one CelloBody. Level = vel / 80 (bow speed, beta).
 #include <mmathen/instruments/double_bass_pizz.h>
 #include <mmathen/instruments/piano_voice.h>
+#include <mmathen/instruments/cello_voice.h>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -90,6 +94,27 @@ static int renderOldPiano(bool heavy, const char* out) {
   std::printf("old piano (%s) fail=%d\n", heavy ? "heavy" : "light", fail);
   FILE* o = std::fopen(out, "wb"); std::fwrite(mix.data(), 8, mix.size(), o); std::fclose(o); return fail ? 3 : 0;
 }
+static int renderCello(const std::vector<Ev>& ev, double total, const char* out) {
+  auto vc = cello(); if (!vc.ok()) return 2;
+  const size_t N = (size_t)(total * FS); std::vector<double> force(N, 0.0), mix(N, 0.0); int fail = 0;
+  const double amp = std::getenv("VC_AMP") ? std::atof(std::getenv("VC_AMP")) : 1.0;
+  for (const Ev& e : ev) {
+    const double bowSec = std::max(0.05, e.d - 0.02);
+    auto v = makeCelloNote(vc.value(), midiHz(e.m), bowSec, e.v / 80.0, SampleRateHz{FS});
+    if (!v.ok()) { ++fail; continue; }
+    auto voice = std::move(v).value();
+    const size_t a = (size_t)(e.s * FS); if (a >= N) continue;
+    const size_t len = std::min((size_t)((bowSec + 1.5) * FS), N - a); std::vector<double> x(len);
+    if (!voice.renderBlock(x.data(), FrameCount{len}).ok()) { ++fail; continue; }
+    for (size_t i = 0; i < len; ++i) force[a + i] += x[i];
+  }
+  auto made = CelloBody::create(SampleRateHz{FS}); if (!made.ok()) return 2;
+  auto body = std::move(made).value();
+  if (!body.processAdd(force.data(), mix.data(), N)) ++fail;
+  for (double& y : mix) y *= amp;
+  std::printf("cello notes=%zu fail=%d\n", ev.size(), fail);
+  FILE* o = std::fopen(out, "wb"); std::fwrite(mix.data(), 8, mix.size(), o); std::fclose(o); return fail ? 3 : 0;
+}
 int main(int argc, char** argv) {
   if (argc < 4) return 1;
   std::vector<Ev> ev; double total = 0;
@@ -103,6 +128,11 @@ int main(int argc, char** argv) {
     double s = 0.5; for (int i = 6; i <= 36; i += 3) { ev.push_back({s, 5.5, 21 + 2 * i, 80}); s += 6.0; } total = s + 0.5;
     return renderPiano(ev, total, argv[3]);
   }
+  const bool vcl = !std::strcmp(argv[1], "cello");
+  if (vcl && !std::strcmp(argv[2], "notes")) {  // C2..G4, the Sarabande compass
+    double s = 0.3; for (int m : {36, 38, 40, 41, 43, 45, 47, 48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67}) { ev.push_back({s, 1.3, m, 40}); s += 2.0; } total = s + 0.7;
+    return renderCello(ev, total, argv[3]);
+  }
   if (!std::strcmp(argv[2], "notes")) {
     const int ms[] = {28, 30, 31, 34, 36, 38, 40, 42, 44, 45, 49, 52, 56, 59};  // E1 .. B3 (VSCO refs)
     double s = 0.5; for (int m : ms) { ev.push_back({s, 3.0, m, 100}); s += 3.5; } total = s + 0.5;
@@ -110,5 +140,5 @@ int main(int argc, char** argv) {
   }
   FILE* in = std::fopen(argv[3], "r"); if (!in) return 1; total = std::atof(argv[5]);
   Ev e; while (std::fscanf(in, "%lf,%lf,%d,%d", &e.s, &e.d, &e.m, &e.v) == 4) ev.push_back(e);
-  return piano ? renderPiano(ev, total, argv[4]) : renderBass(ev, total, argv[4]);
+  return piano ? renderPiano(ev, total, argv[4]) : vcl ? renderCello(ev, total, argv[4]) : renderBass(ev, total, argv[4]);
 }
