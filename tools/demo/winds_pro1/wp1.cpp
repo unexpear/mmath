@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
     auto horn = U(makeTrombone(phraseTromboneSpec(speed, kAir, kTemp, longest)));
     ValveBlow bone = sustained(1600.0, 5000.0, kTromboneAttack); bone.frames = (std::uint64_t)std::llround(T * kFs);
     bone.reflectionMagnitude = 0.999; bone.initialDisplacementMeters = 0.0; bone.tongueReleaseFrames = 0;
-    bone.brassiness = 1.0; bone.reedTurbulence = kTromboneReedTurbulence; applyScottBell(bone);
+    bone.brassiness = 1.0; bone.reedTurbulence = kTromboneReedTurbulence; applyScottBell(bone); bone.bellTransmission = env("WP_TBT", 0.0) > 0.5; if (env("WP_TRAD", 0.0) > 0.0) bone.radiationHz = env("WP_TRAD", 0.0);
     bone.wallRadiusMeters = kBach42BoreRadiusMeters;
     if (measured) { bone.brassiness = 0.0; bone.reedTurbulence = 0.0; }
     auto voice = U(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate));
