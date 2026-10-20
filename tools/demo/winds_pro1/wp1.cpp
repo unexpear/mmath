@@ -109,8 +109,8 @@ int main(int argc, char** argv) {
     auto pressureFor = [&](double f) { const double v = 2.0 * span * f / sigma; return 0.5 * fl.airDensityKgPerM3 * v * v; };
     ValveBlow jet = sustained(pressureFor(lowest) * 0.5, kFluteReflectionCutoffHz, kFluteAttack); jet.frames = (std::uint64_t)std::llround(T * kFs);
     jet.reflectionMagnitude = env("WP_RMAG", 0.985); jet.wallFitFundamental = env("WP_FWFIT", 0.0) > 0.5; jet.initialDisplacementMeters = 0.0; jet.jetAimMeters = env("WP_AIM", kFluteJetAimFraction) * thickness; jet.reflectionCutoffHz = env("WP_CUT", kFluteReflectionCutoffHz);
-    jet.jetNoiseMeters = 0.035 * thickness; jet.reedTurbulence = env("WP_TURB", kFluteJetTurbulence);
-    jet.lockedBreathFraction = kFluteLockedBreathFraction; jet.endCorrectionMeters = end;
+    jet.jetNoiseMeters = env("WP_JN", 0.035) * thickness; jet.reedTurbulence = env("WP_TURB", kFluteJetTurbulence);
+    jet.lockedBreathFraction = env("WP_LBF", kFluteLockedBreathFraction); jet.endCorrectionMeters = end;
     auto voice = U(BoreValveVoice::fromFlute(fl, jet, kRate));
     double start = 0, hL = longest, hJ = 0, hP = pressureFor(lowest);
     for (auto& s : song) {

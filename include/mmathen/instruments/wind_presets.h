@@ -104,10 +104,13 @@ inline constexpr double kSaxophoneReedTurbulence = 0.30;
 inline constexpr double kSaxophoneSpectrumBreakHz = 0.0;
 inline constexpr double kSaxophoneRadiationHz = 5000.0;
 inline constexpr double kSaxophoneLockedBreathFraction = 0.0176;
-// Flute: locked breath 0.063 = 0.56 less 19 dB, against the Iowa MIS flute
-// A4 ff. Jet turbulence 0.56 UNSOURCED.
+// Flute: locked breath 0.063 = 0.56 less 19 dB was set against the Iowa MIS
+// flute A4 ff (-66.8 dB median inter-harmonic bin); on the pro phrase it
+// read -62.0 against the CC excerpt's -64.6 (winds pro6: 0.050 / 0.047 /
+// 0.040 / 0.030 read -64.0 / -64.5 / -65.9 / -68.4). 0.047 TUNED to the
+// excerpt, between the two references. Jet turbulence 0.56 UNSOURCED.
 inline constexpr double kFluteJetTurbulence = 0.56;
-inline constexpr double kFluteLockedBreathFraction = 0.063;
+inline constexpr double kFluteLockedBreathFraction = 0.047;
 // Flute jet aim (ValveBlow::jetAimMeters, as a fraction of the lip
 // thickness) and reflection corner, both TUNED. Fletcher and Douglas
 // (JASA 68, 767, 1980): a jet centred on the edge suppresses the even
