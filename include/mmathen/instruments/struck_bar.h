@@ -43,6 +43,15 @@
 // above k w / 2 = 1. Torsion radiates from two half-strips moving in
 // opposition (lateral phase 2 sin(k w sin(theta) sin(phi) / 4)).
 //
+// Resonator (attachResonator, optional: celesta, marimba-style boxes). A
+// tuned air column or box under the bar centre is driven by the bar: its
+// mouth volume flow U obeys U'' + (w0/Q) U' + w0^2 U = w0^2 eps A v_c
+// (the standard driven Helmholtz response, Kinsler et al., Fundamentals
+// of Acoustics, 4th ed., sec. 10.8), v_c the bar velocity over the mouth,
+// A the mouth area and eps the fraction of the bar's swept flow that
+// enters the mouth (TUNED by the caller). It radiates as a monopole,
+// p = rho0 / (4 pi r) dU/dt. Its back-reaction on the bar is not modelled.
+//
 // Losses. sigma_n = w_n / (2 Q_int) + sigma_rad,n + sigma_mount,n. Q_int is
 // the material plus everything that also damps the fundamental; the
 // supports sit at the fundamental's nodes (0.224 L) and add
@@ -84,6 +93,13 @@ struct BarLosses {
   double internalQ = 0.0;           // Q of the material and its fixings
   double supportDashpotNsPerM = 0.0;  // each of the two supports
   double supportFraction = 0.2242;    // fundamental node (Rayleigh: 0.2242 L)
+};
+
+struct BarResonator {
+  double hz = 0.0;
+  double q = 0.0;
+  double mouthAreaM2 = 0.0;
+  double coupling = 0.0;  // eps
 };
 
 struct BarMallet {
@@ -352,6 +368,7 @@ class StruckBarVoice final : public IVoice {
     v.dt_ = 1.0 / fs;
     v.mallet_ = mallet;
     v.speed_ = speedMps;
+    v.listener_ = listener;
     const double A = barArea(bar.section), rho = bar.material.densityKgPerM3, L = bar.lengthM;
     const double ys = strikeOffsetFraction * (bar.section.tube ? 2.0 * bar.section.outerRadiusM : bar.section.widthM);
     for (const BarMode& m : modes.value()) {
@@ -370,6 +387,8 @@ class StruckBarVoice final : public IVoice {
       } else {
         o.drive = at / (rho * A * L);
         o.contact = at;
+        const double mid = m.shape[static_cast<std::size_t>(kBarShapePoints / 2)];
+        o.centre = mid;
       }
       o.radiate = barListenerGain(m, bar, listener);
       v.modes_.push_back(o);
@@ -378,6 +397,18 @@ class StruckBarVoice final : public IVoice {
     return R::success(std::move(v));
   }
 
+  // Tuned resonator under the bar (see the header comment); false on bad values.
+  [[nodiscard]] bool attachResonator(const BarResonator& r) {
+    if (!(r.hz > 0.0) || !(r.q > 0.5) || !(r.mouthAreaM2 > 0.0) || !(r.coupling >= 0.0) ||
+        !(r.hz < 0.25 / dt_))
+      return false;
+    res_ = r;
+    hasRes_ = true;
+    resGain_ = r.coupling * r.mouthAreaM2;
+    resScale_ = listener_.airDensity / (4.0 * constants::pi * listener_.distanceM);
+    reset();
+    return true;
+  }
   [[nodiscard]] SampleRateHz sampleRate() const override { return rate_; }
   [[nodiscard]] std::size_t modeCount() const noexcept { return modes_.size(); }
   [[nodiscard]] double modeHz(std::size_t i) const noexcept { return i < modes_.size() ? modes_[i].omega / constants::twoPi : 0.0; }
@@ -403,7 +434,7 @@ class StruckBarVoice final : public IVoice {
         } else if (contactTime_ > 0.0 && pen <= 0.0 && vy_ < 0.0) {
           inContactPossible_ = false;  // the player lifts the mallet after the bounce
         }
-        double p = 0.0;
+        double p = 0.0, vc = 0.0;
         for (Mode& m : modes_) {
           const double force = F * m.drive;
           const double acc = force - 2.0 * m.sigma * m.s.velocity - m.omega * m.omega * m.s.displacement;
@@ -411,6 +442,14 @@ class StruckBarVoice final : public IVoice {
           if (!st.ok()) return R::failure(st.error());
           m.s = st.value();
           p += m.radiate * acc;
+          vc += m.centre * m.s.velocity;
+        }
+        if (hasRes_) {
+          const double w0 = constants::twoPi * res_.hz;
+          auto st = stepConstantForceOscillator(resState_, w0, 0.5 * w0 / res_.q, w0 * w0 * resGain_ * vc, dt_);
+          if (!st.ok()) return R::failure(st.error());
+          resState_ = st.value();
+          p += resScale_ * resState_.velocity;  // rho/(4 pi r) dU/dt; the state's displacement is U
         }
         vy_ += -F / mallet_.massKg * dt_;
         y_ += vy_ * dt_;
@@ -424,6 +463,7 @@ class StruckBarVoice final : public IVoice {
 
   void reset() override {
     for (Mode& m : modes_) m.s = {};
+    resState_ = {};
     y_ = 0.0;
     vy_ = speed_;
     contactTime_ = 0.0;
@@ -432,7 +472,7 @@ class StruckBarVoice final : public IVoice {
 
  private:
   struct Mode {
-    double omega = 0.0, sigma = 0.0, drive = 0.0, contact = 0.0, radiate = 0.0;
+    double omega = 0.0, sigma = 0.0, drive = 0.0, contact = 0.0, radiate = 0.0, centre = 0.0;
     OscillatorState s;
   };
   std::vector<Mode> modes_;
@@ -441,6 +481,11 @@ class StruckBarVoice final : public IVoice {
   double dt_ = 0.0, speed_ = 0.0, y_ = 0.0, vy_ = 0.0, contactTime_ = 0.0;
   bool inContactPossible_ = true;
   BarMallet mallet_;
+  BarListener listener_;
+  BarResonator res_;
+  bool hasRes_ = false;
+  double resGain_ = 0.0, resScale_ = 0.0;
+  OscillatorState resState_;
 };
 
 }  // namespace mmathen

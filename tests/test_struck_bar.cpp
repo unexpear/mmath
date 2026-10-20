@@ -8,6 +8,9 @@
 #include <vector>
 
 #include <mmathen/instruments/glockenspiel.h>
+#include <mmathen/instruments/celesta.h>
+#include <mmathen/instruments/tubular_bells.h>
+#include <mmathen/instruments/handbell.h>
 
 using namespace mmathen;
 
@@ -76,4 +79,66 @@ TEST_CASE("a glockenspiel note sounds its pitch, rings, and the mallet leaves", 
   for (int i = 91200; i < 96000; ++i) late = std::max(late, std::fabs(y[i]));
   CHECK(late < early);
   CHECK(late > 0.01 * early);  // a glockenspiel rings for seconds
+}
+
+TEST_CASE("celesta: resonator lifts the fundamental and the note rings at pitch", "[bar][celesta]") {
+  const double fs = 48000.0, hz = 523.25;
+  auto with = celestaNote(hz, 1.0, SampleRateHz{fs});
+  auto without = celestaNote(hz, 1.0, SampleRateHz{fs}, 0.0);
+  REQUIRE(with.ok());
+  REQUIRE(without.ok());
+  auto a = std::move(with).value();
+  auto b = std::move(without).value();
+  std::vector<double> ya(48000), yb(48000);
+  REQUIRE(a.renderBlock(ya.data(), FrameCount{ya.size()}).ok());
+  REQUIRE(b.renderBlock(yb.data(), FrameCount{yb.size()}).ok());
+  auto amp = [&](const std::vector<double>& y, double f) {
+    std::complex<double> s{};
+    for (int i = 4800; i < 24000; ++i) s += y[i] * std::polar(1.0, -2.0 * constants::pi * f * i / fs);
+    return std::abs(s);
+  };
+  CHECK(amp(ya, hz) > 10.0 * amp(yb, hz));
+  BarResonator bad;
+  CHECK_FALSE(b.attachResonator(bad));
+}
+
+TEST_CASE("tubular bell: mode 4 sits an octave above the strike note", "[bar][chimes]") {
+  const double note = 261.63;
+  const BarSpec b = chimeTube(note);
+  CHECK(std::fabs(barFlexuralHz(b, 4) - 2.0 * note) < 1e-6 * note);
+  CHECK(b.lengthM > 1.2);
+  CHECK(b.lengthM < 2.0);
+  // Modes 4, 5, 6 near 2 : 3 : 4 of the strike note (Rossing), within 4 %.
+  CHECK(std::fabs(barFlexuralHz(b, 5) / note - 3.0) < 0.12);
+  CHECK(std::fabs(barFlexuralHz(b, 6) / note - 4.0) < 0.16);
+  auto v = tubularBellNote(note, 2.0, SampleRateHz{48000.0});
+  REQUIRE(v.ok());
+  auto voice = std::move(v).value();
+  std::vector<double> y(24000);
+  REQUIRE(voice.renderBlock(y.data(), FrameCount{y.size()}).ok());
+  for (double s : y) REQUIRE(std::isfinite(s));
+  CHECK(voice.contactSeconds() > 5e-4);
+}
+
+TEST_CASE("handbell: English (3,0) at three times (2,0), one stroke, decays", "[handbell]") {
+  CHECK(kHandbellModes[0].ratio == 1.0);
+  CHECK(kHandbellModes[1].ratio == 3.0);
+  const double fs = 48000.0, f1 = 174.61;
+  auto v = HandbellVoice::create(f1, 1.0, SampleRateHz{fs});
+  REQUIRE(v.ok());
+  auto voice = std::move(v).value();
+  std::vector<double> y(96000);
+  REQUIRE(voice.renderBlock(y.data(), FrameCount{y.size()}).ok());
+  for (double s : y) REQUIRE(std::isfinite(s));
+  CHECK(voice.contactSeconds() > 5e-4);
+  CHECK(voice.contactSeconds() < 1e-2);
+  auto amp = [&](int from, double f) {
+    std::complex<double> s{};
+    for (int i = from; i < from + 24000; ++i) s += y[i] * std::polar(1.0, -2.0 * constants::pi * f * i / fs);
+    return std::abs(s);
+  };
+  CHECK(amp(2400, f1) > amp(2400, 2.5 * f1) * 10.0);
+  CHECK(amp(2400, 3.0 * f1) > amp(2400, 2.5 * f1) * 3.0);
+  CHECK(amp(72000, f1) < amp(2400, f1));
+  CHECK_FALSE(HandbellVoice::create(f1, 0.0, SampleRateHz{fs}).ok());
 }
