@@ -1,15 +1,17 @@
 """Write the gesture timeline for a sleigh-bell recording (text form read by
-mmathen::parseSleighBellTimeline). usage: gentl.py ref.wav out.txt [shakeAmpM] [refSpeed]"""
+mmathen::parseSleighBellTimeline). usage: gentl.py ref.wav out.txt [shakeAmpM] [shakeLateral]"""
 import sys, numpy as n, librosa, soundfile as sf
 sys.path.insert(0, __file__.rsplit('/', 1)[0] if '/' in __file__ else '.')
 from sbpattern import transcribe, QUIET_DB
 ref = sys.argv[1]; out = sys.argv[2]
 A = float(sys.argv[3]) if len(sys.argv) > 3 else 0.012
+LAT = float(sys.argv[4]) if len(sys.argv) > 4 else 0.3
 # Strike speed for a level: inverse of the model's own single-strike level
 # curve (6 bells, seeds 3/5/9, 50 ms peak RMS, dB re the loudest), made
-# monotone. TUNED calibration, measured with sbpat on cal.txt.
-CAL_V = [0.35, 0.413, 0.487, 0.943, 1.113, 1.313, 1.549, 2.543, 3.0]
-CAL_DB = [-58.4, -31.6, -12.7, -10.2, -6.6, -2.2, -0.9, -0.3, 0.0]
+# monotone. TUNED calibration, measured with sbpat on cal.txt (pro4 engine:
+# 38-partial ring, damping x2.5, 3 ms lag, click 3).
+CAL_V = [0.35, 0.413, 0.487, 0.678, 0.8, 1.113, 1.313, 1.549, 2.156, 2.543, 3.0]
+CAL_DB = [-67.6, -31.0, -15.9, -13.8, -13.4, -9.4, -4.4, -3.7, -2.0, -1.5, 0.0]
 def speed(db): return float(n.interp(db, CAL_DB, CAL_V))
 strikes, bg, dur, oe, fs, hop = transcribe(ref)
 # hand-still from the first background window below -28 dB that stays low
@@ -26,8 +28,8 @@ late = [(float(a), float(l)) for a, l in zip(t, lv) if a > stop + 0.3 and l > -3
 L = ['# sleigh-bell gesture timeline transcribed from Wikimedia Commons File:Sleigh_bells.wav (CC0, The Midnite Wolf) by tools/demo/sleigh_bells/gentl.py + sbpattern.py',
      '# strike <t s> <hand speed m/s> <lateral>; shake <t s> <dur s> <amp m> <end amp m> <lateral>',
      '# strike speed from the onset level (30 ms RMS, dB re the loudest) via the model level curve in gentl.py',
-     'shake 0.000 %.3f %.4f %.4f 0.3' % (stop, A, A),
-     'shake %.3f %.3f %.4f 0.0000 0.3' % (stop, fade, A)]
+     'shake 0.000 %.3f %.4f %.4f %.2f' % (stop, A, A, LAT),
+     'shake %.3f %.3f %.4f 0.0000 %.2f' % (stop, fade, A, LAT)]
 for k, (a, l) in enumerate(strikes + late):
     L.append('strike %.3f %.3f %+.1f   # %+.1f dB' % (a, speed(l), 0.3 if k % 2 == 0 else -0.3, l))
 open(out, 'w').write('\n'.join(L) + '\n')

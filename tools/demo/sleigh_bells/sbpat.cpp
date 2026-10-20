@@ -20,6 +20,11 @@ int main(int argc, char** argv) {
   if (const char* v = std::getenv("SB_LAG")) d.strapLagS = std::atof(v);
   if (const char* v = std::getenv("SB_CLICK")) d.clickGain = std::atof(v);
   if (const char* v = std::getenv("SB_E")) d.restitution = std::atof(v);
+  if (const char* v = std::getenv("SB_STRAP")) d.strapHz = std::atof(v);
+  if (const char* v = std::getenv("SB_ZETA")) d.strapZeta = std::atof(v);
+  if (const char* v = std::getenv("SB_GAP")) d.bellGapM = std::atof(v);
+  if (const char* v = std::getenv("SB_DAMP")) d.dampingFactor = std::atof(v);
+  if (const char* v = std::getenv("SB_FULL")) d.fullRing = std::atoi(v) != 0;
   mmathen::SleighBellStrap strap(bells, seed, fs, d);
   std::vector<double> y(std::size_t(secs * fs));
   mmathen::ShakeGesture shape;
@@ -28,5 +33,5 @@ int main(int argc, char** argv) {
   std::FILE* f = std::fopen(argv[2], "wb");
   std::fwrite(y.data(), sizeof(double), y.size(), f);
   std::fclose(f);
-  std::printf("%zu events, %llu impacts\n", tl.size(), (unsigned long long)strap.impacts());
+  std::printf("%zu events, %llu impacts, %llu knocks\n", tl.size(), (unsigned long long)strap.impacts(), (unsigned long long)strap.knocks());
 }

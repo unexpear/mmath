@@ -121,14 +121,51 @@ struct SleighBellDesign {
   // Attack band 12-15.5 kHz re 6.4-6.9 kHz, real -20.7 dB: gain 0 -> -26.3,
   // 3 -> -22.8, 10 -> -15.8 (3 ms lag). 3 chosen.
   double clickGain = 3.0;
+  // Strap flex. Each bell hangs on the leather as a damped spring (base
+  // excitation, vertical and lateral): shell acceleration is the hand's
+  // filtered by that mode, so bells move apart and their pellets fall out
+  // of step. 0 = rigid strap. Frequency, its bell-to-bell scatter and the
+  // damping ratio are UNSOURCED. Pro4 sweep (15/20/30/45/60 Hz, zeta
+  // 0.15/0.4, 3 seeds): flex cuts the extra shake onsets (29 -> 14-20, real
+  // 16) but slows every accent (rise 52 -> 64-71 ms, real 29) and lowers the
+  // pattern match (0.84 -> 0.76-0.82), so the default stays rigid.
+  double strapHz = 0.0;
+  double strapHzScatter = 0.15;
+  double strapZeta = 0.15;
+  // Neighbouring bells knock when their lateral gap closes: shell-shell
+  // Hertz contact (two convex 15 mm spheres, R* = R/2, m* = M/2), equal-mass
+  // restitution. Rest gap and restitution UNSOURCED. Needs strapHz > 0; at
+  // 30 Hz with a 2 mm gap only 1-13 knocks happen in the 9.8 s reference
+  // gesture (55 at 1 mm), too few to change the measures.
+  double bellGapM = 0.002;
+  double bellRestitution = 0.5;
+  double dampingFactor = -1.0;  // <0: kSleighBellStrapDampingFactor
+  bool fullRing = true;  // 38 measured partials (false: the 9 strongest, pro1-pro3)
 };
-struct SleighBellPartial { double hz; double levelDb; double decayDbPerS; };
+struct SleighBellPartial { double hz; double levelDb; double decayDbPerS; int earMode = 0; };
 // MEASURED from the CC0 reference (see header). Levels: dB re the strongest.
 // Index 0 and 6 are the ear's two bending modes; 7 and 8 (17.0, 17.69 kHz)
 // are further measured top-octave peaks, decay taken as 16.8 kHz's (VERIFY).
 inline constexpr std::array<SleighBellPartial, 9> kSleighBellMeasuredPartials{{
-    {2514, -5.8, 40.7}, {5959, -4.7, 29.7}, {6659, 0.0, 31.9}, {7084, -2.4, 35.9},
-    {10228, -0.3, 41.6}, {10686, -0.4, 47.8}, {16796, -6.5, 52.5}, {17000, -10.9, 52.5}, {17690, -7.0, 52.5},
+    {2514, -5.8, 40.7, 1}, {5959, -4.7, 29.7}, {6659, 0.0, 31.9}, {7084, -2.4, 35.9},
+    {10228, -0.3, 41.6}, {10686, -0.4, 47.8}, {16796, -6.5, 52.5, 2}, {17000, -10.9, 52.5}, {17690, -7.0, 52.5},
+}};
+// Full ring: every peak of the reference's mean spectrum (16384-pt Hann,
+// 75 % overlap, whole clip) with prominence >= 6 dB, level > -32 dB re the
+// strongest, above 1 kHz: 38 peaks. Decay per peak: same p75 falling-slope
+// measure on a +-min(0.6 %, 40 Hz) band. MEASURED. The close clusters
+// (2514/2657, 5669-6207, 9138-9434, 15.9-18.5 kHz) are likely bells of
+// slightly different size on the strap; every model bell carries all of
+// them (VERIFY: per-bell assignment). earMode 1/2: the ear's bending modes.
+inline constexpr std::array<SleighBellPartial, 38> kSleighBellMeasuredPartialsFull{{
+    {1494, -30.5, 34.7}, {2514, -6.0, 42.4, 1}, {2657, -9.9, 45.7}, {5669, -13.0, 27.3}, {5752, -19.3, 27.5},
+    {5852, -7.7, 40.4}, {5957, -4.4, 38.8}, {6207, -12.9, 40.5}, {6659, -0.0, 37.5}, {6802, -4.7, 39.1},
+    {7087, -2.3, 39.1}, {8433, -30.3, 37.9}, {9138, -13.2, 38.9}, {9246, -8.9, 34.0}, {9310, -14.2, 32.5},
+    {9434, -13.7, 34.2}, {10228, 0.0, 37.1}, {10331, -5.9, 45.6}, {10414, -7.8, 47.6}, {10686, -0.4, 55.0},
+    {10772, -2.1, 56.0}, {10958, -8.0, 60.8}, {11399, -11.1, 69.8}, {12508, -27.3, 56.0}, {15943, -14.9, 73.4},
+    {16158, -13.9, 57.0}, {16258, -13.1, 51.3}, {16422, -16.0, 63.7}, {16607, -23.4, 44.3}, {16796, -7.0, 64.9, 2},
+    {17003, -11.0, 62.8}, {17243, -15.9, 57.4}, {17480, -16.3, 73.1}, {17690, -7.6, 66.2}, {17873, -12.5, 71.1},
+    {18066, -12.0, 65.2}, {18481, -23.8, 53.6}, {18545, -16.7, 67.0},
 }};
 inline constexpr double kSleighBellShakeHz = 3.36;         // MEASURED: envelope-modulation peak of the reference
 // Peak hand acceleration A (2 pi f)^2 must exceed g to lift the pellet: at
@@ -138,10 +175,13 @@ inline constexpr double kSleighBellShakeAmplitudeM = 0.025;
 // at duty 0.52): lift needs A > 10.2 mm. 15 mm is the smallest of the
 // 10/15/20/25 mm sweep that lifts it and matched all 7 reference peaks. TUNED.
 inline constexpr double kSleighBellStrokeAmplitudeM = 0.015;
-// Free-ring decays measured on the reference are biased slow by re-hits; a
-// model run with them reads slower on the same measure (x1 -> -15..-23 dB/s, x2 -> -47..-64 vs real -29..-40), and bells
-// riveted to a leather strap lose energy into it. Decay rates x1.4: TUNED.
-inline constexpr double kSleighBellStrapDampingFactor = 1.4;
+// Free-ring decays measured on the reference are biased slow by re-hits, and
+// bells riveted to a leather strap held in the hand lose energy into it.
+// Pro4 (pattern-driven A/B, 38-partial ring, 3 seeds): factor 1.4 -> accent
+// 10 dB fall 79 ms, 2 -> 68, 2.5 -> 56, 3 -> 48 (real 52); the p75 free-decay
+// measure reads -43..-48 dB/s at 2.5 vs real -29..-40 (x2: -30..-38). 2.5 is
+// the compromise: TUNED.
+inline constexpr double kSleighBellStrapDampingFactor = 2.5;
 // Bell-to-bell scatter of mode frequency, MEASURED from -3 dB peak widths
 // of the reference (32768-pt mean spectrum): ear mode 2514 Hz 2.9 % wide
 // -> sd 1.25 %; cap/shell partial 6659 Hz 0.87 % -> sd 0.37 % (FWHM /
@@ -295,17 +335,21 @@ class SleighBellStrap {
     earLengthM_ = cantileverLengthForHz(kSleighBellMeasuredPartials[0].hz, d_.shellE, d_.shellRho, d_.wallM);
     const double earTip = kCantileverTipMassFraction * d_.shellRho * earLengthM_ * kSleighBellEarWidthM * d_.wallM;
     mStarEar_ = pelletMass_ * earTip / (pelletMass_ + earTip);
+    // shell-shell contact: two equal convex spheres
+    eShellShell_ = d_.shellE / (2.0 * (1.0 - d_.shellNu * d_.shellNu));
     for (int b = 0; b < bells; ++b) {
       Bell bell;
       const double earScale = 1.0 + kSleighBellEarScatter * gauss(), shellScale = 1.0 + kSleighBellShellScatter * gauss();
-      for (std::size_t k = 0; k < kSleighBellMeasuredPartials.size(); ++k) {
-        const auto& p = kSleighBellMeasuredPartials[k];
+      const SleighBellPartial* table = d_.fullRing ? kSleighBellMeasuredPartialsFull.data() : kSleighBellMeasuredPartials.data();
+      const std::size_t count = d_.fullRing ? kSleighBellMeasuredPartialsFull.size() : kSleighBellMeasuredPartials.size();
+      for (std::size_t k = 0; k < count; ++k) {
+        const auto& p = table[k];
         double f = p.hz;
-        if (k == 0) f = cantileverStripHz(0, d_.shellE, d_.shellRho, d_.wallM, earLengthM_);
-        f /= (k == 0 || k == 6) ? earScale : shellScale;
+        if (p.earMode == 1) f = cantileverStripHz(0, d_.shellE, d_.shellRho, d_.wallM, earLengthM_);
+        f /= p.earMode ? earScale : shellScale;
         Mode m;
         m.w = 6.283185307179586 * f;
-        const double t60 = 60.0 / (p.decayDbPerS * kSleighBellStrapDampingFactor);
+        const double t60 = 60.0 / (p.decayDbPerS * (d_.dampingFactor > 0.0 ? d_.dampingFactor : kSleighBellStrapDampingFactor));
         m.r = std::exp(-6.907755278982137 / (t60 * fs_));
         m.c = 2.0 * m.r * std::cos(m.w / fs_);
         m.gain = std::pow(10.0, p.levelDb / 20.0);
@@ -314,11 +358,13 @@ class SleighBellStrap {
       const double phi = 6.283185307179586 * uniform();
       bell.p = {0.3 * rIn * std::cos(phi), 0.3 * rIn * std::sin(phi), -0.5 * rIn};
       bell.lag = d_.strapLagS * gauss();  // strap: small timing offsets between bells
+      bell.strapW = 6.283185307179586 * d_.strapHz * std::max(0.2, 1.0 + d_.strapHzScatter * gauss());
       bells_.push_back(bell);
     }
   }
   [[nodiscard]] double earLengthM() const noexcept { return earLengthM_; }
   [[nodiscard]] std::uint64_t impacts() const noexcept { return impacts_; }
+  [[nodiscard]] std::uint64_t knocks() const noexcept { return knocks_; }
 
   // Render `n` samples of a steady shake, starting at the current time.
   void render(double* out, std::size_t n, const ShakeGesture& g) {
@@ -344,17 +390,53 @@ class SleighBellStrap {
   }
 
  private:
+  struct Mode { double w = 0, r = 0, c = 0, gain = 1, y1 = 0, y2 = 0; };
+  struct Bell {
+    std::vector<Mode> modes;
+    std::array<double, 3> p{}, v{};
+    double lag = 0, strapW = 0, az = 0, ax = 0;
+    std::array<double, 2> u{}, du{};  // strap displacement (z, x) re the hand
+  };
+  void kick(Bell& b, double J, double tau, double& click) {
+    click += J / shellMass_;
+    for (Mode& md : b.modes) md.y1 += md.gain * J * halfSinePulseWeight(md.w, tau) * std::sin(md.w / fs_);
+  }
   template <class Accel>
   void renderWith(double* out, std::size_t n, Accel&& accel) {
     const double dt = 1.0 / fs_, rIn = d_.outerRadiusM - d_.wallM, lim = rIn - d_.pelletRadiusM;
     for (std::size_t i = 0; i < n; ++i, t_ += dt) {
       double y = 0.0, click = 0.0;
+      // 1. shell accelerations: the hand, through each bell's strap spring
       for (Bell& b : bells_) {
-        const double tt = t_ + b.lag;
-        // shell acceleration (hand): vertical z plus lateral x
         double az = 0.0, ax = 0.0;
-        accel(tt, az, ax);
-        b.v[0] += -ax * dt; b.v[2] += (-9.81 - az) * dt;
+        accel(t_ + b.lag, az, ax);
+        if (b.strapW > 0.0) {
+          const double w2 = b.strapW * b.strapW, c = 2.0 * d_.strapZeta * b.strapW;
+          const double uz = -az - w2 * b.u[0] - c * b.du[0], ux = -ax - w2 * b.u[1] - c * b.du[1];
+          b.du[0] += uz * dt; b.du[1] += ux * dt;
+          b.u[0] += b.du[0] * dt; b.u[1] += b.du[1] * dt;
+          az += uz; ax += ux;  // absolute shell acceleration
+        }
+        b.az = az; b.ax = ax;
+      }
+      // 2. neighbour knocks along the strap (lateral axis)
+      for (std::size_t k = 0; k + 1 < bells_.size() && d_.strapHz > 0.0; ++k) {
+        Bell &l = bells_[k], &r = bells_[k + 1];
+        const double gap = d_.bellGapM + r.u[1] - l.u[1], vc = l.du[1] - r.du[1];
+        if (gap < 0.0 && vc > 0.0) {
+          const double dv = 0.5 * (1.0 + d_.bellRestitution) * vc;
+          l.du[1] -= dv; r.du[1] += dv;
+          l.u[1] += 0.5 * gap; r.u[1] -= 0.5 * gap;
+          if (vc > 1e-3) {
+            ++knocks_;
+            const double J = shellMass_ * dv, tau = hertzContactSeconds(shellMass_ / 2.0, d_.outerRadiusM / 2.0, eShellShell_, vc);
+            kick(l, J, tau, click); kick(r, J, tau, click);
+          }
+        }
+      }
+      // 3. pellets
+      for (Bell& b : bells_) {
+        b.v[0] += -b.ax * dt; b.v[2] += (-9.81 - b.az) * dt;
         for (int k = 0; k < 3; ++k) b.p[k] += b.v[k] * dt;
         const double r = std::sqrt(b.p[0] * b.p[0] + b.p[1] * b.p[1] + b.p[2] * b.p[2]);
         if (r > lim) {
@@ -368,12 +450,7 @@ class SleighBellStrap {
             const double J = pelletMass_ * (1.0 + d_.restitution) * vn;
             if (vn > 1e-3) {
               ++impacts_;
-              click += J / shellMass_;
-              const double tau = hertzContactSeconds(nrm[2] > kSleighBellEarZoneCos ? mStarEar_ : mStar_, rStar_, eStar_, vn);
-              for (std::size_t m = 0; m < b.modes.size(); ++m) {
-                Mode& md = b.modes[m];
-                md.y1 += md.gain * J * halfSinePulseWeight(md.w, tau) * std::sin(md.w / fs_);
-              }
+              kick(b, J, hertzContactSeconds(nrm[2] > kSleighBellEarZoneCos ? mStarEar_ : mStar_, rStar_, eStar_, vn), click);
             }
           }
         }
@@ -387,8 +464,6 @@ class SleighBellStrap {
       clickPrev_ = click;
     }
   }
-  struct Mode { double w = 0, r = 0, c = 0, gain = 1, y1 = 0, y2 = 0; };
-  struct Bell { std::vector<Mode> modes; std::array<double, 3> p{}, v{}; double lag = 0; };
   double uniform() noexcept {
     s_ ^= s_ << 13; s_ ^= s_ >> 7; s_ ^= s_ << 17;
     return (double(s_ >> 11) + 0.5) * (1.0 / 9007199254740992.0);
@@ -399,7 +474,8 @@ class SleighBellStrap {
   std::uint64_t s_;
   double pelletMass_ = 0, mStar_ = 0, mStarEar_ = 0, rStar_ = 0, eStar_ = 0, earLengthM_ = 0, t_ = 0;
   double shellMass_ = 0, clickScale_ = 0, clickPrev_ = 0;
-  std::uint64_t impacts_ = 0;
+  std::uint64_t impacts_ = 0, knocks_ = 0;
+  double eShellShell_ = 0;
   std::vector<Bell> bells_;
 };
 

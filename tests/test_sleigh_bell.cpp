@@ -105,3 +105,21 @@ TEST_CASE("gesture timeline: text form parses; strikes ring; the pellet settles 
   for (double y : tail) tailPeak = std::max(tailPeak, std::fabs(y));
   REQUIRE(tailPeak < 0.01 * peak);
 }
+
+TEST_CASE("strap flex: bells knock when the gap closes; full ring has 38 measured partials") {
+  REQUIRE(kSleighBellMeasuredPartialsFull.size() == 38);
+  int ears = 0;
+  for (const auto& p : kSleighBellMeasuredPartialsFull) ears += p.earMode ? 1 : 0;
+  REQUIRE(ears == 2);
+  SleighBellDesign d;
+  d.strapHz = 30.0;
+  d.bellGapM = 0.0005;
+  SleighBellStrap s(6, 9, 44100.0, d), rigid(6, 9, 44100.0);
+  const auto tl = parseSleighBellTimeline("shake 0 2 0.017 0.017 1.0\nstrike 0.7 2.5 1.0\nstrike 1.4 2.5 -1.0\n");
+  std::vector<double> x(44100 * 2), y(44100 * 2);
+  s.render(x.data(), x.size(), tl);
+  rigid.render(y.data(), y.size(), tl);
+  for (double v : x) REQUIRE(std::isfinite(v));
+  REQUIRE(s.knocks() > 0);
+  REQUIRE(rigid.knocks() == 0);
+}

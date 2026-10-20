@@ -1,27 +1,27 @@
 # sleigh-bell gesture timeline transcribed from Wikimedia Commons File:Sleigh_bells.wav (CC0, The Midnite Wolf) by tools/demo/sleigh_bells/gentl.py + sbpattern.py
 # strike <t s> <hand speed m/s> <lateral>; shake <t s> <dur s> <amp m> <end amp m> <lateral>
 # strike speed from the onset level (30 ms RMS, dB re the loudest) via the model level curve in gentl.py
-shake 0.000 7.000 0.0170 0.0170 0.3
-shake 7.000 1.000 0.0170 0.0000 0.3
-strike 0.029 1.058 +0.3   # -7.8 dB
-strike 1.190 1.128 -0.3   # -6.3 dB
-strike 1.440 0.476 +0.3   # -15.6 dB
-strike 2.368 1.257 -0.3   # -3.4 dB
-strike 2.978 1.277 +0.3   # -3.0 dB
-strike 3.280 0.895 -0.3   # -10.5 dB
-strike 3.379 0.480 +0.3   # -14.4 dB
-strike 3.872 1.215 -0.3   # -4.4 dB
-strike 4.476 1.196 +0.3   # -4.8 dB
-strike 4.743 0.476 -0.3   # -15.4 dB
-strike 5.161 0.482 +0.3   # -13.9 dB
-strike 5.358 0.866 -0.3   # -10.6 dB
-strike 5.462 0.481 +0.3   # -14.3 dB
-strike 5.642 1.150 -0.3   # -5.8 dB
-strike 6.223 0.550 +0.3   # -12.4 dB
+shake 0.000 7.000 0.0170 0.0170 0.30
+shake 7.000 1.000 0.0170 0.0000 0.30
+strike 0.029 1.178 +0.3   # -7.8 dB
+strike 1.190 1.239 -0.3   # -6.3 dB
+strike 1.440 0.518 +0.3   # -15.6 dB
+strike 2.368 1.648 -0.3   # -3.4 dB
+strike 2.978 1.801 +0.3   # -3.0 dB
+strike 3.280 1.030 -0.3   # -10.5 dB
+strike 3.379 0.621 +0.3   # -14.4 dB
+strike 3.872 1.324 -0.3   # -4.4 dB
+strike 4.476 1.298 +0.3   # -4.8 dB
+strike 4.743 0.532 -0.3   # -15.4 dB
+strike 5.161 0.665 +0.3   # -13.9 dB
+strike 5.358 1.017 -0.3   # -10.6 dB
+strike 5.462 0.630 +0.3   # -14.3 dB
+strike 5.642 1.258 -0.3   # -5.8 dB
+strike 6.223 0.882 +0.3   # -12.4 dB
 strike 6.577 3.000 -0.3   # +0.0 dB
-strike 7.308 0.443 +0.3   # -24.1 dB
-strike 8.499 0.441 -0.3   # -24.6 dB
-strike 8.609 0.421 +0.3   # -29.5 dB
-strike 8.800 0.462 -0.3   # -19.2 dB
+strike 7.308 0.447 +0.3   # -24.1 dB
+strike 8.499 0.445 -0.3   # -24.6 dB
+strike 8.609 0.420 +0.3   # -29.5 dB
+strike 8.800 0.471 -0.3   # -19.2 dB
 strike 9.276 0.425 +0.3   # -28.5 dB
 strike 9.735 0.425 -0.3   # -28.5 dB

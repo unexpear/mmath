@@ -1,7 +1,7 @@
 import sys,numpy as n,soundfile as sf
 from sbpattern import transcribe
 fs=44100
-rs,_,_,_,_,_=transcribe(sys.argv[1]); acc=[a for a,l in rs if l>=-8 and a>0.07]
+rs,_,_,_,_,_=transcribe(sys.argv[1] if __name__=='__main__' else '../ref.wav'); acc=[a for a,l in rs if l>=-8 and a>0.07]
 def load(p):
     x,_=sf.read(p);x=x.mean(1) if x.ndim>1 else x;return x/n.abs(x).max()
 def band(s,lo,hi):
@@ -19,6 +19,7 @@ def stats(x):
         ref=band(at,6400,6900)
         R.append([rise,fall,(pk/fs-0.06)*1000]+[10*n.log10(band(at,lo,hi)/ref) for lo,hi in [(300,2000),(3000,5000),(12000,15500)]]+[10*n.log10(band(rg,lo,hi)/band(rg,6400,6900)) for lo,hi in [(300,2000),(3000,5000),(12000,15500)]])
     return n.median(n.array(R),0)
-print('%-12s %6s %6s %6s | attack band dB re 6.4-6.9k: %6s %6s %6s | ring: %6s %6s %6s'%('','rise','fall10','pk ms','.3-2k','3-5k','12-15k','.3-2k','3-5k','12-15k'))
-for p in sys.argv[1:]:
-    print('%-12s'%p.split('/')[-1][:12]+' '.join('%6.1f'%v for v in stats(load(p))))
+if __name__=='__main__':
+    print('%-12s %6s %6s %6s | attack band dB re 6.4-6.9k: %6s %6s %6s | ring: %6s %6s %6s'%('','rise','fall10','pk ms','.3-2k','3-5k','12-15k','.3-2k','3-5k','12-15k'))
+    for p in sys.argv[1:]:
+        print('%-12s'%p.split('/')[-1][:12]+' '.join('%6.1f'%v for v in stats(load(p))))
