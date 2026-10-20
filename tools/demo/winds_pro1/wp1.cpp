@@ -126,7 +126,7 @@ int main(int argc, char** argv) {
     ValveBlow lip = sustained(tpP, 10000.0, kTrumpetAttack); lip.frames = (std::uint64_t)std::llround(T * kFs);
     lip.reflectionMagnitude = 0.999; lip.initialDisplacementMeters = 0.0; lip.tongueReleaseFrames = 0;
     lip.brassiness = env("WP_BRASS", 1.0); lip.reedTurbulence = kTrumpetReedTurbulence; applyBach37Bell(lip); lip.bellTransmission = env("WP_BT", 1.0) > 0.5; lip.radiationHz = env("WP_RAD", kTrumpetRadiationHz);
-    auto voice = U(ConeValveVoice::fromTrumpet(tp, 0.26, lip, kRate));
+    auto voice = U(ConeValveVoice::fromTrumpet(tp, 0.26, lip, kRate)); if (env("WP_LIPQ", 0.0) > 0.0 && !voice.setLipQualityFactor(env("WP_LIPQ", 0.0))) return 4; if (env("WP_LIPC", 0.0) > 0.5) { if (!voice.setLipCollision(true)) return 5; }
     double start = 0; BrassFinger held = kTrumpetFingers[0];
     for (auto& s : song) {
       const BrassFinger r = s.hertz > 0 ? trumpetFinger(s.hertz) : held;

@@ -374,7 +374,14 @@ struct BrassFinger {
   // open second-register recipe, lip = 0.75 c/L. Any other mode sets
   // the lip at 0.8 of that cone partial.
   inline constexpr BrassFinger kTrumpetFingers[] = {
-      {392.00, 0.804, 0}, {349.23, 0.912, 0}, {466.16, 1.023, 3},
+      // G4 was the mode-0 recipe (0.804 m, lip 0.75 c/L) and played 8-12 dB
+      // under the cone-mode notes in Jingle Bells (winds pro6). It is now
+      // mode 3 like A4 and Bb4: the Bb4 cone + apex scaled by 466.16/392,
+      // then x 2^(-53/1200) for the -53 c it read (one pass). F4 on the
+      // same recipe locked to a lower partial on the pro phrase and keeps
+      // the mode-0 row; E4 and F#4 are mode 3 rows scaled from F4 (mode 3
+      // trial 1.4010 m) and G4 and corrected by the +2 c / -6 c they read.
+      {392.00, 1.2198, 3}, {349.23, 0.912, 0}, {466.16, 1.023, 3},
       {523.25, 1.560, 5}, {698.46, 1.410, 6}, {587.33, 1.386, 5},
       // A4 for When the Saints: the Bb4 row scaled sat 27.8 cents flat;
       // (L + apex) shortened by that measured ratio.
@@ -384,6 +391,7 @@ struct BrassFinger {
       // is that scaled length (cone + apex for a cone mode) times
       // 2^(cents/1200), one pass.
       {293.66, 1.1281, 0}, {659.26, 1.4699, 6}, {554.37, 1.4568, 5},
+      {329.63, 1.5018, 3}, {369.99, 1.3025, 3},
   };
   inline BrassFinger trumpetFinger(double hertz) {
       for (const BrassFinger& row : kTrumpetFingers)
