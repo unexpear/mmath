@@ -53,6 +53,8 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <sstream>
+#include <string>
 #include <vector>
 
 namespace mmathen {
@@ -107,6 +109,18 @@ struct SleighBellDesign {
   double pelletE = 200e9, pelletRho = 7850.0, pelletNu = 0.29; // steel, handbook typical VERIFY
   double restitution = 0.6;       // metal-metal low speed, VERIFY
   double tangentialKeep = 0.9;    // tangential velocity kept per impact, UNSOURCED
+  // sd of bell-to-bell timing offsets on the strap. TUNED on the reference
+  // accents (median 10-90 % rise, real 29 ms): 10 ms -> 98 ms, 3 ms -> 42 ms.
+  double strapLagS = 0.003;
+  // Contact (acceleration) noise: during the Hertz pulse the shell as a
+  // rigid body is accelerated by F/M and radiates as a compact dipole,
+  // p ~ d(F/M)/dt (A. Akay, "A review of impact noise", JASA 64, 977-987,
+  // 1978). The pulse (tau ~ 10-40 us) is shorter than a sample, so the
+  // click is the first difference of the impulse J/M: broadband, rising
+  // 6 dB/octave. Level relative to the modes: clickGain, TUNED.
+  // Attack band 12-15.5 kHz re 6.4-6.9 kHz, real -20.7 dB: gain 0 -> -26.3,
+  // 3 -> -22.8, 10 -> -15.8 (3 ms lag). 3 chosen.
+  double clickGain = 3.0;
 };
 struct SleighBellPartial { double hz; double levelDb; double decayDbPerS; };
 // MEASURED from the CC0 reference (see header). Levels: dB re the strongest.
@@ -166,6 +180,93 @@ struct ShakeGesture {
   const double s = ph / T, A = g.amplitudeM * (lateral ? g.lateralFraction : 1.0);
   return sign * A / (T * T) * (60.0 * s - 180.0 * s * s + 120.0 * s * s * s);
 }
+// --- gesture timeline ---------------------------------------------------------
+// A performance is a list of events on the strap's clock:
+//  Shake  - minimum-jerk strokes (ShakeGesture shape) from timeSec for
+//           durationSec, stroke amplitude ramping linearly from strength
+//           to endStrength (metres). Below ~10 mm the pellets stay down.
+//  Strike - a hit: the hand swings down and is stopped hard (on the palm,
+//           knee or a table). timeSec is the stop. Shell velocity goes
+//           0 -> -V over kSleighBellStrikeSwingS (half-sine acceleration),
+//           then -V -> 0 over kSleighBellStrikeStopS. strength = V (m/s).
+//           The swing lifts the pellets (peak pi V / (2 T) > g for V above
+//           ~0.4 m/s) so they meet the cap first (the soft pre-hit heard
+//           ~40 ms before each accent in the reference) and slam the bottom
+//           at the stop. lateral = sideways share, signed.
+// The hand is still outside events, so the pellets settle.
+struct SleighBellEvent {
+  enum class Kind { Shake, Strike };
+  Kind kind = Kind::Strike;
+  double timeSec = 0.0;
+  double durationSec = 0.0;  // Shake only
+  double strength = 0.0;     // Strike: V (m/s); Shake: stroke amplitude (m)
+  double endStrength = -1.0; // Shake: amplitude at the end (<0: same as strength)
+  double lateral = 0.3;      // sideways share of the motion, UNSOURCED
+};
+inline constexpr double kSleighBellStrikeSwingS = 0.06;  // down-swing time, UNSOURCED
+inline constexpr double kSleighBellStrikeStopS = 0.004;  // hand stopped on palm/knee, UNSOURCED
+// Strike velocity at the 0 dB accent of the reference: TUNED (level match);
+// hand speeds of ~1 m/s are typical of fast arm strokes (VERIFY).
+inline constexpr double kSleighBellStrikeRefSpeed = 1.2;
+[[nodiscard]] inline double strikeSpeedForDb(double db) { return kSleighBellStrikeRefSpeed * std::pow(10.0, db / 20.0); }
+
+inline void gestureEventAcceleration(const SleighBellEvent& e, const ShakeGesture& shape, double t, double& az,
+                                     double& ax) {
+  az = ax = 0.0;
+  constexpr double kPi = 3.141592653589793;
+  if (e.kind == SleighBellEvent::Kind::Strike) {
+    const double t0 = e.timeSec - kSleighBellStrikeStopS - kSleighBellStrikeSwingS;
+    double a = 0.0;
+    if (t >= t0 && t < e.timeSec - kSleighBellStrikeStopS)
+      a = -kPi * e.strength / (2.0 * kSleighBellStrikeSwingS) * std::sin(kPi * (t - t0) / kSleighBellStrikeSwingS);
+    else if (t >= e.timeSec - kSleighBellStrikeStopS && t < e.timeSec)
+      a = kPi * e.strength / (2.0 * kSleighBellStrikeStopS) *
+          std::sin(kPi * (t - e.timeSec + kSleighBellStrikeStopS) / kSleighBellStrikeStopS);
+    az = a;
+    ax = e.lateral * a;
+    return;
+  }
+  if (t < e.timeSec || t >= e.timeSec + e.durationSec || e.durationSec <= 0.0) return;
+  const double u = (t - e.timeSec) / e.durationSec;
+  const double endA = e.endStrength < 0.0 ? e.strength : e.endStrength;
+  ShakeGesture g = shape;
+  g.amplitudeM = e.strength + (endA - e.strength) * u;
+  g.lateralFraction = e.lateral;
+  // strokes are phased from the event start so a shake begins at rest
+  az = shakeAcceleration(g, t - e.timeSec, false);
+  ax = shakeAcceleration(g, t - e.timeSec, true);
+}
+
+// Text form, one event per line ('#' starts a comment):
+//   strike <timeSec> <speed m/s> [lateral]
+//   shake  <timeSec> <durationSec> <amplitude m> [endAmplitude m] [lateral]
+[[nodiscard]] inline std::vector<SleighBellEvent> parseSleighBellTimeline(const std::string& text) {
+  std::vector<SleighBellEvent> out;
+  std::istringstream lines(text);
+  std::string line;
+  while (std::getline(lines, line)) {
+    const auto hash = line.find('#');
+    if (hash != std::string::npos) line.resize(hash);
+    std::istringstream f(line);
+    std::string kind;
+    if (!(f >> kind)) continue;
+    SleighBellEvent e;
+    if (kind == "strike") {
+      e.kind = SleighBellEvent::Kind::Strike;
+      if (!(f >> e.timeSec >> e.strength)) continue;
+      f >> e.lateral;
+    } else if (kind == "shake") {
+      e.kind = SleighBellEvent::Kind::Shake;
+      if (!(f >> e.timeSec >> e.durationSec >> e.strength)) continue;
+      if (f >> e.endStrength) f >> e.lateral;
+    } else {
+      continue;
+    }
+    out.push_back(e);
+  }
+  return out;
+}
+
 // Contact effective mass. A hit on an ear (thin cantilever) moves only the
 // ear: tip effective mass of a cantilever = 33/140 of its mass (Rayleigh,
 // static-deflection shape; e.g. Blevins, "Formulas for natural frequency
@@ -183,6 +284,11 @@ class SleighBellStrap {
     pelletMass_ = d_.pelletRho * 4.18879020479 * std::pow(d_.pelletRadiusM, 3);
     const double shellMass = d_.shellRho * 12.5663706144 * d_.outerRadiusM * d_.outerRadiusM * d_.wallM;
     mStar_ = pelletMass_ * shellMass / (pelletMass_ + shellMass);
+    shellMass_ = shellMass;
+    // click in the modes' units: a mode's kick is gain * J * sin(w / fs);
+    // scale J / M back by M so clickGain = 1 means a click of the same
+    // peak as the strongest mode's first sample at 6659 Hz
+    clickScale_ = shellMass * std::sin(6.283185307179586 * 6659.0 / fs_);
     rStar_ = 1.0 / (1.0 / d_.pelletRadiusM - 1.0 / rIn);
     eStar_ = 1.0 / ((1 - d_.shellNu * d_.shellNu) / d_.shellE + (1 - d_.pelletNu * d_.pelletNu) / d_.pelletE);
     // ear length from the measured fundamental (TUNED), second ear mode from theory
@@ -207,7 +313,7 @@ class SleighBellStrap {
       }
       const double phi = 6.283185307179586 * uniform();
       bell.p = {0.3 * rIn * std::cos(phi), 0.3 * rIn * std::sin(phi), -0.5 * rIn};
-      bell.lag = 0.01 * gauss();  // strap: small timing offsets between bells, UNSOURCED
+      bell.lag = d_.strapLagS * gauss();  // strap: small timing offsets between bells
       bells_.push_back(bell);
     }
   }
@@ -216,13 +322,38 @@ class SleighBellStrap {
 
   // Render `n` samples of a steady shake, starting at the current time.
   void render(double* out, std::size_t n, const ShakeGesture& g) {
+    renderWith(out, n, [&g](double tt, double& az, double& ax) {
+      az = shakeAcceleration(g, tt, false);
+      ax = shakeAcceleration(g, tt, true);
+    });
+  }
+  // Render `n` samples driven by a gesture timeline (shake/strike events,
+  // times on this strap's clock, which starts at 0 and advances with every
+  // render call). Between and after events the hand is still and the
+  // pellets settle under gravity and restitution alone.
+  void render(double* out, std::size_t n, const std::vector<SleighBellEvent>& timeline,
+              const ShakeGesture& shape = {}) {
+    renderWith(out, n, [&](double tt, double& az, double& ax) {
+      az = ax = 0.0;
+      for (const SleighBellEvent& e : timeline) {
+        double z = 0.0, x = 0.0;
+        gestureEventAcceleration(e, shape, tt, z, x);
+        az += z; ax += x;
+      }
+    });
+  }
+
+ private:
+  template <class Accel>
+  void renderWith(double* out, std::size_t n, Accel&& accel) {
     const double dt = 1.0 / fs_, rIn = d_.outerRadiusM - d_.wallM, lim = rIn - d_.pelletRadiusM;
     for (std::size_t i = 0; i < n; ++i, t_ += dt) {
-      double y = 0.0;
+      double y = 0.0, click = 0.0;
       for (Bell& b : bells_) {
         const double tt = t_ + b.lag;
         // shell acceleration (hand): vertical z plus lateral x
-        const double az = shakeAcceleration(g, tt, false), ax = shakeAcceleration(g, tt, true);
+        double az = 0.0, ax = 0.0;
+        accel(tt, az, ax);
         b.v[0] += -ax * dt; b.v[2] += (-9.81 - az) * dt;
         for (int k = 0; k < 3; ++k) b.p[k] += b.v[k] * dt;
         const double r = std::sqrt(b.p[0] * b.p[0] + b.p[1] * b.p[1] + b.p[2] * b.p[2]);
@@ -237,6 +368,7 @@ class SleighBellStrap {
             const double J = pelletMass_ * (1.0 + d_.restitution) * vn;
             if (vn > 1e-3) {
               ++impacts_;
+              click += J / shellMass_;
               const double tau = hertzContactSeconds(nrm[2] > kSleighBellEarZoneCos ? mStarEar_ : mStar_, rStar_, eStar_, vn);
               for (std::size_t m = 0; m < b.modes.size(); ++m) {
                 Mode& md = b.modes[m];
@@ -251,11 +383,10 @@ class SleighBellStrap {
           y += yn;
         }
       }
-      out[i] = y;
+      out[i] = y + d_.clickGain * clickScale_ * (click - clickPrev_);
+      clickPrev_ = click;
     }
   }
-
- private:
   struct Mode { double w = 0, r = 0, c = 0, gain = 1, y1 = 0, y2 = 0; };
   struct Bell { std::vector<Mode> modes; std::array<double, 3> p{}, v{}; double lag = 0; };
   double uniform() noexcept {
@@ -267,6 +398,7 @@ class SleighBellStrap {
   SleighBellDesign d_;
   std::uint64_t s_;
   double pelletMass_ = 0, mStar_ = 0, mStarEar_ = 0, rStar_ = 0, eStar_ = 0, earLengthM_ = 0, t_ = 0;
+  double shellMass_ = 0, clickScale_ = 0, clickPrev_ = 0;
   std::uint64_t impacts_ = 0;
   std::vector<Bell> bells_;
 };

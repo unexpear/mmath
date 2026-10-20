@@ -55,7 +55,7 @@ TEST_CASE("minimum-jerk shake: zero in pauses, net zero velocity per stroke") {
 TEST_CASE("strap with minimum-jerk strokes: seeded, finite; 10 mm strokes cannot lift the pellet") {
   SleighBellStrap a(2, 3, 44100.0), b(2, 3, 44100.0), c(1, 3, 44100.0);
   std::vector<double> x(44100 * 2), y(44100 * 2);
-  a.render(x.data(), x.size(), {}); b.render(y.data(), y.size(), {});
+  a.render(x.data(), x.size(), ShakeGesture{}); b.render(y.data(), y.size(), ShakeGesture{});
   REQUIRE(x == y);
   for (double v : x) REQUIRE(std::isfinite(v));
   REQUIRE(a.impacts() > 0);
@@ -64,4 +64,44 @@ TEST_CASE("strap with minimum-jerk strokes: seeded, finite; 10 mm strokes cannot
   const auto settled = c.impacts();
   for (int k = 0; k < 3; ++k) c.render(z.data(), z.size(), weak);
   REQUIRE(double(c.impacts() - settled) / 3.0 < 1.0);  // resting pellet, no rattle
+}
+
+TEST_CASE("gesture timeline: text form parses; strikes ring; the pellet settles when the hand stops") {
+  const auto tl = parseSleighBellTimeline(
+      "# comment\nshake 0.0 1.0 0.017 0.0 0.3\nstrike 0.5 1.3 -0.3  # accent\nbogus 1 2\nstrike 0.8 1.0\n");
+  REQUIRE(tl.size() == 3);
+  REQUIRE(tl[0].kind == SleighBellEvent::Kind::Shake);
+  REQUIRE(tl[0].endStrength == 0.0);
+  REQUIRE(tl[1].kind == SleighBellEvent::Kind::Strike);
+  REQUIRE(tl[1].lateral == -0.3);
+  REQUIRE(tl[2].lateral == 0.3);
+  // a strike's acceleration integrates to zero (hand ends at rest)
+  double v = 0.0;
+  for (int i = 0; i < 44100; ++i) {
+    double az = 0, ax = 0;
+    gestureEventAcceleration(tl[1], ShakeGesture{}, i / 44100.0, az, ax);
+    v += az / 44100.0;
+  }
+  REQUIRE(std::fabs(v) < 1e-3);
+  SleighBellStrap s(6, 3, 44100.0), q(6, 3, 44100.0);
+  std::vector<double> x(44100);
+  q.render(x.data(), x.size(), std::vector<SleighBellEvent>{});  // drop and settle, no gesture
+  const auto rest = q.impacts();
+  q.render(x.data(), x.size(), std::vector<SleighBellEvent>{});
+  REQUIRE(q.impacts() - rest < 3);
+  s.render(x.data(), x.size(), tl);
+  double peak = 0.0;
+  for (double y : x) { REQUIRE(std::isfinite(y)); peak = std::max(peak, std::fabs(y)); }
+  REQUIRE(peak > 0.0);
+  // after the last event the hand is still: within 1 s the pellets stop
+  // and the ring dies (strap damping x1.4: >= 56 dB/s on every partial)
+  const auto done = s.impacts();
+  s.render(x.data(), x.size(), tl);  // t = 1..2 s, no events active
+  const auto late = s.impacts() - done;
+  std::vector<double> tail(44100);
+  s.render(tail.data(), tail.size(), tl);  // t = 2..3 s
+  REQUIRE(s.impacts() - done - late < 3);
+  double tailPeak = 0.0;
+  for (double y : tail) tailPeak = std::max(tailPeak, std::fabs(y));
+  REQUIRE(tailPeak < 0.01 * peak);
 }
