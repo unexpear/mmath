@@ -25,13 +25,13 @@ inline constexpr double kSnareSideThicknessM = 3.0 * 25.4e-6;
 // is usually tuned above the batter (Rossing, Science of Percussion
 // Instruments, 2000, ch. 2, VERIFY ratio). TUNED to the VSCO 2 CE Snare2
 // "HitSN" spectra (head peak there 236-244 Hz).
-inline constexpr double kSnareBatterHz = 175.0;  // TUNED (coupled peak 212 Hz; 195 reached 228-232 Hz but the buzz rose 6 dB over the reference)
+inline constexpr double kSnareBatterHz = 200.0;  // TUNED: coupled peak 232-236 Hz snares on (ref 236-244), 208 Hz off (ref 220); 175 gave 212 / 192
 inline constexpr double kSnareSideHz = 240.0;    // TUNED
-inline constexpr double kSnareHeadQ = 120.0;     // TUNED: decay with snares on (Q 40 / 80 / 120: t(-40 dB) 56 / 90 / see board)
+inline constexpr double kSnareHeadQ = 42.0;      // TUNED to snares off: t(-40 dB) 262 ms (ref HitNS 282-290); Q 120 rang 840 ms
 // Stick: a 5A hickory stick weighs about 50 g; the moving mass at the tip
 // is taken as 15 g (VERIFY). Wood tip on film: stiff, short contact.
 inline constexpr double kSnareStickMassKg = 0.015;       // VERIFY
-inline constexpr double kSnareStickStiffness = 5.0e5;    // N/m^1.5, TUNED (4e6 put a click 20 dB over the buzz: t(-20 dB) 13 ms vs 35-56 ms)
+inline constexpr double kSnareStickStiffness = 2.5e5;    // N/m^1.5, TUNED (4e6 put a click 20 dB over the buzz; 5e5 -> 2.5e5 lowered the 300 ms crest 27 -> 22.5 dB at 3 m/s)
 inline constexpr double kSnareStickExponent = 1.5;       // Hertz contact
 inline constexpr double kSnareStrikeRadialFraction = 0.3;  // off-centre stroke, UNSOURCED
 
@@ -47,7 +47,7 @@ inline constexpr double kSnareStrikeRadialFraction = 0.3;  // off-centre stroke,
   w.strandMassKg = 0.3e-3;         // TUNED (0.6 g drained the head: t(-40 dB) 56 ms)
   w.lowestHz = 120.0;              // TUNED
   w.highestHz = 2400.0;            // TUNED
-  w.strandQ = 3.0;                 // TUNED (Q 8 chattered on: no decay after the hit)
+  w.strandQ = 8.0;                 // TUNED (Q 3 with the head at Q 42 drained the buzz: late >2 kHz -21 dB; the Q 8 "chatter" seen before was the 8x step, see kSnareOversample)
   w.contactStiffness = 2.0e7;      // TUNED
   w.contactExponent = 1.5;         // Hertz
   w.contactDampingPerMeterPerSecond = 0.5;  // TUNED
@@ -60,8 +60,10 @@ inline constexpr double kSnareStrikeRadialFraction = 0.3;  // off-centre stroke,
 // at 48 kHz a 2e6 N/m^1.5 contact self-oscillated (constant level after
 // the hit). The voice runs at kSnareOversample times the output rate and
 // averages each block of samples (boxcar decimation, as
-// OversampledBowedStringVoice).
-inline constexpr int kSnareOversample = 8;  // TUNED (stability)
+// OversampledBowedStringVoice). Convergence (3 m/s, snares on): 8x left
+// late >2 kHz buzz 2-20 dB above 16x / 24x / 48x (numerical chatter);
+// 16x agrees with 48x within 1 dB on every band and 5 ms on t(-20 dB).
+inline constexpr int kSnareOversample = 16;  // convergence, see above
 class SnareDrumVoice final : public IVoice {
  public:
   SnareDrumVoice(CavityDrumVoice inner, SampleRateHz rate, int factor)
@@ -92,10 +94,19 @@ class SnareDrumVoice final : public IVoice {
   std::vector<double> buffer_;
 };
 
+// Head tuning and stick values snareDrumHit uses; the defaults are the
+// constants above (a caller may retune a drum without editing them).
+struct SnareDrumTuning {
+  double batterHz = kSnareBatterHz;
+  double sideHz = kSnareSideHz;
+  double headQ = kSnareHeadQ;
+  double stickStiffness = kSnareStickStiffness;
+};
+
 // One snare hit. speed: stick speed in m/s (about 1 pp to 6 ff, VERIFY).
 [[nodiscard]] inline Result<SnareDrumVoice, QuantityError> snareDrumHit(
     double speed, bool snaresOn, SampleRateHz rate, double distanceMeters = 1.0,
-    const SnareWires* wires = nullptr) {
+    const SnareWires* wires = nullptr, const SnareDrumTuning& tune = SnareDrumTuning{}) {
   using R = Result<SnareDrumVoice, QuantityError>;
   auto kit = yamahaTourCustomKit();
   if (!kit.ok()) return R::failure(kit.error());
@@ -107,13 +118,13 @@ class SnareDrumVoice final : public IVoice {
     const double wave = constants::twoPi * shell.headRadius.value() * hz / alpha;
     return sigma * wave * wave;
   };
-  const double tb = tension(sb, kSnareBatterHz), ts = tension(ss, kSnareSideHz);
-  auto batter = tuneMembraneHead(shell, kSnareBatterHz, sb * 0.999, sb * 1.001, tb * 0.9, tb * 1.1);
-  auto side = tuneMembraneHead(shell, kSnareSideHz, ss * 0.999, ss * 1.001, ts * 0.9, ts * 1.1);
+  const double tb = tension(sb, tune.batterHz), ts = tension(ss, tune.sideHz);
+  auto batter = tuneMembraneHead(shell, tune.batterHz, sb * 0.999, sb * 1.001, tb * 0.9, tb * 1.1);
+  auto side = tuneMembraneHead(shell, tune.sideHz, ss * 0.999, ss * 1.001, ts * 0.9, ts * 1.1);
   if (!batter.ok()) return R::failure(batter.error());
   if (!side.ok()) return R::failure(side.error());
   const MalletStrike stick{kSnareStrikeRadialFraction, 0.0, kSnareStickMassKg, speed,
-                           kSnareStickStiffness, kSnareStickExponent, 0.0, kSnareHeadQ};
+                           tune.stickStiffness, kSnareStickExponent, 0.0, tune.headQ};
   auto voice = CavityDrumVoice::create(batter.value(), &side.value(), shell, stick, 4, 4,
                                        SampleRateHz{rate.value() * kSnareOversample},
                                        101325.0, 293.15, distanceMeters);

@@ -74,6 +74,11 @@ struct SnareWires {
   double contactDampingPerMeterPerSecond = 0.0;  // Hunt-Crossley lambda (s/m)
   double preloadMeters = 0.0;     // strand pressed into the head at rest
   double spanFraction = 0.6;
+  // Strand-to-strand spread of the preload (fraction, 0 = identical
+  // strands): strand j presses with preload (1 + preloadSpread u_j), u_j
+  // a fixed golden-ratio sequence in [-1, 1]. Real strands are not
+  // identical (strand tension and bed contact vary across a set).
+  double preloadSpread = 0.0;
 };
 
 class CavityDrumVoice final : public IVoice {
@@ -193,7 +198,7 @@ class CavityDrumVoice final : public IVoice {
             wv += vq[i] * st.phi[i];
           }
           // Positive modal displacement is into the cavity: outward h = -w.
-          const double pen = wire_.preloadMeters - w - st.s.displacement;
+          const double pen = st.preload - w - st.s.displacement;
           const double penRate = -wv - st.s.velocity;
           double f = 0.0;
           if (pen > 0.0) {
@@ -201,7 +206,7 @@ class CavityDrumVoice final : public IVoice {
             f = wire_.contactStiffness * std::pow(pen, wire_.contactExponent) * factor;
           }
           if (!std::isfinite(f)) return R::failure(QuantityError::RangeError);
-          const double net = f - preloadForce_;
+          const double net = f - st.preloadForce;
           auto moved = stepConstantForceOscillator(st.s, st.omega, st.sigma,
                                                    net / wire_.strandMassKg, dt);
           if (!moved.ok()) return R::failure(moved.error());
@@ -286,6 +291,7 @@ class CavityDrumVoice final : public IVoice {
         !(w.lowestHz > 0.0) || !(w.highestHz >= w.lowestHz) || !(w.strandQ > 0.5) ||
         !(w.contactStiffness > 0.0) || !(w.contactExponent >= 1.0) ||
         w.contactDampingPerMeterPerSecond < 0.0 || w.preloadMeters < 0.0 ||
+        w.preloadSpread < 0.0 || w.preloadSpread >= 1.0 ||
         !(w.spanFraction > 0.0) || !(w.spanFraction < 1.0))
       return false;
     wires_.clear();
@@ -307,10 +313,13 @@ class CavityDrumVoice final : public IVoice {
       const double f = w.lowestHz * std::pow(w.highestHz / w.lowestHz, t);
       st.omega = constants::twoPi * f;
       st.sigma = st.omega / (2.0 * w.strandQ);
+      const double golden = 0.6180339887498949 * (j + 1);
+      const double u = 2.0 * (golden - std::floor(golden)) - 1.0;
+      st.preload = w.preloadMeters * (1.0 + w.preloadSpread * u);
+      st.preloadForce = w.contactStiffness * std::pow(st.preload, w.contactExponent);
       wires_.push_back(std::move(st));
     }
     wire_ = w;
-    preloadForce_ = w.contactStiffness * std::pow(w.preloadMeters, w.contactExponent);
     enableLocalRadiation();
     return true;
   }
@@ -345,6 +354,7 @@ class CavityDrumVoice final : public IVoice {
     double omega = 0.0, sigma = 0.0;
     OscillatorState s;
     double lastPen = 0.0;
+    double preload = 0.0, preloadForce = 0.0;
   };
 
   struct Normal {
@@ -568,7 +578,6 @@ class CavityDrumVoice final : public IVoice {
          rho_ = 1.2, distance_ = 1.0;
   std::vector<Strand> wires_;
   SnareWires wire_{};
-  double preloadForce_ = 0.0;
   bool local_ = false;
   double hpA_ = 0.0, localScale_ = 0.0, hpX_ = 0.0, hpY_ = 0.0;
   std::vector<double> localLine_;

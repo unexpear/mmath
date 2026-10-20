@@ -303,4 +303,19 @@ TEST_CASE("snare wires brighten the drum and the hit decays", "[band][snare]") {
   REQUIRE(lone.ok());
   auto lv = std::move(lone).value();
   CHECK_FALSE(lv.attachSnareWires(snareWireSet()));
+  // A preload spread must stay below 1 (every strand keeps a positive preload).
+  SnareWires bad = snareWireSet();
+  bad.preloadSpread = 1.0;
+  CHECK_FALSE(snareDrumHit(3.0, true, SampleRateHz{kBandFs}, 1.0, &bad).ok());
+  // The snares-off head is damped to the measured ring (t(-40 dB) about 0.28 s):
+  // 0.5 s after the hit it is more than 40 dB down from the first 50 ms.
+  std::vector<double> c(36000);
+  auto off2 = snareDrumHit(3.0, false, SampleRateHz{kBandFs});
+  REQUIRE(off2.ok());
+  auto voff2 = std::move(off2).value();
+  REQUIRE(voff2.renderBlock(c.data(), FrameCount{c.size()}).ok());
+  double first = 0, tail = 0;
+  for (std::size_t i = 0; i < 2400; ++i) first = std::max(first, std::fabs(c[i]));
+  for (std::size_t i = 24000; i < c.size(); ++i) tail = std::max(tail, std::fabs(c[i]));
+  CHECK(tail < 0.01 * first);
 }
