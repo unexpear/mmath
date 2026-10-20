@@ -183,7 +183,13 @@ inline double clarinetSoundingLengthMeters(double frequency) {
     // lag is about 15 cents at these pitches; 25 cents is the grade.
     const Length table[] = {
         {220.00, 0.371149}, {293.66, 0.270847}, {329.63, 0.23842},
-        {349.23, 0.219000}, {392.00, 0.201376}, {440.00, 0.177866},
+        {349.23, 0.219000}, {369.99, 0.2134}, {392.00, 0.201376}, {440.00, 0.177866},
+        // Winds pro1 rows (TUNED, same method): the held A4 product read
+        // flat 32-212 cents above A4 and F#4 +28 c on the transcribed
+        // Serolillo phrase. Each row is the held length x 2^(cents/1200),
+        // one pass.
+        {523.25, 0.14682}, {587.33, 0.12491}, {622.25, 0.11790}, {659.26, 0.11122},
+        {698.46, 0.10436}, {783.99, 0.09144}, {932.33, 0.07118},  // A#5: second pass, -72 c
     };
     for (const Length& row : table)
       if (std::fabs(row.hertz - frequency) < 0.05) return row.meters;
@@ -211,10 +217,27 @@ inline double saxophoneSoundingLengthMeters(double frequency) {
       const Length table[] = {
           {207.65, 0.670}, {277.18, 0.471}, {311.13, 0.410}, {329.63, 0.3822},
           {369.99, 0.3315}, {415.30, 0.288}, {466.16, 0.2486}, {493.88, 0.230},
+          // C5, winds pro1 (TUNED, same method): the held B4 product read -42 c.
+          {523.25, 0.21187},
       };
       for (const Length& row : table)
         if (std::fabs(row.hertz - frequency) < 0.05) return row.meters;
-      return 0.670 * 207.65 / frequency;
+      // Unlisted pitch: the length-frequency product interpolated in log f
+      // between rows, held at the end rows (as the clarinet). Winds pro1:
+      // the old fallback held the G#3 product (139 m/s) at every pitch,
+      // 115-123 m/s in the rows above E4, and read 160-290 cents flat on
+      // G4, A4, C5, F4.
+      const std::size_t n = sizeof(table) / sizeof(table[0]);
+      if (frequency <= table[0].hertz) return table[0].meters * table[0].hertz / frequency;
+      for (std::size_t i = 1; i < n; ++i) {
+        if (frequency <= table[i].hertz) {
+          const double t = std::log(frequency / table[i - 1].hertz) /
+                           std::log(table[i].hertz / table[i - 1].hertz);
+          return ((1.0 - t) * table[i - 1].meters * table[i - 1].hertz +
+                  t * table[i].meters * table[i].hertz) / frequency;
+        }
+      }
+      return table[n - 1].meters * table[n - 1].hertz / frequency;
     }
 
 struct BrassFinger {

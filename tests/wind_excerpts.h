@@ -473,5 +473,32 @@ double excerptSeconds(const NoteArray& notes) {
   return total;
 }
 
+// Pro-check references: CC/PD recordings on Wikimedia Commons, each phrase
+// transcribed from the recording itself (pYIN f0, librosa, rounded to the
+// nearest semitone; onset/offset from the voiced segments; tongued when the
+// RMS dips > 6 dB before the onset or a rest precedes). Durations are the
+// recording's, not a score's. Dynamics "mf" are not read from the
+// recording (UNSOURCED).
+// clarinet: Serolillo, Jazz Clarinet.ogg, Wikimedia Commons, CC BY 2.5; 3.0-10.3 s, transcribed by pYIN (librosa), rounded to semitones;
+inline const Note kProClarinet[] = {
+   {"rest", 0.00, 0.093, false, false, "mf"}, {"C5", 523.25, 0.209, true, false, "mf"}, {"D#5", 622.25, 0.232, true, false, "mf"}, {"F5", 698.46, 0.197, true, false, "mf"}, {"G5", 783.99, 0.430, true, false, "mf"}, {"A#5", 932.33, 0.383, true, false, "mf"}, {"E5", 659.26, 0.116, true, false, "mf"}, {"F5", 698.46, 0.615, false, false, "mf"}, {"D#5", 622.25, 0.789, false, false, "mf"}, {"rest", 0.00, 0.186, false, false, "mf"}, {"G5", 783.99, 0.313, true, false, "mf"}, {"D5", 587.33, 0.163, true, false, "mf"}, {"D#5", 622.25, 0.255, false, false, "mf"}, {"B4", 493.88, 0.163, true, false, "mf"}, {"C5", 523.25, 0.232, true, false, "mf"}, {"F#4", 369.99, 0.197, true, false, "mf"}, {"G4", 392.00, 0.383, false, false, "mf"}, {"F4", 349.23, 0.348, true, false, "mf"}, {"D#4", 311.13, 0.534, false, false, "mf"}, {"C4", 261.63, 1.466, false, false, "mf"},
+};
+// flute: Serolillo, Jazz Flute Cm7.ogg, Wikimedia Commons, CC BY 2.5; 3.35-9.45 s, transcribed by pYIN (librosa), rounded to semitones;
+inline const Note kProFlute[] = {
+   {"F#4", 369.99, 0.221, true, false, "mf"}, {"F4", 349.23, 0.139, true, false, "mf"}, {"rest", 0.00, 0.093, false, false, "mf"}, {"D#5", 622.25, 0.255, true, false, "mf"}, {"C5", 523.25, 0.174, true, false, "mf"}, {"D#4", 311.13, 0.139, true, false, "mf"}, {"rest", 0.00, 0.104, false, false, "mf"}, {"F5", 698.46, 0.209, true, false, "mf"}, {"D#5", 622.25, 0.186, false, false, "mf"}, {"C5", 523.25, 0.848, true, false, "mf"}, {"rest", 0.00, 0.267, false, false, "mf"}, {"G4", 392.00, 0.267, true, false, "mf"}, {"C5", 523.25, 0.255, true, false, "mf"}, {"D#4", 311.13, 0.139, true, false, "mf"}, {"F#5", 739.99, 0.174, true, false, "mf"}, {"G5", 783.99, 0.313, false, false, "mf"}, {"F5", 698.46, 0.221, true, false, "mf"}, {"D#5", 622.25, 0.209, true, false, "mf"}, {"C5", 523.25, 0.267, true, false, "mf"}, {"G4", 392.00, 0.139, true, false, "mf"}, {"B4", 493.88, 0.279, true, false, "mf"}, {"C5", 523.25, 1.141, false, false, "mf"},
+};
+// saxophone: ChickSR, Lick Alto Sax.wav, Wikimedia Commons, CC BY-SA 4.0; 0.0-3.0 s, transcribed by pYIN (librosa), rounded to semitones;
+inline const Note kProSaxophone[] = {
+   {"G4", 392.00, 0.221, true, false, "mf"}, {"A4", 440.00, 0.174, true, false, "mf"}, {"A#4", 466.16, 0.244, false, false, "mf"}, {"C5", 523.25, 0.151, true, false, "mf"}, {"A4", 440.00, 0.430, false, false, "mf"}, {"F4", 349.23, 0.221, false, false, "mf"}, {"G4", 392.00, 1.466, false, false, "mf"},
+};
+// trumpet: ChickSR, Lick Trumpet.wav, Wikimedia Commons, CC BY-SA 4.0; 0.15-3.5 s, transcribed by pYIN (librosa), rounded to semitones;
+inline const Note kProTrumpet[] = {
+   {"rest", 0.00, 0.081, false, false, "mf"}, {"G4", 392.00, 0.290, true, false, "mf"}, {"A4", 440.00, 0.163, true, false, "mf"}, {"A#4", 466.16, 0.244, false, false, "mf"}, {"C5", 523.25, 0.197, true, false, "mf"}, {"A4", 440.00, 0.372, true, false, "mf"}, {"F4", 349.23, 0.279, true, false, "mf"}, {"G4", 392.00, 1.768, true, false, "mf"},
+};
+// trombone: Mathieu Prevot, Sheherazade opening, trombone bass.wav, Wikimedia Commons, CC BY-SA 4.0; 0.0-5.5 s, transcribed by pYIN (librosa), rounded to semitones;
+inline const Note kProTrombone[] = {
+   {"rest", 0.00, 0.116, false, false, "mf"}, {"E3", 164.81, 1.324, true, false, "mf"}, {"B2", 123.47, 1.219, false, false, "mf"}, {"D3", 146.83, 1.730, false, false, "mf"}, {"C3", 130.81, 0.395, false, false, "mf"}, {"B2", 123.47, 0.395, false, false, "mf"}, {"C3", 130.81, 0.363, false, false, "mf"},
+};
+
 }  // namespace excerpts
 }  // namespace mmathen
