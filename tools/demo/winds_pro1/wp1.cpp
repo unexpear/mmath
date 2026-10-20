@@ -45,7 +45,7 @@ void push(std::vector<PhraseNote>& notes, const ScoreNote& src, double start, do
 }
 // Sweep overrides (harness only): WP_P scales the blowing pressure,
 // WP_AIM the flute jet aim (thicknesses), WP_TURB the reed/jet turbulence,
-// WP_CUT the reflection corner (Hz); flute: WP_RMAG reflection magnitude, WP_FWFIT 0/1 wall fit; WP_WFIT 0/1 clarinet wall fit; trumpet: WP_BRASS brassiness, WP_LIPR lip/partial ratio.
+// WP_CUT the reflection corner (Hz); sax: WP_BRK Benade break (0 off), WP_RAD radiation corner; flute: WP_RMAG reflection magnitude, WP_FWFIT 0/1 wall fit; WP_WFIT 0/1 clarinet wall fit; trumpet: WP_BRASS brassiness, WP_LIPR lip/partial ratio.
 double env(const char* k, double d) { const char* v = std::getenv(k); return v ? std::atof(v) : d; }
 double total(const std::vector<ScoreNote>& s) { double t = 0; for (auto& n : s) t += n.seconds; return t; }
 int main(int argc, char** argv) {
@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
     auto sax = U(makeSaxophone(spec));
     ValveBlow blow = sustained(4200.0, 1500.0, kSaxophoneAttack); blow.frames = (std::uint64_t)std::llround((T + 0.5) * kFs);
     blow.initialDisplacementMeters = 1.0e-5; blow.reedTurbulence = env("WP_TURB", kSaxophoneReedTurbulence); blow.reflectionCutoffHz = env("WP_CUT", 1500.0);
-    blow.lockedBreathFraction = kSaxophoneLockedBreathFraction; blow.spectrumBreakHz = 837.0;
+    blow.lockedBreathFraction = kSaxophoneLockedBreathFraction; blow.spectrumBreakHz = env("WP_BRK", kSaxophoneSpectrumBreakHz); blow.radiationHz = env("WP_RAD", kSaxophoneRadiationHz);
     auto voice = U(ConeValveVoice::fromSaxophone(sax, blow, kRate));
     double start = 0, held = longest;
     for (auto& s : song) { const double L = s.hertz > 0 ? saxophoneSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4200.0 * env("WP_P", 1.0), 0); if (s.hertz > 0) held = L; start += s.seconds; }

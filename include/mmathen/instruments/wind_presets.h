@@ -57,7 +57,7 @@ std::vector<ScoreNote> withLeadIn(const Song& song, const char* dynamic,
 inline constexpr double kClarinetReedTurbulence = 0.25;
 inline constexpr double kClarinetLockedBreathFraction = 0.013;
 // Alto saxophone: locked breath 0.0176, Iowa MIS alto sax NoVib ff.
-// Turbulence 0.55 UNSOURCED (Wolfe, UNSW, prints no level).
+// Turbulence: see below (Wolfe, UNSW, prints no level).
 // Clarinet bore losses: reflection corner 4500 Hz TUNED, with the wall
 // fitted to Kirchhoff at the sounding fundamental
 // (ValveBlow::wallFitFundamental). Li, Almeida, Smith and Wolfe (JASA 139,
@@ -82,7 +82,27 @@ inline ValveBlow clarinetBoreLosses(ValveBlow blow) {
   blow.wallFitFundamental = true;
   return blow;
 }
-inline constexpr double kSaxophoneReedTurbulence = 0.55;
+inline constexpr double kSaxophoneReedTurbulence = 0.30;
+// Alto saxophone radiation (ValveBlow::spectrumBreakHz,
+// ValveBlow::radiationHz), TUNED. Benade and Lutgen's envelope (JASA 83,
+// 1900, 1988; alto fb 837 Hz) is the external spectrum of the whole
+// instrument. Filtering this cone's radiated pressure with it counts the
+// bore and radiation roll-off twice: the transcribed excerpt read 3-8 kHz
+// -41.7 dB against -14.1 recorded. Winds pro5 sweep, centroid (Hz) /
+// 1-3 kHz / 3-8 kHz / 8-16 kHz (dB) / H2 / H3 / H4 / floor, recording
+// 960 / -5.6 / -14.1 / -32.4 / -2.5 / -10.4 / -11.8 / -63.8:
+//   break 837 (old):       537 / -16.8 / -41.7 / -41.0 / -6.0 / -19.3 / -25.0 / -72.5
+//   break 1800:            842 /  -5.3 / -31.1 / -40.1 / -2.5 /  -6.6 /  -5.9 / -68.5
+//   break off, corner 1500 (the reflection corner): 650 / -8.9 / -22.8 / -37.9
+//   break off, corner 3000 / 4000 / 5000 / 6000 / 8000 Hz:
+//     3-8 kHz -19.1 / -17.9 / -17.2 / -16.7 / -16.1,
+//     8-16 kHz -34.3 / -32.5 / -31.1 / -30.0 / -28.5
+// 5000 Hz, break off. Turbulence 0.30 TUNED (was 0.55 UNSOURCED): excerpt
+// floor -60.8 at 0.55, -63.6 at 0.35. The suite's held tone needs the
+// noise to seed the reed: 0.15 / 0.20 never reach -30 dB in 0.8 s, 0.25
+// grows at 51.8 dB/s (bound 50), 0.30 at 60.3 with floor -69.0 dB.
+inline constexpr double kSaxophoneSpectrumBreakHz = 0.0;
+inline constexpr double kSaxophoneRadiationHz = 5000.0;
 inline constexpr double kSaxophoneLockedBreathFraction = 0.0176;
 // Flute: locked breath 0.063 = 0.56 less 19 dB, against the Iowa MIS flute
 // A4 ff. Jet turbulence 0.56 UNSOURCED.
