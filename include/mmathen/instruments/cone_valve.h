@@ -271,7 +271,10 @@ class ConeValveVoice final : public IVoice {
       // tuned with. See ValveBlow::brassiness.
       double atBell = incident;
       if (!rfOn_ && lip_ && brassiness_ > 0.0) atBell = steepenAtBell(incident);
+      // ValveBlow::bellTransmission: the transmitted wave (1 + R) p+.
       const double bellFlow = rfOn_ ? convolveHistory(uf_, steepRfOn_ ? histS_ : hist_)
+                              : (bellTransmit_ && flareOn_)
+                                    ? (atBell + incoming) / impedance_ * bellScale_
                                     : (atBell - incoming) / impedance_ * bellScale_;
       double radiated = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
                                                  radiationState_, radiationCorner_, dt);
@@ -1000,6 +1003,7 @@ class ConeValveVoice final : public IVoice {
     voice.cutoff_.pole = cutPole;
     voice.flareLoss_.pole = flarePole;
     voice.flareOn_ = flare;
+    voice.bellTransmit_ = blow.bellTransmission;
     voice.bell_ = bell;
     voice.wallRadius_ = blow.wallRadiusMeters;
     voice.decay_ = decay;
@@ -1336,6 +1340,7 @@ class ConeValveVoice final : public IVoice {
   bool lip_ = false;
   bool radiating_ = false;
   bool flareOn_ = false;
+  bool bellTransmit_ = false;
   double flareMatchHz_ = 0.0;
   double wallRadius_ = 0.0;
   BesselBellProfile bell_{};

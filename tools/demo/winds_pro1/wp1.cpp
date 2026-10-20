@@ -45,7 +45,7 @@ void push(std::vector<PhraseNote>& notes, const ScoreNote& src, double start, do
 }
 // Sweep overrides (harness only): WP_P scales the blowing pressure,
 // WP_AIM the flute jet aim (thicknesses), WP_TURB the reed/jet turbulence,
-// WP_CUT the reflection corner (Hz); sax: WP_BRK Benade break (0 off), WP_RAD radiation corner; flute: WP_RMAG reflection magnitude, WP_FWFIT 0/1 wall fit; WP_WFIT 0/1 clarinet wall fit; trumpet: WP_BRASS brassiness, WP_LIPR lip/partial ratio.
+// WP_CUT the reflection corner (Hz); trumpet WP_BT 0/1 bell transmission; sax: WP_BRK Benade break (0 off), WP_RAD radiation corner; flute: WP_RMAG reflection magnitude, WP_FWFIT 0/1 wall fit; WP_WFIT 0/1 clarinet wall fit; trumpet: WP_BRASS brassiness, WP_LIPR lip/partial ratio.
 double env(const char* k, double d) { const char* v = std::getenv(k); return v ? std::atof(v) : d; }
 double total(const std::vector<ScoreNote>& s) { double t = 0; for (auto& n : s) t += n.seconds; return t; }
 int main(int argc, char** argv) {
@@ -103,7 +103,7 @@ int main(int argc, char** argv) {
     const double tpP = 2800.0 * env("WP_P", 1.0);
     ValveBlow lip = sustained(tpP, 10000.0, kTrumpetAttack); lip.frames = (std::uint64_t)std::llround(T * kFs);
     lip.reflectionMagnitude = 0.999; lip.initialDisplacementMeters = 0.0; lip.tongueReleaseFrames = 0;
-    lip.brassiness = env("WP_BRASS", 1.0); lip.reedTurbulence = kTrumpetReedTurbulence; applyBach37Bell(lip);
+    lip.brassiness = env("WP_BRASS", 1.0); lip.reedTurbulence = kTrumpetReedTurbulence; applyBach37Bell(lip); lip.bellTransmission = env("WP_BT", 1.0) > 0.5; lip.radiationHz = env("WP_RAD", kTrumpetRadiationHz);
     auto voice = U(ConeValveVoice::fromTrumpet(tp, 0.26, lip, kRate));
     double start = 0; BrassFinger held = kTrumpetFingers[0];
     for (auto& s : song) {

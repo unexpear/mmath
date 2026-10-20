@@ -238,6 +238,21 @@ inline void applyScottBell(ValveBlow& blow) {
 // radius 6 mm, then a Bessel horn of exponent 0.7 from 0.716 m to
 // 1.335 m. Their mouth is 60 mm. b and x0 are the pair that meets the
 // 6 mm throat and the Bach #37 mouth. They are not solved onto a Q.
+// Trumpet radiation: the bell radiates the wave it transmits
+// (ValveBlow::bellTransmission), and the radiation corner is 3000 Hz,
+// TUNED. Winds pro5 on the transcribed trumpet excerpt, centroid (Hz) /
+// 1-3 kHz / 3-8 kHz / 8-16 kHz (dB) / H2 / H3 re H1, recording
+// 1436 / -1.4 / -15.8 / -46.1 / +5.3 / +6.0:
+//   throat flow, 10 kHz corner (old): 494 / -17.1 / -29.6 / -31.6 / -12.6 / -20.8
+//   transmitted, 10 kHz:  1723 / -5.5 / -9.1 / -17.5 / -1.4 / -7.4
+//   transmitted, 2000 / 3000 / 4000 / 6000 Hz: centroid 1005 / 1160 / 1282 /
+//     1467, 3-8 kHz -14.0 / -12.1 / -11.0 / -9.9, 8-16 kHz -27.5 / -24.7 /
+//     -22.8 / -20.2, H2 -1.9 / -1.6 / -1.5 / -1.4
+// Pitch median 2.5 c on all transmitted runs (7.5 c on the old). Still
+// open: H2-H3 sit 7-14 dB under the recording and 8-16 kHz 21 dB over;
+// the one-pole corner falls 6 dB/oct where Luce and Clark (JASA 42, 1967)
+// measured 15-25 dB/oct above about 1 kHz.
+inline constexpr double kTrumpetRadiationHz = 3000.0;
 inline void applyBach37Bell(ValveBlow& blow) {
   constexpr double kLength = 1.335 - 0.716;
   constexpr double kGamma = 0.7;
@@ -250,6 +265,8 @@ inline void applyBach37Bell(ValveBlow& blow) {
   blow.bellFlare = kGamma;
   blow.bellCoefficient = mouth * std::pow(offset, kGamma);
   blow.bellMouthOffsetMeters = offset;
+  blow.bellTransmission = true;
+  blow.radiationHz = kTrumpetRadiationHz;
 }
 inline double clarinetSoundingLengthMeters(double frequency) {
     struct Length { double hertz; double meters; };

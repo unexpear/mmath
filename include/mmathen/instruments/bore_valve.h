@@ -183,6 +183,16 @@ struct ValveBlow {
   // lone pole matched near 4 kHz loses about 1/16 of Kirchhoff at the
   // fundamental. False keeps the lone pole.
   bool wallFitFundamental = false;
+  // Flared bell only (ConeValveVoice with a Bessel bell): when true the
+  // radiated source is the wave the bell transmits, (1 + R) p+, rather
+  // than the throat flow (p+ - R p+) / Z. With the bell's reflectance R
+  // near -1 at low frequency and falling in magnitude above the flare
+  // cutoff, the transmitted wave is a high-pass, the bell's measured
+  // behaviour (Benade, Fundamentals of Musical Acoustics, ch. 20; Fletcher
+  // and Rossing ch. 14: brass radiate little below the bell cutoff). The
+  // throat flow is (1 - R) p+ / Z, a low-pass that is near 2 p+ / Z at the
+  // fundamental. False keeps the throat flow.
+  bool bellTransmission = false;
   // Bessel flare carried by the bore, a(x) = b (x + x0)^{−γ} with x
   // measured from the mouth. A positive length replaces a straight-pipe
   // Levine–Schwinger termination at radiusMeters with the input
