@@ -389,7 +389,7 @@ struct BrassFinger {
       // Bells, one pass: G4 0, Bb4 -18 (its B4 read -18), A4 -15, F#4 -3,
       // E4 -25, D4 -4 (D4 trial 1.665 m).
       {392.00, 1.2198, 3}, {349.23, 0.912, 0}, {466.16, 1.0097, 3},
-      {523.25, 1.5464, 5}, {698.46, 1.410, 6}, {587.33, 1.3671, 5},
+      {523.25, 1.2102, 4}, {698.46, 1.410, 6}, {587.33, 1.0597, 4},
       // A4 for When the Saints: the Bb4 row scaled sat 27.8 cents flat;
       // (L + apex) shortened by that measured ratio.
       {440.00, 1.0661, 3},
@@ -404,9 +404,11 @@ struct BrassFinger {
       // its 3rd partial (D4 1+2 valves, E4 valve 2), so they are mode 3
       // rows here; a grid of 1.55-1.83 m x lip 0.6-1.1 locked single-pitch
       // only at lip 0.6-0.7 (tools/demo/winds_pro1, d4/e4 grid).
-      // C5, C#5, D5 (mode 5) retuned for the 0.76 lip by the -13/-5/-20 c
-      // they read at 0.76 in Jingle Bells, one pass.
-      {293.66, 1.6606, 3}, {659.26, 1.4699, 6}, {554.37, 1.4518, 5},
+      // C5 (mode 4, lip 0.70) interpolated from the grid (1.20 m +13 c,
+      // 1.24 m -38 c); C#5 and D5 are its cone + apex scaled by the
+      // frequency ratio; D5 then read +13 c and is lengthened by it. E5 (mode 5, lip 0.75) from 1.22 m -11 c, 1.26 m
+      // -64 c.
+      {293.66, 1.6606, 3}, {659.26, 1.2117, 5}, {554.37, 1.1277, 4},
       {329.63, 1.4766, 3}, {369.99, 1.2998, 3},
   };
   // Lip natural frequency over the bore partial it drives. An
@@ -417,11 +419,14 @@ struct BrassFinger {
   // (H2 -3 to -11 dB, H3 -6 to -10 dB re H1) and D4/E4 split into two
   // pitches; at 0.70 they lock single-pitch with H2 +3 to +9 dB, H3 -3 to
   // +12 dB, the side of a played trumpet (H2 +8, H3 +7 on the CC
-  // reference). Mode 5 (C5-D5) broke up at 0.70; a 0.74-0.84 sweep gave
-  // H2 +1 to +3 dB at 0.76 (-2 to -6 at 0.80). Mode 6 (E5, F5) split
-  // below 0.78 and keeps 0.80.
+  // reference). The cone mode number is the played partial of a Bb
+  // trumpet: C5-D5 are its 4th partial (concert C5 = 1st valve), E5 the
+  // 5th (2nd valve), F5 the 6th (open). As 5th-mode rows C5-D5 read
+  // H2 ~0, H3 -6 to -9 dB; as 4th-mode rows at 0.70 they lock with
+  // H2 +2, H3 ~0 (grid 1.20-1.32 m x 0.60-0.80). Mode 5 (E5) locks at
+  // 0.75-0.80 and splits at 0.70; mode 6 (F5) split below 0.78.
   inline constexpr double trumpetLipPartialRatio(int mode) {
-    return mode <= 3 ? 0.70 : (mode == 5 ? 0.76 : 0.80);
+    return mode <= 4 ? 0.70 : (mode == 5 ? 0.75 : 0.80);
   }
   inline BrassFinger trumpetFinger(double hertz) {
       for (const BrassFinger& row : kTrumpetFingers)

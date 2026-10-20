@@ -79,6 +79,23 @@ std::vector<ScoreNote> ensureLeadIn(const Song& song) {
 // used. The length modulation is the pitch control this bore already has.
 constexpr double kVibratoHz = 5.5;
 constexpr double kVibratoCents = 12.0;
+// Brass (a lip note): measured on the VSCO 2 Community Edition trumpet
+// sustain-vibrato set (Sam Gossner, CC0, github.com/sgossner/VSCO-2-CE,
+// Brass/Trumpet/susvib): 14 notes with f0 250-800 Hz, rate 5.84 Hz
+// median (4.8-6.5), extent +/-9.1 cents median (3.0-23.5), AM +/-0.9 dB
+// (tools/demo/winds_pro1 vibm.py, peak of the 3.5-9 Hz band of the
+// detrended H1 track).
+// The bore length swing that gives +/-9.1 c: at 9.1 the locked lip and
+// bore sounded +/-7.1 c (E4 7.7, G4 6.5 in Jingle Bells), so the swing
+// is 9.1 x 9.1 / 7.1 = 11.7 c, TUNED to the measured extent.
+constexpr double kBrassVibratoHz = 5.84;
+constexpr double kBrassVibratoCents = 11.7;
+// A breath taken from a brass note ends it by the breath, not the
+// tongue: the pressure falls over this time, then the lungs refill for
+// the rest of the stolen time. TUNED: the Lick_Trumpet reference notes
+// fall about 10 dB over their last 50-60 ms; a phrase-end release is
+// slower. UNSOURCED for phrase ends.
+constexpr double kBrassBreathReleaseSec = 0.12;
 
 // Breath plan for scores without enough rests. Wind players breathe at
 // phrase joins and take the time from the end of the note before the join
@@ -106,6 +123,8 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
   // blow's own tongue, if it has one.
   constexpr std::uint64_t kTongue = 1920;
   const double depth = std::pow(2.0, kVibratoCents / 1200.0) - 1.0;
+  const double brassDepth = std::pow(2.0, kBrassVibratoCents / 1200.0) - 1.0;
+  double stealStartSec = -1.0;
   // With the player's airway attached, the airway's breath feeds the
   // valve and its tongue articulates: the tip is on the reed (or behind
   // the teeth) for the kTongue closure before a tongued note and leaves
@@ -170,8 +189,18 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
         else if (join > steal && frame >= join - steal && frame < join &&
                  airway->needsBreath(kBreathMarginM3)) {
           breathing = true; stolenBreath = true;
+          stealStartSec = static_cast<double>(frame) / rateHz;
         }
         if (frame + count >= join) breathing = false;
+      }
+    }
+    // A brass note's stolen breath starts with the breath release.
+    double brassRelease = -1.0;
+    if (stolenBreath && notes[static_cast<std::size_t>(sounding)].lipHz > 0.0) {
+      const double since = time - stealStartSec;
+      if (stealStartSec >= 0.0 && since < kBrassBreathReleaseSec) {
+        brassRelease = 1.0 - since / kBrassBreathReleaseSec;
+        stolenBreath = false;
       }
     }
     // The note after a breath is tongued, as after a written rest.
@@ -232,6 +261,7 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       }
     }
     double env = breathOff ? 0.0 : note.gain * (releasing >= 0 ? releaseLeft : 1.0);
+    if (brassRelease >= 0.0) env *= brassRelease;
     const bool dipping = airway == nullptr && fluteJet && note.tongue && sounding > 0 && !note.rest &&
                          time < note.startSec + 0.020;
     if (dipping) env *= 0.55;
@@ -249,7 +279,9 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     }
     double vibrato = 1.0;
     if (note.vibrato && !note.rest && time > note.startSec + 0.20) {
-      vibrato = 1.0 - depth * std::sin(constants::twoPi * kVibratoHz * time);
+      vibrato = note.lipHz > 0.0
+                    ? 1.0 - brassDepth * std::sin(constants::twoPi * kBrassVibratoHz * time)
+                    : 1.0 - depth * std::sin(constants::twoPi * kVibratoHz * time);
       length *= vibrato;
     }
     if (!(voice.setSoundingLength(length))) return {};
