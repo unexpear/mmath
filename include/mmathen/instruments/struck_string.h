@@ -232,6 +232,11 @@ struct HammerBodyDrive {
   double distanceMeters = 0.0;
   double airPressurePa = 0.0;
   double temperatureKelvin = 0.0;
+  // Optional per-mode effective areas A_n (m^2, signed), as in
+  // SoundboardVoice: the radiated volume velocity is sum A_n v_n and
+  // radiatingAreaM2 then only has to be positive (it is not a factor).
+  // Empty keeps the single area: U = radiatingAreaM2 * sum v_n.
+  std::span<const double> modeAreasM2 = {};
 };
 
 class HammeredStringVoice final : public IVoice {
@@ -348,17 +353,20 @@ class HammeredStringVoice final : public IVoice {
       const double bridgeForce = impedance_ * (2.0 * filtered - bridgeVelocity_);
       if (!std::isfinite(bridgeForce)) return R::failure(QuantityError::RangeError);
       double bridgeVelocity = 0.0;
+      double volume = 0.0;
       for (BodyMode& mode : modes_) {
         auto stepped = stepConstantForceOscillator(
             mode.state, mode.omega, mode.sigma, bridgeForce / mode.mass, dt);
         if (!stepped.ok()) return R::failure(stepped.error());
         mode.state = stepped.value();
         bridgeVelocity += mode.state.velocity;
+        volume += mode.area * mode.state.velocity;
       }
-      if (!std::isfinite(bridgeVelocity))
+      if (!std::isfinite(bridgeVelocity) || !std::isfinite(volume))
         return R::failure(QuantityError::RangeError);
-      const double acceleration = (bridgeVelocity - bridgeVelocity_) * fs;
+      const double acceleration = (volume - volume_) * fs;
       bridgeVelocity_ = bridgeVelocity;
+      volume_ = volume;
       const double delayed = radiation_[radiationPos_];
       radiation_[radiationPos_] = acceleration;
       radiationPos_ = (radiationPos_ + 1) % radiation_.size();
@@ -381,6 +389,7 @@ class HammeredStringVoice final : public IVoice {
     hammerV_ = hammerSpeed_;
     stringY_ = 0.0;
     bridgeVelocity_ = 0.0;
+    volume_ = 0.0;
     for (BodyMode& mode : modes_) mode.state = {};
     std::fill(radiation_.begin(), radiation_.end(), 0.0);
     radiationPos_ = 0;
@@ -398,6 +407,7 @@ class HammeredStringVoice final : public IVoice {
     double sigma = 0.0;
     double mass = 0.0;
     OscillatorState state;
+    double area = 1.0;
   };
 
   [[nodiscard]] Result<int, QuantityError> attachBody(const HammerBodyDrive& body) {
@@ -408,6 +418,9 @@ class HammeredStringVoice final : public IVoice {
         !(body.distanceMeters > 0.0) || !std::isfinite(body.airPressurePa) ||
         !(body.airPressurePa > 0.0))
       return R::failure(QuantityError::InvalidArgument);
+    const bool perMode = !body.modeAreasM2.empty();
+    if (perMode && body.modeAreasM2.size() != body.modes.size())
+      return R::failure(QuantityError::InvalidArgument);
     std::vector<BodyMode> built;
     built.reserve(body.modes.size());
     for (const BodyModeSpec& spec : body.modes) {
@@ -416,7 +429,9 @@ class HammeredStringVoice final : public IVoice {
       const double omega = resonator.value().omega0;
       const double sigma = omega / (2.0 * resonator.value().qualityFactor);
       if (!(sigma < omega)) return R::failure(QuantityError::DomainError);
-      built.push_back(BodyMode{omega, sigma, resonator.value().modalMassKg, {}});
+      const double area = perMode ? body.modeAreasM2[built.size()] : 1.0;
+      if (!std::isfinite(area)) return R::failure(QuantityError::InvalidArgument);
+      built.push_back(BodyMode{omega, sigma, resonator.value().modalMassKg, {}, area});
     }
     auto air = makeAir(TemperatureKelvin{body.temperatureKelvin});
     if (!air.ok()) return R::failure(air.error());
@@ -433,7 +448,7 @@ class HammeredStringVoice final : public IVoice {
       return R::failure(QuantityError::RangeError);
     int delay = static_cast<int>(std::llround(samples));
     if (delay < 1) delay = 1;
-    const double scale = rho.value().value() * body.radiatingAreaM2 /
+    const double scale = rho.value().value() * (perMode ? 1.0 : body.radiatingAreaM2) /
                          (4.0 * constants::pi * body.distanceMeters);
     if (!std::isfinite(scale) || !(scale > 0.0))
       return R::failure(QuantityError::RangeError);
@@ -442,6 +457,7 @@ class HammeredStringVoice final : public IVoice {
     radiation_.assign(static_cast<std::size_t>(delay), 0.0);
     radiationPos_ = 0;
     bridgeVelocity_ = 0.0;
+    volume_ = 0.0;
     return R::success(delay);
   }
 
@@ -513,6 +529,7 @@ class HammeredStringVoice final : public IVoice {
   double stringY_ = 0.0;
   double scale_ = 0.0;
   double bridgeVelocity_ = 0.0;
+  double volume_ = 0.0;
   std::vector<BodyMode> modes_;
   std::vector<double> radiation_;
   std::size_t radiationPos_ = 0;
