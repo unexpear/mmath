@@ -1413,7 +1413,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
 
   auto clarinet = workingClarinet(0.45);
   const double clarinetHz = speed / (4.0 * 0.45);
-  ValveBlow clarinetBlow = sustained(4000.0, 1500.0, kClarinetAttack);
+  ValveBlow clarinetBlow = clarinetBoreLosses(sustained(4000.0, 1500.0, kClarinetAttack));
   // Unsourced fraction. The reed channel is turbulent (Fletcher and
   // Rossing, chap. 13); that chapter prints no ratio. Below threshold
   // it scales the reed-period monopole; once the tone is up it scales
@@ -1461,7 +1461,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
       writeListening(clarinetSamples, "mmath-clarinet.wav", kFs);
 
   auto quiet = unwrap(
-      BoreValveVoice::fromClarinet(clarinet, sustained(250.0, 1500.0, kClarinetAttack), kRate));
+      BoreValveVoice::fromClarinet(clarinet, clarinetBoreLosses(sustained(250.0, 1500.0, kClarinetAttack)), kRate));
   auto quietSamples = renderOf(quiet, kFrames);
   // 250 Pa against 4000 Pa. At 1500 Hz the soft tone radiates partials
   // a 600 Hz reflection had removed, so its RMS is about 7% of the
@@ -1472,7 +1472,7 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   auto longer = workingClarinet(0.60);
   const double longerHz = speed / (4.0 * 0.60);
   auto longerVoice =
-      unwrap(BoreValveVoice::fromClarinet(longer, sustained(4000.0, 1500.0, kClarinetAttack), kRate));
+      unwrap(BoreValveVoice::fromClarinet(longer, clarinetBoreLosses(sustained(4000.0, 1500.0, kClarinetAttack)), kRate));
   auto longerSamples = renderOf(longerVoice, kFrames);
   const Period low = periodNear(clarinetSamples, 70000, clarinetHz, kFs);
   const Period high = periodNear(longerSamples, 70000, longerHz, kFs);
@@ -1480,12 +1480,12 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
 
   const SampleRateHz other{44100.0};
   auto otherVoice =
-      unwrap(BoreValveVoice::fromClarinet(clarinet, sustained(4000.0, 1500.0, kClarinetAttack), other));
+      unwrap(BoreValveVoice::fromClarinet(clarinet, clarinetBoreLosses(sustained(4000.0, 1500.0, kClarinetAttack)), other));
   auto otherSamples = renderOf(otherVoice, 88200);
   const Period at44 = periodNear(otherSamples, 60000, clarinetHz, 44100.0);
   CHECK(std::fabs(at44.frequencyHz - low.frequencyHz) < 3.0);
 
-  ValveBlow released = sustained(4000.0, 1500.0, kClarinetAttack);
+  ValveBlow released = clarinetBoreLosses(sustained(4000.0, 1500.0, kClarinetAttack));
   released.frames = 70000;
   released.releaseFrames = 2400;
   auto releaseVoice =
@@ -1844,7 +1844,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
       if (src.hertz > 0.0) longest = std::max(longest, clarinetLen(src.hertz));
     auto clarinet = workingClarinet(longest * 1.04);
     const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
-    ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack);
+    ValveBlow blow = clarinetBoreLosses(sustained(4000.0, 1500.0, kClarinetAttack));
     blow.frames = frames;
     blow.reedTurbulence = kClarinetReedTurbulence;
     blow.lockedBreathFraction = kClarinetLockedBreathFraction;  // Iowa MIS Bb clarinet ff, see lockedBreathFraction note
@@ -2148,7 +2148,7 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
       if (src.hertz > 0.0) longest = std::max(longest, clarinetLen(src.hertz));
     auto clarinet = workingClarinet(longest * 1.04);
     const auto frames = static_cast<std::uint64_t>(std::llround(total * kFs));
-    ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack);
+    ValveBlow blow = clarinetBoreLosses(sustained(4000.0, 1500.0, kClarinetAttack));
     blow.frames = frames;
     blow.reedTurbulence = kClarinetReedTurbulence;
     blow.lockedBreathFraction = kClarinetLockedBreathFraction;  // Iowa MIS Bb clarinet ff, see lockedBreathFraction note
@@ -2815,7 +2815,7 @@ TEST_CASE("player airway shapes breath and tongue", "[contact][wind][airway]") {
   const std::uint64_t frames = 3 * 48000;
   PlayerAirwaySpec spec;
   auto blowFor = [&]() {
-    ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack);
+    ValveBlow blow = clarinetBoreLosses(sustained(4000.0, 1500.0, kClarinetAttack));
     blow.frames = frames;
     return blow;
   };

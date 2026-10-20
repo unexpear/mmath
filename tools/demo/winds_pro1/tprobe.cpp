@@ -73,7 +73,7 @@ int main(int argc, char** argv) {
   } else {
     ClarinetSpec spec{0.40, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0, 1.0e-6, 1.0e-4, 1.0e-3, 0.11};
     auto cl = U(makeClarinet(spec));
-    ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack); blow.frames = 48000;
+    ValveBlow blow = clarinetBoreLosses(sustained(4000.0, 1500.0, kClarinetAttack)); blow.frames = 48000;
     auto voice = U(BoreValveVoice::fromClarinet(cl, blow, kRate));
     run(voice, clarinetSoundingLengthMeters(392.0), 0.0, 4000.0);
   }

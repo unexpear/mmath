@@ -45,7 +45,7 @@ void push(std::vector<PhraseNote>& notes, const ScoreNote& src, double start, do
 }
 // Sweep overrides (harness only): WP_P scales the blowing pressure,
 // WP_AIM the flute jet aim (thicknesses), WP_TURB the reed/jet turbulence,
-// WP_CUT the reflection corner (Hz).
+// WP_CUT the reflection corner (Hz); WP_WFIT 0/1 clarinet wall fit; trumpet: WP_BRASS brassiness, WP_LIPR lip/partial ratio.
 double env(const char* k, double d) { const char* v = std::getenv(k); return v ? std::atof(v) : d; }
 double total(const std::vector<ScoreNote>& s) { double t = 0; for (auto& n : s) t += n.seconds; return t; }
 int main(int argc, char** argv) {
@@ -59,8 +59,8 @@ int main(int argc, char** argv) {
     double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, clarinetSoundingLengthMeters(s.hertz));
     ClarinetSpec spec{longest * 1.04, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0, 1.0e-6, 1.0e-4, 1.0e-3, 0.11};
     auto cl = U(makeClarinet(spec));
-    ValveBlow blow = sustained(4000.0, 1500.0, kClarinetAttack); blow.frames = (std::uint64_t)std::llround((T + 0.5) * kFs);  // breath may outlast the score (release)
-    blow.reedTurbulence = env("WP_TURB", kClarinetReedTurbulence); blow.reflectionCutoffHz = env("WP_CUT", 1500.0); blow.lockedBreathFraction = kClarinetLockedBreathFraction;
+    ValveBlow blow = clarinetBoreLosses(sustained(4000.0, 1500.0, kClarinetAttack)); blow.frames = (std::uint64_t)std::llround((T + 0.5) * kFs);  // breath may outlast the score (release)
+    blow.reedTurbulence = env("WP_TURB", kClarinetReedTurbulence); blow.reflectionCutoffHz = env("WP_CUT", kClarinetReflectionCutoffHz); blow.wallFitFundamental = env("WP_WFIT", 1.0) > 0.5; blow.lockedBreathFraction = kClarinetLockedBreathFraction;
     auto voice = U(BoreValveVoice::fromClarinet(cl, blow, kRate));
     double start = 0, held = longest;
     for (auto& s : song) { const double L = s.hertz > 0 ? clarinetSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4000.0 * env("WP_P", 1.0), 0); if (s.hertz > 0) held = L; start += s.seconds; }
@@ -100,15 +100,16 @@ int main(int argc, char** argv) {
   } else if (which == "trumpet") {
     const auto song = ensureLeadIn(excerpts::kProTrumpet); T = total(song);
     auto tp = U(makeTrumpet(phraseTrumpetSpec(speed, kAir, kTemp)));
-    ValveBlow lip = sustained(2800.0, 10000.0, kTrumpetAttack); lip.frames = (std::uint64_t)std::llround(T * kFs);
+    const double tpP = 2800.0 * env("WP_P", 1.0);
+    ValveBlow lip = sustained(tpP, 10000.0, kTrumpetAttack); lip.frames = (std::uint64_t)std::llround(T * kFs);
     lip.reflectionMagnitude = 0.999; lip.initialDisplacementMeters = 0.0; lip.tongueReleaseFrames = 0;
-    lip.brassiness = 1.0; lip.reedTurbulence = kTrumpetReedTurbulence; applyBach37Bell(lip);
+    lip.brassiness = env("WP_BRASS", 1.0); lip.reedTurbulence = kTrumpetReedTurbulence; applyBach37Bell(lip);
     auto voice = U(ConeValveVoice::fromTrumpet(tp, 0.26, lip, kRate));
     double start = 0; BrassFinger held = kTrumpetFingers[0];
     for (auto& s : song) {
       const BrassFinger r = s.hertz > 0 ? trumpetFinger(s.hertz) : held;
-      const double lipHz = r.mode == 0 ? 0.75 * speed / r.length : 0.80 * conePartial(r.length, 0.26, r.mode);
-      push(notes, s, start, r.length, lipHz, 2800.0, 0); notes.back().peakHz = impedancePeakHz(r.length, 0.26, r.mode, r.hertz);
+      const double lipHz = r.mode == 0 ? 0.75 * speed / r.length : env("WP_LIPR", 0.80) * conePartial(r.length, 0.26, r.mode);
+      push(notes, s, start, r.length, lipHz, tpP, 0); notes.back().peakHz = impedancePeakHz(r.length, 0.26, r.mode, r.hertz);
       if (s.hertz > 0) held = r; start += s.seconds;
     }
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs);

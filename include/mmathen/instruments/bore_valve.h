@@ -176,6 +176,13 @@ struct ValveBlow {
   // Zero uses the bore area. A cited slide bore can differ from the
   // cone area the lengths were tuned on.
   double wallRadiusMeters = 0.0;
+  // When true (a cylindrical reed bore), the wall is a flat gain times a
+  // one-pole, fitted to Kirchhoff at both the sounding fundamental and the
+  // default match frequency, and refitted on every setSoundingLength.
+  // Kirchhoff's loss grows as sqrt(f) and a lone one-pole's as f^2, so the
+  // lone pole matched near 4 kHz loses about 1/16 of Kirchhoff at the
+  // fundamental. False keeps the lone pole.
+  bool wallFitFundamental = false;
   // Bessel flare carried by the bore, a(x) = b (x + x0)^{−γ} with x
   // measured from the mouth. A positive length replaces a straight-pipe
   // Levine–Schwinger termination at radiusMeters with the input
@@ -455,14 +462,15 @@ struct BreakEnvelope {
 struct TripLoss {
   double pole = 0.0;
   double state = 0.0;
+  double gain = 1.0;  // flat part of a fitted wall; 1 for a lone pole
 
   void reset() { state = 0.0; }
 
   [[nodiscard]] double step(double x) {
-    if (!(pole > 0.0)) return x;
+    if (!(pole > 0.0)) return gain * x;
     const double y = (1.0 - pole) * x + pole * state;
     state = y;
-    return y;
+    return gain * y;
   }
 };
 
@@ -484,6 +492,37 @@ struct TripLoss {
   const double pole = b - std::sqrt(disc);
   if (!std::isfinite(pole) || !(pole > 0.0) || !(pole < 1.0)) return 0.0;
   return pole;
+}
+
+[[nodiscard]] inline double onePoleMagnitude(double pole, double frequencyHz,
+                                             double sampleRateHz);
+
+// Gain g and pole p with g |P(lowHz)| = lowMagnitude and
+// g |P(highHz)| = highMagnitude (one-pole P, bisection on p). A ratio the
+// pole cannot reach leaves p = 0 and a flat g = lowMagnitude.
+inline void fitGainPole(double lowHz, double lowMagnitude, double highHz,
+                        double highMagnitude, double sampleRateHz, double& pole,
+                        double& gain) {
+  pole = 0.0;
+  gain = lowMagnitude;
+  if (!(lowMagnitude > 0.0) || !(lowMagnitude <= 1.0) || !(highMagnitude > 0.0) ||
+      !(lowHz > 0.0) || !(highHz > lowHz) || !(sampleRateHz > 2.0 * highHz))
+    return;
+  const double ratio = highMagnitude / lowMagnitude;
+  if (!(ratio < 1.0)) return;
+  double lo = 0.0, hi = 0.999999;
+  for (int i = 0; i < 80; ++i) {
+    const double mid = 0.5 * (lo + hi);
+    const double r = onePoleMagnitude(mid, highHz, sampleRateHz) /
+                     onePoleMagnitude(mid, lowHz, sampleRateHz);
+    if (r > ratio) lo = mid; else hi = mid;
+  }
+  pole = 0.5 * (lo + hi);
+  gain = lowMagnitude / onePoleMagnitude(pole, lowHz, sampleRateHz);
+  if (!std::isfinite(gain) || !(gain > 0.0) || gain > 1.0) {
+    pole = 0.0;
+    gain = lowMagnitude;
+  }
 }
 
 [[nodiscard]] inline double onePoleMagnitude(double pole, double frequencyHz,
@@ -795,6 +834,21 @@ class BoreValveVoice final : public IVoice {
     double timed = fs * 2.0 * air / speed_;
     const double geometric = (law_ == ValveLaw::Jet) ? speed_ / (2.0 * air)
                                                      : speed_ / (4.0 * air);
+    if (wallFit_) {
+      // Refit the wall to this air column (blow.wallFitFundamental).
+      const double match = std::min(0.3 * fs, std::max(12.0 * geometric, 4000.0));
+      const double high = valve_detail::kirchhoffTripMagnitude(
+          match, wallFitRadius_, air, speed_, density_);
+      const double low = valve_detail::kirchhoffTripMagnitude(
+          geometric, wallFitRadius_, air, speed_, density_);
+      double pole = 0.0, gain = 1.0;
+      if (geometric < match)
+        valve_detail::fitGainPole(geometric, low, match, high, fs, pole, gain);
+      if (pole > 0.0 || gain < 1.0) {
+        wall_.pole = pole;
+        wall_.gain = gain;
+      }
+    }
     if (!radiating_) {
       timed -= valve_detail::onePolePhaseDelay(wall_.pole, geometric, fs);
       timed -= valve_detail::onePolePhaseDelay(cutoff_.pole, geometric, fs);
@@ -896,6 +950,7 @@ class BoreValveVoice final : public IVoice {
                                                     : speed / (4.0 * airColumn);
     const bool lossy = blow.reflectionCutoffHz > 0.0;
     double wallPole = 0.0;
+    double wallGain = 1.0;
     double cutPole = 0.0;
     double timed = fs * roundTrip;
     if (lossy) {
@@ -907,6 +962,11 @@ class BoreValveVoice final : public IVoice {
       const double wall = valve_detail::kirchhoffTripMagnitude(
           match, radius, airColumn, speed, density);
       wallPole = valve_detail::onePoleMatching(wall, match, fs);
+      if (blow.wallFitFundamental && geometric < match) {
+        const double low = valve_detail::kirchhoffTripMagnitude(
+            geometric, radius, airColumn, speed, density);
+        valve_detail::fitGainPole(geometric, low, match, wall, fs, wallPole, wallGain);
+      }
       cutPole = std::exp(-constants::twoPi * blow.reflectionCutoffHz / fs);
       if (!std::isfinite(cutPole) || !(cutPole > 0.0) || !(cutPole < 1.0))
         return R::failure(QuantityError::RangeError);
@@ -968,7 +1028,7 @@ class BoreValveVoice final : public IVoice {
       hertz = geometric;
     }
     if (lossy) {
-      const double extra = valve_detail::onePoleMagnitude(wallPole, hertz, fs) *
+      const double extra = wallGain * valve_detail::onePoleMagnitude(wallPole, hertz, fs) *
                            valve_detail::onePoleMagnitude(cutPole, hertz, fs);
       if (!(extra > 0.0) || !std::isfinite(extra))
         return R::failure(QuantityError::RangeError);
@@ -985,6 +1045,9 @@ class BoreValveVoice final : public IVoice {
     voice.useBoreThiran_ = useBoreThiran;
     const double radius = std::sqrt(area / constants::pi);
     voice.wall_.pole = wallPole;
+    voice.wall_.gain = wallGain;
+    voice.wallFit_ = lossy && blow.wallFitFundamental;
+    voice.wallFitRadius_ = radius;
     voice.cutoff_.pole = cutPole;
     voice.speed_ = speed;
     voice.endCorrection_ = radiating ? 0.0 : blow.endCorrectionMeters;
@@ -1319,6 +1382,8 @@ class BoreValveVoice final : public IVoice {
   double reedTurbulence_ = 0.0;
   double lockedBreath_ = -1.0;
   valve_detail::TripLoss wall_{};
+  bool wallFit_ = false;
+  double wallFitRadius_ = 0.0;
   valve_detail::TripLoss cutoff_{};
   std::uint32_t noise_ = 1u;
   double breathEnv_ = 0.0;

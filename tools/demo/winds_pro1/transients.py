@@ -1,4 +1,5 @@
-"""Note transients, real vs model, on the fundamental (f0 +-8 %, 5 ms RMS):
+"""Note transients, real vs model, on the broadband 5 ms RMS envelope (pro4: the
+fundamental band read pitch changes as dips and gave the trumpet a false 48 dB/s):
 dip  = level drop into a tongued join (min in [a-80, a+30] ms re the previous note's median),
 grow = exponential growth rate after the dip (dB/s, fit from min+3 dB to the first frame within 3 dB of the
        new note's median),
@@ -9,19 +10,21 @@ import sys,os,numpy as n,soundfile as sf,librosa
 from scipy.signal import butter,sosfiltfilt
 HERE=os.path.dirname(os.path.abspath(__file__))
 
-src=open(os.path.join(HERE,'wpscore.py')).read().split('out,tag,insts=')[0]
-g={};exec(src,g);g['EXC']=os.path.join(HERE,'..','..','..','tests','wind_excerpts.h')
+src=open(os.environ.get('WPSCORE',os.path.join(HERE,'wpscore.py'))).read().split('out,tag,insts=')[0]
+g={};exec(src,g);g['EXC']=os.environ.get('WIND_EXC',os.path.join(HERE,'..','..','..','tests','wind_excerpts.h'))
 def band_env(x,fs,hz):
     y=sosfiltfilt(butter(2,[hz*0.92,hz*1.08],'band',fs=fs,output='sos'),x);h=int(0.005*fs)
     e=n.sqrt(n.convolve(y**2,n.ones(h)/h,'same'))[::h];return 20*n.log10(e+1e-9)
+def broad_env(x,fs):
+    h=int(0.005*fs);e=n.sqrt(n.convolve(x**2,n.ones(h)/h,'same'))[::h];return 20*n.log10(e+1e-9)
 def analyse(path,inst,off):
-    x,fs=g['load'](path);N=g['notes_of'](inst);D=[];G=[];R=[]
+    x,fs=g['load'](path);N=g['notes_of'](inst);D=[];G=[];R=[];EB=broad_env(x,fs)
     allnotes=N
     for k,(a,b,hz,tg) in enumerate(N):
-        a+=off;b+=off;E=band_env(x,fs,hz);t=n.arange(len(E))*0.005
+        a+=off;b+=off;E=EB;t=n.arange(len(E))*0.005
         med=n.median(E[(t>a+0.3*(b-a))&(t<b-0.2*(b-a))]) if b-a>0.1 else E[(t>a)&(t<b)].max()
         if tg and k>0 and abs(N[k-1][1]+off-a)<0.02:
-            pa,pb,phz,_=N[k-1];pa+=off;pb+=off;Ep=band_env(x,fs,phz)
+            pa,pb,phz,_=N[k-1];pa+=off;pb+=off;Ep=EB
             pm=n.median(Ep[(t>pa+0.3*(pb-pa))&(t<pb-0.2*(pb-pa))]) if pb-pa>0.1 else Ep[(t>pa)&(t<pb)].max()
             w=(t>=a-0.08)&(t<=a+0.03)
             lvl=n.minimum(E,Ep)  # either fundamental
@@ -39,7 +42,7 @@ def analyse(path,inst,off):
     return D,G,R
 if __name__=='__main__':
     for inst in sys.argv[2].split(','):
-        for nm,p,off in [('real','ref_%s.wav'%inst,0.0)]+[(tg,'%s_%s.f64'%(tg,inst),g['LEAD']) for tg in sys.argv[1].split('+')]:
+        for nm,p,off in [('real',os.path.join(os.environ.get('WIND_REF','.'),'ref_%s.wav'%inst),0.0)]+[(tg,'%s_%s.f64'%(tg,inst),g['LEAD']) for tg in sys.argv[1].split('+')]:
             
             D,G,R=analyse(p,inst,off)
             f=lambda v:'%6.0f'%n.median(v) if len(v) else '    --'

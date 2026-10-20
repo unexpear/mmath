@@ -47,11 +47,41 @@ std::vector<ScoreNote> withLeadIn(const Song& song, const char* dynamic,
 // Breath and turbulence defaults (ValveBlow::reedTurbulence,
 // ValveBlow::lockedBreathFraction).
 // Clarinet: locked breath 0.013, University of Iowa MIS Bb clarinet ff
-// (measurement reference only). Turbulence 0.40 UNSOURCED.
-inline constexpr double kClarinetReedTurbulence = 0.40;
+// (measurement reference only). Turbulence 0.25 TUNED (was 0.40
+// UNSOURCED): with clarinetBoreLosses the transcribed excerpt's
+// inter-harmonic floor read -63.6 / -67.0 / -70.4 / -75.5 dB at
+// 0.40 / 0.25 / 0.15 / 0.05 against -68.0 on the recording. The suite's
+// held tone read floor -68.8 / -68.2 / -66.7 / -66.4 / -65.1 dB at
+// 0.22 / 0.25 / 0.26 / 0.28 / 0.32 (bound -66.8) and soft growth
+// 629 / 489 / 489 / 489 / 489 dB/s (bound 500); 0.25 meets both.
+inline constexpr double kClarinetReedTurbulence = 0.25;
 inline constexpr double kClarinetLockedBreathFraction = 0.013;
 // Alto saxophone: locked breath 0.0176, Iowa MIS alto sax NoVib ff.
 // Turbulence 0.55 UNSOURCED (Wolfe, UNSW, prints no level).
+// Clarinet bore losses: reflection corner 4500 Hz TUNED, with the wall
+// fitted to Kirchhoff at the sounding fundamental
+// (ValveBlow::wallFitFundamental). Li, Almeida, Smith and Wolfe (JASA 139,
+// 825, 2016) measured tongue-stopped clarinet decays of about 400 dB/s
+// (C4 340, G4 400, C5 380, G5 520), which they matched to the bandwidths of
+// the bore resonances, i.e. bore loss. Winds pro4, slope of the last 30 ms
+// before each tongued onset on the transcribed clarinet excerpt, median of
+// 10 closures (G4 / C5 / G5):
+//   lone wall pole, corner 1500: -262 / -600..-782 / -2389..-2896, median -1245
+//   lone wall pole, corner 3000: -176 / -245..-262 / -742..-955, median -401
+//   fitted wall, corner 1500: -377 / -801..-1037 / -2551..-3112, median -1455
+//   fitted wall, corner 3000: -288 / -402..-490 / -904..-1141, median -587
+//   fitted wall, corner 4500: -257 / -338..-392 / -560..-736, median -435
+// A lone corner fast enough for G5 is too slow below C5 (the pole's loss
+// grows as f^2, Kirchhoff's as sqrt(f)); the fitted wall carries the low
+// notes. The same 4500 Hz run read centroid 914 Hz (real 974, 1500 Hz 673),
+// 1-3 kHz -7.9 dB (-5.4), 3-8 kHz -15.1 (-15.1), H2/H3/H4 -11.1/-13.3/-13.8
+// (-11.1/-8.7/-14.8).
+inline constexpr double kClarinetReflectionCutoffHz = 4500.0;
+inline ValveBlow clarinetBoreLosses(ValveBlow blow) {
+  blow.reflectionCutoffHz = kClarinetReflectionCutoffHz;
+  blow.wallFitFundamental = true;
+  return blow;
+}
 inline constexpr double kSaxophoneReedTurbulence = 0.55;
 inline constexpr double kSaxophoneLockedBreathFraction = 0.0176;
 // Flute: locked breath 0.063 = 0.56 less 19 dB, against the Iowa MIS flute
@@ -188,13 +218,17 @@ inline double clarinetSoundingLengthMeters(double frequency) {
     // Shortened from c/(4f) until the autocorrelation matched. Integer
     // lag is about 15 cents at these pitches; 25 cents is the grade.
     const Length table[] = {
+        // Winds pro4 (clarinetBoreLosses): F#4 read +21 c and C5 -29 on a
+        // 3000 Hz lone-pole pass; those rows are held length x 2^(c/1200).
+        // F4 moved +62 / -59 / -31 c over 0.219 / 0.2269 / 0.2229 m across
+        // passes and is back at 0.219.
         {220.00, 0.371149}, {293.66, 0.270847}, {329.63, 0.23842},
-        {349.23, 0.219000}, {369.99, 0.2134}, {392.00, 0.201376}, {440.00, 0.177866},
+        {349.23, 0.219000}, {369.99, 0.2160}, {392.00, 0.201376}, {440.00, 0.177866},
         // Winds pro1 rows (TUNED, same method): the held A4 product read
         // flat 32-212 cents above A4 and F#4 +28 c on the transcribed
         // Serolillo phrase. Each row is the held length x 2^(cents/1200),
         // one pass.
-        {523.25, 0.14682}, {587.33, 0.12491}, {622.25, 0.11790}, {659.26, 0.11122},
+        {523.25, 0.14437}, {587.33, 0.12491}, {622.25, 0.11790}, {659.26, 0.11122},
         {698.46, 0.10436}, {783.99, 0.09144}, {932.33, 0.07118},  // A#5: second pass, -72 c
     };
     for (const Length& row : table)
