@@ -308,6 +308,21 @@ inline constexpr double kTrumpetBurgersFraction = 0.76;
 // with the 0.80 lip ratio: Jingle Bells attacks off by > 50 c 85 -> 8
 // of 98, settle (within 25 c for 30 ms) median 65 -> 23 ms.
 inline constexpr double kTrumpetLipQualityFactor = 4.0;
+// Mouth pressure of a phrase note, proportional to its frequency.
+// Fletcher and Tarnopolsky, JASA 105, 874-881 (1999): the threshold
+// blowing pressure is about proportional to the note frequency, K = 7 Pa/Hz
+// for their player GC, and soft playing doubles it each octave. The flat
+// 2800 Pa sat at or under that threshold from G4 up (G4 2.7 kPa, C5 3.7
+// kPa) and the bell wave was too weak to steepen. 9.5 Pa/Hz (1.36 K) is
+// TUNED on the Lick excerpt (winds_pro1 tscore.py, lumped wall loss):
+// 7.5 / 8.5 / 9.5 Pa/Hz scored 62.1 / 52.3 / 40.9 (flat 2800 Pa: 76.9);
+// H2 / H3 re H1 +9.4 / +9.1 dB at 9.5 (recording +5.3 / +6.0), centroid
+// 1218 Hz (1436). It also cleared the E5 attack (-457 c to +1 c, Jingle
+// Bells).
+inline constexpr double kTrumpetBlowingPaPerHz = 9.5;
+inline constexpr double trumpetMouthPressurePa(double hertz) {
+  return kTrumpetBlowingPaPerHz * hertz;
+}
 inline void applyBach37Bell(ValveBlow& blow) {
   constexpr double kLength = 1.335 - 0.716;
   constexpr double kGamma = 0.7;
@@ -404,6 +419,8 @@ struct BrassFinger {
   // Lip natural frequency over the cone partial for this row; zero takes
   // the mode's ratio (trumpetLipPartialRatio).
   double lipRatio = 0.0;
+  // Mouth pressure over the trumpet pressure law for this row.
+  double pressureScale = 1.0;
 };
 
   inline constexpr BrassFinger kTromboneFingers[] = {
@@ -428,7 +445,7 @@ struct BrassFinger {
           nearest = &row;
       const double apex = nearest->mode == 0 ? 0.0 : 0.60;
       return BrassFinger{hertz, (nearest->length + apex) * nearest->hertz / hertz - apex,
-                    nearest->mode, nearest->lipRatio};
+                    nearest->mode, nearest->lipRatio, nearest->pressureScale};
     }
 
   // Tuned so this lip and this length play the concert pitch, and the
@@ -453,12 +470,20 @@ struct BrassFinger {
       // the steady cents read by YIN (winds_pro1 h/tp ptrack.py on the Lick
       // excerpt, jbtrack.py on Jingle Bells): G4 -7.7, F4 -33.0, Bb4 -10.8,
       // C5 +3.5, D5 +16.0, A4 +3.2, E5 -9.2 then +11.6 at 0.85, C#5 +17.3,
-      // E4 -11.3, F#4 -8.2, D4 +6 at 0.78, F5 -21.8 at 0.92.
-      {392.00, 1.2132, 3}, {349.23, 0.8948, 0}, {466.16, 1.0018, 3},
-      {523.25, 1.2132, 4}, {698.46, 1.3891, 6, 0.92}, {587.33, 1.0720, 4},
+      // E4 -11.3, F#4 -8.2, D4 +6 at 0.78, F5 -21.8 at 0.92. Then for the
+      // per-note mouth pressure (trumpetMouthPressurePa), one pass: G4 +7.4,
+      // F4 +1.3, Bb4 +13.3, C5 +9.2, D5 +11.7, A4 +10.1, E5 +8.2, C#5 +8.4,
+      // E4 +8.3, F#4 +6.0, B4 +11.4, F5 +13.8 (D4 +0.9 kept). Then two
+      // automatic passes for the two-section Burgers loss (winds_pro1 h/tp
+      // autotune.py), every row within 3 c. D4 blows at 0.86 of the
+      // pressure law (2.4 kPa, 1.17 K): at 2.8 kPa and up its 0.6 and 1.2 s
+      // notes left the 294 Hz regime for about 352 Hz (+300 c); 2.2-2.6 kPa
+      // held within 8 c.
+      {392.00, 1.2190, 3}, {349.23, 0.8955, 0}, {466.16, 1.0099, 3},
+      {523.25, 1.2200, 4}, {698.46, 1.4028, 6, 0.86}, {587.33, 1.0793, 4},
       // A4 for When the Saints: the Bb4 row scaled sat 27.8 cents flat;
       // (L + apex) shortened by that measured ratio.
-      {440.00, 1.0686, 3},
+      {440.00, 1.0756, 3},
       // Jingle Bells (tools/demo/christmas): D4 scaled from the F4 row read
       // +68 c, E5 scaled from F5 -39 c, C#5 scaled from D5 -27 c; each row
       // is that scaled length (cone + apex for a cone mode) times
@@ -474,11 +499,11 @@ struct BrassFinger {
       // 1.24 m -38 c); C#5 and D5 are its cone + apex scaled by the
       // frequency ratio; D5 then read +13 c and is lengthened by it. E5 (mode 5, lip 0.75) from 1.22 m -11 c, 1.26 m
       // -64 c.
-      {293.66, 1.6661, 3, 0.78}, {659.26, 1.2137, 5}, {554.37, 1.1416, 4},
+      {293.66, 1.6669, 3, 0.78, 0.86}, {659.26, 1.2195, 5}, {554.37, 1.1470, 4},
       // B4 (Jingle Bells) was the Bb4 row scaled; at the Q 4 / 0.80 lip it
       // read +5.3 c and is that scaled length lengthened by it.
-      {493.88, 0.9421, 3},
-      {329.63, 1.4653, 3}, {369.99, 1.2924, 3},
+      {493.88, 0.9492, 3},
+      {329.63, 1.4731, 3}, {369.99, 1.2972, 3},
   };
   // Lip natural frequency over the bore partial it drives. An
   // outward-striking lip plays just above its own resonance, so the lip
@@ -502,12 +527,19 @@ struct BrassFinger {
   // low-Q lip also drives: E5 (mode 5, 0.80 = 4/5) sat 25 dB down with the
   // mode 4 partial in its attack, so modes 5-6 take 0.85, and the F5 row
   // 0.92 (0.85: -27 c, attack -132 c; 0.88 / 0.92: attack -76 / -40 c).
+  // With the per-note pressure the Promenade test slur C5 -> F5 went to
+  // 808 Hz (+252 c) at 0.92; 0.80 / 0.83 / 0.85 / 0.86 / 0.88 read
+  // -16 / -9 / -2 / +3 / +30 c there and -19 / -17 / -15 / -14 / -13 c
+  // tongued (f5.txt): the row takes 0.86, shortened 5 c between the two.
   // D4 at 0.75 and 0.80 drifted to F4 on its 1.2 s vibrato notes (+305 c),
   // its row takes 0.78, which held. TUNED. Cost: the 0.80 notes are rounder
   // (Lick excerpt centroid 847 -> 741 Hz, H3 +4.9 -> +2.9 dB; recording
   // 1436 Hz, +6.0 dB).
   inline constexpr double trumpetLipPartialRatio(int mode) {
     return mode <= 0 ? 0.75 : (mode <= 4 ? 0.80 : 0.85);
+  }
+  inline constexpr double trumpetMouthPressurePa(const BrassFinger& row) {
+    return trumpetMouthPressurePa(row.hertz) * row.pressureScale;
   }
   inline constexpr double trumpetLipRatio(const BrassFinger& row) {
     return row.lipRatio > 0.0 ? row.lipRatio : trumpetLipPartialRatio(row.mode);
@@ -524,7 +556,7 @@ struct BrassFinger {
           nearest = &row;
       const double apex = nearest->mode == 0 ? 0.0 : 0.26;
       return BrassFinger{hertz, (nearest->length + apex) * nearest->hertz / hertz - apex,
-                    nearest->mode, nearest->lipRatio};
+                    nearest->mode, nearest->lipRatio, nearest->pressureScale};
     }
 
 // Exact fingering row for a listed pitch (within 0.02 Hz); a zero row when

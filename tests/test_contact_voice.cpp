@@ -1136,7 +1136,7 @@ TEST_CASE("articulation: spiccato lifts the bow, accents push the onset", "[cont
 }
 
 TEST_CASE("expressive timing: tempo scale, mean-1 phrase arch, articulation ratio", "[contact]") {
-  std::vector<ScoreNote> notes;
+  std::vector<TimedScoreNote> notes;
   for (int i = 0; i < 16; ++i) notes.push_back({0.25 * i, 0.25, 69, 90});
   TimingRules r;
   r.tempoScale = 1.5;
@@ -1166,7 +1166,7 @@ TEST_CASE("room convolution is exact against a direct sum", "[contact]") {
   }
 }
 TEST_CASE("expressive dynamics and seeded variability", "[contact]") {
-  std::vector<ScoreNote> notes;
+  std::vector<TimedScoreNote> notes;
   for (int i = 0; i < 16; ++i) notes.push_back({0.25 * i, 0.25, 69, i % 2 ? 101 : 81});
   TimingRules r;
   r.phraseScoreSeconds = 4.0;
@@ -1263,7 +1263,7 @@ TEST_CASE("bridge-force output scales with bow speed and 1/beta", "[contact]") {
 
 TEST_CASE("level smoothing turns velocity steps into gradual swells", "[contact]") {
   using namespace mmathen;
-  std::vector<ScoreNote> sc;
+  std::vector<TimedScoreNote> sc;
   for (int i = 0; i < 40; ++i) sc.push_back({0.125 * i, 0.125, 69, i < 20 ? 32 : 96});
   TimingRules r; r.velocityDbPer64 = 6.0;
   const auto hard = applyExpressiveTiming(sc, r);
@@ -1284,7 +1284,7 @@ TEST_CASE("level smoothing turns velocity steps into gradual swells", "[contact]
 
 TEST_CASE("level flattening removes section steps but keeps accents", "[contact]") {
   using namespace mmathen;
-  std::vector<ScoreNote> sc;  // 10 s soft section then 10 s loud section, every 4th note accented
+  std::vector<TimedScoreNote> sc;  // 10 s soft section then 10 s loud section, every 4th note accented
   for (int i = 0; i < 160; ++i) sc.push_back({0.125 * i, 0.125, 69, (i < 80 ? 40 : 100) + (i % 4 == 0 ? 20 : 0)});
   TimingRules r; r.velocityDbPer64 = 6.0;
   auto meanDb = [](const std::vector<PerformedNote>& v, size_t a, size_t b) { double s = 0; for (size_t i = a; i < b; ++i) s += 20 * std::log10(v[i].level); return s / double(b - a); };
@@ -1344,7 +1344,7 @@ TEST_CASE("ringing articulation lets short notes ring through the gap", "[contac
 
 TEST_CASE("level floor caps quiet-side attenuation with a soft knee", "[contact]") {
   using namespace mmathen;
-  std::vector<ScoreNote> sc;
+  std::vector<TimedScoreNote> sc;
   for (int i = 0; i < 128; ++i) sc.push_back({0.125 * i, 0.125, 69, i});
   TimingRules r; r.velocityDbPer64 = 12.0;
   const auto raw = applyExpressiveTiming(sc, r);

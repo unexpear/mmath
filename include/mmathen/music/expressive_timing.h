@@ -30,7 +30,11 @@
 
 namespace mmathen {
 
-struct ScoreNote {
+// Named apart from the wind phrase ScoreNote (wind_presets.h): two
+// mmathen::ScoreNote layouts broke the one-definition rule, and MSVC merged
+// std::vector<ScoreNote> code across the two test units (a corrupt vector
+// and an access violation in the trumpet lip test).
+struct TimedScoreNote {
   double onsetSeconds = 0.0;  // score time
   double ioiSeconds = 0.0;    // score inter-onset interval
   int midi = 0;
@@ -94,18 +98,18 @@ struct TimingRules {
 };
 
 [[nodiscard]] inline std::vector<PerformedNote> applyExpressiveTiming(
-    const std::vector<ScoreNote>& notes, const TimingRules& r) {
+    const std::vector<TimedScoreNote>& notes, const TimingRules& r) {
   std::vector<PerformedNote> out;
   out.reserve(notes.size());
   double end = 0.0;
-  for (const ScoreNote& n : notes) end = std::max(end, n.onsetSeconds + n.ioiSeconds);
+  for (const TimedScoreNote& n : notes) end = std::max(end, n.onsetSeconds + n.ioiSeconds);
   double t = notes.empty() ? 0.0 : notes.front().onsetSeconds * r.tempoScale;
   std::mt19937 rng(r.seed);
   std::normal_distribution<double> gauss(0.0, 1.0);
   std::mt19937 prng(r.seed ^ 0x9e3779b9u);
   long curPhrase = -1;
   double phraseScale = 1.0, phraseOffsetDb = 0.0;
-  for (const ScoreNote& n : notes) {
+  for (const TimedScoreNote& n : notes) {
     const double mid = n.onsetSeconds + 0.5 * n.ioiSeconds;
     double m = r.tempoScale;
     double levelDb = r.velocityDbPer64 * (static_cast<double>(n.velocity) - 64.0) / 64.0;

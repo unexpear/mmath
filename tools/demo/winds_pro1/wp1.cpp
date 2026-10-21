@@ -128,12 +128,13 @@ int main(int argc, char** argv) {
     ValveBlow lip = sustained(tpP, 10000.0, kTrumpetAttack); lip.frames = (std::uint64_t)std::llround(T * kFs);
     lip.reflectionMagnitude = 0.999; lip.initialDisplacementMeters = 0.0; lip.tongueReleaseFrames = 0;
     lip.brassiness = env("WP_BRASS", 1.0); lip.reedTurbulence = kTrumpetReedTurbulence; applyBach37Bell(lip); lip.bellTransmission = env("WP_BT", 1.0) > 0.5; lip.radiationHz = env("WP_RAD", kTrumpetRadiationHz);
-    auto voice = U(ConeValveVoice::fromTrumpet(tp, 0.26, lip, kRate)); if (env("WP_LIPQ", 0.0) > 0.0 && !voice.setLipQualityFactor(env("WP_LIPQ", 0.0))) return 4; if (env("WP_BURG", 0.0) > 0.0 && !voice.setBoreBurgers(true, env("WP_BURG", 0.0), (int)env("WP_BURGM", 32))) return 6; if (env("WP_LIPC", 0.0) > 0.5) { if (!voice.setLipCollision(true, env("WP_LIPK", 3.0), env("WP_LIPZ", 1.1))) return 5; }
+    auto voice = U(ConeValveVoice::fromTrumpet(tp, 0.26, lip, kRate)); if (env("WP_LIPQ", 0.0) > 0.0 && !voice.setLipQualityFactor(env("WP_LIPQ", 0.0))) return 4; if (env("WP_BURG", 0.0) > 0.0 && !voice.setBoreBurgers(true, env("WP_BURG", 0.0), (int)env("WP_BURGM", 32))) return 6; if (env("WP_LUMPS", 0.0) > 0.0 && !voice.setBurgersLossLumps((int)env("WP_LUMPS", 1.0))) return 7; if (env("WP_LIPC", 0.0) > 0.5) { if (!voice.setLipCollision(true, env("WP_LIPK", 3.0), env("WP_LIPZ", 1.1))) return 5; }
     double start = 0; BrassFinger held = kTrumpetFingers[0];
     for (auto& s : song) {
-      BrassFinger r = s.hertz > 0 ? trumpetFinger(s.hertz) : held; if (s.hertz > 0 && std::fabs(s.hertz - env("WP_ROWHZ", -1.0)) < 0.05) { r.length = env("WP_ROWL", r.length); r.mode = (int)env("WP_ROWM", r.mode); }
+      BrassFinger r = s.hertz > 0 ? trumpetFinger(s.hertz) : held; if (const char* rf = std::getenv("WP_ROWFILE"); rf && s.hertz > 0) { std::ifstream in(rf); double h, l; while (in >> h >> l) if (std::fabs(h - s.hertz) < 0.05) r.length = l; }
+      if (s.hertz > 0 && std::fabs(s.hertz - env("WP_ROWHZ", -1.0)) < 0.05) { r.length = env("WP_ROWL", r.length); r.mode = (int)env("WP_ROWM", r.mode); r.lipRatio = env("WP_ROWR", r.lipRatio); }
       const double lipHz = r.mode == 0 ? 0.75 * speed / r.length : env("WP_LIPR", trumpetLipRatio(r)) * conePartial(r.length, 0.26, r.mode);
-      push(notes, s, start, r.length, lipHz, tpP, 0); notes.back().peakHz = impedancePeakHz(r.length, 0.26, r.mode, r.hertz);
+      push(notes, s, start, r.length, lipHz, (std::fabs(s.hertz - env("WP_ROWHZ", -1.0)) < 0.05 && env("WP_ROWP", 0.0) > 0.0 ? env("WP_ROWP", 0.0) : (s.hertz > 0 ? trumpetMouthPressurePa(r) : 0.0)) * env("WP_P", 1.0), 0); notes.back().peakHz = impedancePeakHz(r.length, 0.26, r.mode, r.hertz);
       if (s.hertz > 0) held = r; start += s.seconds;
     }
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs);

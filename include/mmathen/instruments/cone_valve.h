@@ -304,17 +304,20 @@ class ConeValveVoice final : public IVoice {
           burgers_.setLength(burgersFraction_ * soundingLength_, rate_.value());
         }
         // The wave enters the line before the trip's wall loss; the loss is
-        // spread over the steps (same magnitude at 1 kHz and same flat gain
-        // after the march), so steepening and loss act together.
+        // the trip's own one-pole and gain, lumped at the middle step
+        // (BurgersLine::setLumpedLoss), so steepening acts on both sides of
+        // it and the linear magnitude is the trip's at every frequency. The
+        // earlier spread (32 one-poles matched at 1 kHz) cut 4 kHz by 11 dB
+        // more than the trip at pole 0.8 and darkened the bell (Lick
+        // excerpt centroid 741 Hz; lumped 1150, recording 1436).
         if (wall_.pole != burgersWallPole_ || wall_.gain != burgersWallGain_) {
           burgersWallPole_ = wall_.pole;
           burgersWallGain_ = wall_.gain;
-          const double M = static_cast<double>(burgers_.stages());
-          const double fit = 1000.0, fs = rate_.value();
-          const double mag = valve_detail::onePoleMagnitude(wall_.pole, fit, fs);
-          const double pole = wall_.pole > 0.0 ? valve_detail::onePoleMatching(std::pow(mag, 1.0 / M), fit, fs) : 0.0;
-          const double gain = wall_.gain > 0.0 && wall_.gain <= 1.0 ? std::pow(wall_.gain, 1.0 / M) : 1.0;
-          burgers_.setStageLoss(pole, gain);
+          const double gain = wall_.gain > 0.0 && wall_.gain <= 1.0 ? wall_.gain : 1.0;
+          const int lumps = burgersLossLumps_;
+          const double pole = lumps == 1 ? std::max(0.0, wall_.pole)
+                                         : sectionPole(std::max(0.0, wall_.pole), lumps, rate_.value());
+          burgers_.setSectionLoss(pole, std::pow(gain, 1.0 / lumps), lumps);
         }
         atBell = burgers_.step(preWall_);
       } else if (!rfOn_ && lip_ && brassiness_ > 0.0) {
@@ -609,6 +612,44 @@ class ConeValveVoice final : public IVoice {
     trumpet_.lipStiffnessNewtonsPerMeter = stiffness;
     if (lipQ_ > 0.0) trumpet_.lipDampingNewtonSecondsPerMeter = trumpet_.lipMassKg * omega / lipQ_;
     if (trumpet_.lipCollisionStiffness > 0.0) enableLipCollision(trumpet_);
+    return true;
+  }
+
+  // Pole q of one of `lumps` equal one-poles whose cascade best matches
+  // the one-pole `pole` in dB, minimax over 100 Hz - 6 kHz (64 log-spaced
+  // points, golden-section on q). Two lumps hold the trip within 1.1 dB
+  // below 4 kHz at pole 0.8 (3.7 dB at 0.94).
+  [[nodiscard]] static double sectionPole(double pole, int lumps, double fs) {
+    if (!(pole > 0.0) || lumps <= 1) return pole;
+    auto err = [&](double q) {
+      double worst = 0.0;
+      for (int k = 0; k < 64; ++k) {
+        const double f = 100.0 * std::pow(60.0, k / 63.0);
+        const double d = lumps * std::log(valve_detail::onePoleMagnitude(q, f, fs)) -
+                         std::log(valve_detail::onePoleMagnitude(pole, f, fs));
+        worst = std::max(worst, std::fabs(d));
+      }
+      return worst;
+    };
+    double lo = 0.0, hi = pole;
+    const double g = 0.5 * (std::sqrt(5.0) - 1.0);
+    for (int it = 0; it < 60; ++it) {
+      const double a = hi - g * (hi - lo), b = lo + g * (hi - lo);
+      if (err(a) < err(b)) hi = b; else lo = a;
+    }
+    return 0.5 * (lo + hi);
+  }
+  // Wall-loss sections in the Burgers line (1 = the trip's own filter at
+  // the middle step). Default kBurgersLossSections = 2, TUNED on the Lick
+  // excerpt (tscore 1 / 2 / 4 / 8 sections: 54.6 / 51.1 / 51.4 / 55.6;
+  // H2 / H3 re H1 at 2: +5.7 / +5.9 dB, recording +5.3 / +6.0): the loss
+  // spread along the march as it is in the duct, with each section's
+  // one-pole still close to its share (sectionPole).
+  static constexpr int kBurgersLossSections = 2;
+  bool setBurgersLossLumps(int lumps) {
+    if (lumps < 1 || lumps > 32) return false;
+    burgersLossLumps_ = lumps;
+    burgersWallPole_ = -1.0;
     return true;
   }
 
@@ -1424,6 +1465,7 @@ class ConeValveVoice final : public IVoice {
   BurgersLine burgers_;
   bool burgersOn_ = false;
   double preWall_ = 0.0, burgersWallPole_ = -1.0, burgersWallGain_ = -1.0;
+  int burgersLossLumps_ = kBurgersLossSections;
   std::vector<double> burgersReturn_;
   static constexpr int kSteepAtBellDelay = 4;
   double steepReturn_[kSteepAtBellDelay] = {};

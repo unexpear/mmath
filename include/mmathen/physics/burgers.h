@@ -57,6 +57,29 @@ class BurgersLine {
     if (!(pole >= 0.0) || !(pole < 1.0) || !(gain > 0.0) || !(gain <= 1.0)) return false;
     lossPole_ = pole;
     lossGain_ = gain;
+    lossAt_ = -1;
+    lossLumps_ = 1;
+    return true;
+  }
+  // The duct's whole wall loss as one filter after step `atStage` (0 is the
+  // first step), the other steps lossless. A one-pole's M-th root is not a
+  // one-pole: M equal one-poles matched at one frequency fall off far
+  // faster above it (pole 0.8, M 32, matched at 1 kHz: -10.7 dB at 4 kHz,
+  // -47 dB at 8 kHz re the single pole). Lumped, the linear magnitude is
+  // the duct's own at every frequency.
+  bool setLumpedLoss(double pole, double gain, int atStage) {
+    if (!setStageLoss(pole, gain) || atStage < 0 || atStage >= stages()) return false;
+    lossAt_ = atStage;
+    lossLumps_ = 1;
+    return true;
+  }
+  // The loss as `lumps` equal filters after evenly spaced steps (the
+  // middle of each of `lumps` equal sections); pole and gain are one
+  // lump's. lumps = 1 is setLumpedLoss at the middle step.
+  bool setSectionLoss(double pole, double gain, int lumps) {
+    if (!setStageLoss(pole, gain) || lumps < 1 || lumps > stages()) return false;
+    lossLumps_ = lumps;
+    lossAt_ = stages() / (2 * lumps);
     return true;
   }
   void reset() {
@@ -71,11 +94,17 @@ class BurgersLine {
   // Push one input sample; returns the sample M steps (and M samples) on.
   double step(double p) {
     double v = p;
-    for (Stage& s : stage_) v = s.push(v, *this);
+    for (std::size_t i = 0; i < stage_.size(); ++i)
+      v = stage_[i].push(v, *this, lossy(static_cast<int>(i)));
     return v;
   }
 
  private:
+  [[nodiscard]] bool lossy(int i) const noexcept {
+    if (lossAt_ < 0) return true;
+    const int section = stages() / lossLumps_;
+    return i % section == lossAt_ && i / section < lossLumps_;
+  }
   // Godunov flux of the concave F(u) = -a u^2/2 with the speed clamp.
   [[nodiscard]] double flux(double uL, double uR) {
     const double lim = courantLimitPa();
@@ -90,10 +119,11 @@ class BurgersLine {
   struct Stage {
     double prev = 0.0, cur = 0.0;  // u_{i-1}, u_i
     double lp = 0.0;
-    double push(double next, BurgersLine& line) {
+    double push(double next, BurgersLine& line, bool lossy) {
       double out = cur - line.lambda_ * (line.flux(cur, next) - line.flux(prev, cur));
       prev = cur;
       cur = next;
+      if (!lossy) return out;
       if (line.lossPole_ > 0.0) {
         lp = (1.0 - line.lossPole_) * out + line.lossPole_ * lp;
         out = lp;
@@ -103,6 +133,7 @@ class BurgersLine {
   };
   std::vector<Stage> stage_;
   double a_ = 0.0, lambda_ = 0.0, lossPole_ = 0.0, lossGain_ = 1.0;
+  int lossAt_ = -1, lossLumps_ = 1;
   std::uint64_t clamps_ = 0;
 };
 
