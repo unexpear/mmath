@@ -268,6 +268,11 @@ struct PluckedPlayerProfile {
 // 0.13 m default (kClassicalGuitarRoundPluckFromBridgeM), kept. Pluck
 // force: no change. Timing and loudness scatter as the cellist (VERIFY
 // for guitar).
+// Step 18 (guitar scoreboard against the Iowa MIS guitar) checked this
+// profile: the change was to the instrument (Woodhouse 2004 statistical
+// body modes, guitar.h classicalGuitarBR2StatisticalBodyModes), not to a
+// habit. Pluck point, force, finger damping and feel are unchanged
+// (test_player_profile.cpp "the guitarist was checked at step 18").
 [[nodiscard]] inline PluckedPlayerProfile guitaristPlayerProfile() {
   PluckedPlayerProfile p;
   p.name = "classical guitarist (Traube pluck point)";

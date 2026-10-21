@@ -23,10 +23,14 @@
 // D'Addario's classical tension chart is computed at 25.5 in and is not
 // applied to this 650 mm scale.
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "body.h"
 #include "instrument.h"
@@ -284,6 +288,92 @@ inline constexpr std::array<double, 13> kClassicalGuitarBR2CompositeAreasM2{{
   const auto debut = classicalGuitarBodyModes();
   for (std::size_t i = 0; i < 5; ++i) modes[8 + i] = debut[5 + i];
   return modes;
+}
+
+// Statistical high-frequency body (step 18). J. Woodhouse, "Plucked guitar
+// transients: comparison of measurements and synthesis", Acta Acustica
+// united with Acustica 90 (2004) 945-965, sec. 3.2 "Modal fits and the
+// statistical guitar": individual modes were fitted "to about 1400 Hz"; by
+// then the modal overlap is significant, so the model was extended with
+// random modes sharing the guitar's statistics. The companion paper (Acta
+// Acustica 90, 928-944, sec. 3) runs that body with 240 modes "up to a
+// maximum frequency of 5190 Hz". The composite body above ends at 848 Hz,
+// so string partials above it saw only the mass-like tail of 13 modes and
+// lost almost nothing to the body (step 18 scoreboard against the Iowa MIS
+// guitar: long-term spectrum 6-11 dB too strong at 1-4 kHz).
+// - Spacing: Woodhouse eq. (5), each increment
+//     df = 38 (2/pi) sqrt(r1^2 + r2^2),   r1, r2 ~ N(0, 1),
+//   a Rayleigh spacing built on the 38 Hz mean spacing of his fitted modes
+//   (constant modal density of a plate-like structure). As printed, eq. (5)
+//   has mean 38 (2/pi) sqrt(pi/2) = 30.3 Hz, not the stated 38 Hz; the
+//   Rayleigh mean sqrt(pi/2) is cancelled only by sqrt(2/pi), so
+//   df = 38 sqrt(2/pi) sqrt(r1^2 + r2^2) (mean 38 Hz) is used here (VERIFY:
+//   reading the printed 2/pi as a lost square root).
+// - Band: 1400 Hz (sec. 3.2) to 5190 Hz (companion paper). The 848-1400 Hz
+//   gap between the composite body and the band is left empty (UNSOURCED:
+//   Woodhouse fitted that range on his own guitar; BR2 data stop at 411 Hz).
+// - Q: "selected from a uniform distribution between 30 and 80" (sec. 3.2).
+// - Effective mass: "uniform distributions matched to the ranges found for
+//   the modes fitted deterministically" (sec. 3.2); here the range of this
+//   body's 13 fitted modes, 0.102-2.705 kg (derived: his method, our modes).
+// - Radiating area: zero, so these modes drain string energy through the
+//   bridge but add no monopole (UNSOURCED: neither paper gives a radiation
+//   strength for the statistical modes; Perry's Gamma_00 is not read above
+//   1.3 kHz).
+// - Modal angles (Woodhouse's two-polarisation admittance matrix) are not
+//   used: SoundboardVoice carries one polarisation.
+// - Seed and generator: a fixed 64-bit LCG (Knuth MMIX constants) with
+//   Box-Muller, so every platform draws the same sequence (UNSOURCED choice;
+//   any seed is "a guitar by the same luthier", Woodhouse sec. 3.2).
+inline constexpr double kWoodhouse2004StatisticalSpacingHz = 38.0;
+inline constexpr double kWoodhouse2004StatisticalLowHz = 1400.0;
+inline constexpr double kWoodhouse2004StatisticalHighHz = 5190.0;
+inline constexpr double kWoodhouse2004StatisticalQMin = 30.0;
+inline constexpr double kWoodhouse2004StatisticalQMax = 80.0;
+inline constexpr std::uint64_t kClassicalGuitarStatisticalSeed = 0x5EEDu;  // UNSOURCED (fixed)
+
+// Random modes in [lowHz, highHz) by Woodhouse sec. 3.2 (see above), masses
+// uniform in [massMinKg, massMaxKg]. Deterministic for a given seed.
+[[nodiscard]] inline std::vector<BodyModeSpec> woodhouseStatisticalBodyModes(
+    double lowHz, double highHz, double massMinKg, double massMaxKg,
+    std::uint64_t seed = kClassicalGuitarStatisticalSeed) {
+  std::vector<BodyModeSpec> modes;
+  if (!(lowHz > 0.0) || !(highHz > lowHz) || !(massMinKg > 0.0) || !(massMaxKg >= massMinKg)) return modes;
+  std::uint64_t state = seed;
+  const auto uniform = [&state]() {  // (0, 1), 53-bit
+    state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+    return (static_cast<double>(state >> 11) + 0.5) / 9007199254740992.0;
+  };
+  const double twoPi = 6.283185307179586;
+  const auto gaussian = [&]() { return std::sqrt(-2.0 * std::log(uniform())) * std::cos(twoPi * uniform()); };
+  const double scale = kWoodhouse2004StatisticalSpacingHz * std::sqrt(2.0 / 3.141592653589793);  // eq. (5), mean 38 Hz
+  for (double f = lowHz;;) {
+    const double r1 = gaussian(), r2 = gaussian();
+    f += scale * std::sqrt(r1 * r1 + r2 * r2);
+    if (!(f < highHz)) break;
+    const double q = kWoodhouse2004StatisticalQMin + (kWoodhouse2004StatisticalQMax - kWoodhouse2004StatisticalQMin) * uniform();
+    const double m = massMinKg + (massMaxKg - massMinKg) * uniform();
+    modes.push_back(BodyModeSpec{f, q, m});
+  }
+  return modes;
+}
+
+// The BR2 composite body plus the statistical modes 1.4-5.19 kHz: the
+// acoustic guitar of the band demos (Silent Night, Patapan) from step 18.
+// Areas: the composite's 13, then zero for every statistical mode.
+[[nodiscard]] inline std::vector<BodyModeSpec> classicalGuitarBR2StatisticalBodyModes() {
+  const auto fitted = classicalGuitarBR2CompositeBodyModes();
+  std::vector<BodyModeSpec> modes(fitted.begin(), fitted.end());
+  double lo = fitted[0].modalMassKg, hi = lo;
+  for (const auto& m : fitted) { lo = std::min(lo, m.modalMassKg); hi = std::max(hi, m.modalMassKg); }
+  const auto extra = woodhouseStatisticalBodyModes(kWoodhouse2004StatisticalLowHz, kWoodhouse2004StatisticalHighHz, lo, hi);
+  modes.insert(modes.end(), extra.begin(), extra.end());
+  return modes;
+}
+[[nodiscard]] inline std::vector<double> classicalGuitarBR2StatisticalAreasM2() {
+  std::vector<double> areas(kClassicalGuitarBR2CompositeAreasM2.begin(), kClassicalGuitarBR2CompositeAreasM2.end());
+  areas.resize(classicalGuitarBR2StatisticalBodyModes().size(), 0.0);
+  return areas;
 }
 
 [[nodiscard]] inline std::string formula(const ClassicalGuitar& guitar) {

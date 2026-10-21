@@ -195,3 +195,16 @@ TEST_CASE("the sleigh-bell player moves strikes and leaves the shake", "[player]
   }
   CHECK(moved == 48);
 }
+TEST_CASE("the guitarist was checked at step 18: habits unchanged by the body change", "[player][profile][guitar]") {
+  // Step 18 changed the guitar body (guitar.h statistical modes), not the
+  // player; these are the habits as they stood at head 8eb044e.
+  const PluckedPlayerProfile gt = guitaristPlayerProfile();
+  CHECK(std::strcmp(gt.name, "classical guitarist (Traube pluck point)") == 0);
+  CHECK(gt.pluckFromBridgeM == kClassicalGuitarRoundPluckFromBridgeM);
+  CHECK(gt.pluckForceScale == 1.0);
+  CHECK(gt.pluckFraction == 0.0);
+  CHECK(gt.fingerDampSec == 0.0);
+  CHECK(gt.feel.timingCv == 0.03);
+  CHECK(gt.feel.velocityCv == 0.05);
+  CHECK(gt.feel.seed == 0x6017A2u);
+}

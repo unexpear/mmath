@@ -1,7 +1,8 @@
 // Band player-profile harness (tools/demo/band, step 12): band1's renderers
 // (bass, piano, cello, snare) plus gp5's guitar, each part passed through
 // its player profile (player_profile.h) when BP_PROFILE=1. Without it the
-// written part is rendered exactly as band1 / gp5 render it (byte-identical).
+// written part is rendered exactly as band1 / gp5 render it (byte-identical;
+// for the guitar since step 18 only with BP_BODY13=1, see renderGuitar).
 // Usage:  band2 <bass|piano|cello|snare|guitar> score in.csv out.f64 T
 // band1's original notes:
 //   band1 bass notes out.f64            isolated notes, 3.5 s apart (refs list)
@@ -211,16 +212,23 @@ static int renderGuitar(const char* inPath, double total, const char* outPath) {
   std::vector<double> on, en; std::vector<int> sn; for (auto& n : notes) { on.push_back(n.s); sn.push_back(n.str); }
   auto ends = letRingEndsBassDamped(on, sn, total);
   std::vector<double> mix((size_t)(total * FS), 0.0); int fail = 0;
-  static const auto body = classicalGuitarBR2CompositeBodyModes();
-  // argv6 = 0: plain let-ring (no bass damping).
-  std::vector<double> areaV(kClassicalGuitarBR2CompositeAreasM2.begin(), kClassicalGuitarBR2CompositeAreasM2.end());
+  // Step 18: the BR2 composite plus Woodhouse 2004's statistical modes
+  // 1.4-5.19 kHz (guitar.h classicalGuitarBR2StatisticalBodyModes).
+  // BP_BODY13=1 renders the earlier 13-mode body (gp5's, byte-identical to
+  // the pre-step-18 band renders).
+  const bool body13 = std::getenv("BP_BODY13") && std::atoi(std::getenv("BP_BODY13")) == 1;
+  static const auto body13Modes = classicalGuitarBR2CompositeBodyModes();
+  const std::vector<BodyModeSpec> body = body13 ? std::vector<BodyModeSpec>(body13Modes.begin(), body13Modes.end())
+                                                : classicalGuitarBR2StatisticalBodyModes();
+  std::vector<double> areaV = body13 ? std::vector<double>(kClassicalGuitarBR2CompositeAreasM2.begin(), kClassicalGuitarBR2CompositeAreasM2.end())
+                                     : classicalGuitarBR2StatisticalAreasM2();
   const std::span<const double> areas(areaV);
   for (size_t k = 0; k < notes.size(); ++k) { auto& n = notes[k]; if (!n.c) { ++fail; continue; }
     const size_t a = (size_t)(n.s * FS); if (a >= mix.size()) continue;
     size_t len = std::min((size_t)((ends[k] - n.s) * FS), mix.size() - a);
     auto loss = classicalGuitarStringLoss(*n.c, n.str); if (!loss.ok()) { ++fail; continue; }
     const double frac = pluckFractionFromBridge(dB, n.c->geometry.vibratingLength.value());
-    auto vo = SoundboardVoice::create(*n.c, Excitation{ExcitationKind::Pluck, frac, 1.0e-4 * n.v / 127.0 * prof.pluckForceScale}, loss.value(), std::span<const BodyModeSpec>(body), areas, 1.0, 101325.0, 293.15, SampleRateHz{FS});
+    auto vo = SoundboardVoice::create(*n.c, Excitation{ExcitationKind::Pluck, frac, 1.0e-4 * n.v / 127.0 * prof.pluckForceScale}, loss.value(), std::span<const BodyModeSpec>(body.data(), body.size()), areas, 1.0, 101325.0, 293.15, SampleRateHz{FS});
     if (!vo.ok()) { ++fail; continue; }
     std::vector<double> x(len); auto vv = std::move(vo).value(); if (!vv.renderBlock(x.data(), FrameCount{len}).ok()) { ++fail; continue; }
     const size_t fo = std::min<size_t>(len, prof.fingerDampSec > 0.0 ? (size_t)(prof.fingerDampSec * FS) : 480);  // 10 ms damp at re-pluck (finger contact), VERIFY

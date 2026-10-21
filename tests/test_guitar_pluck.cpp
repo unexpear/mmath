@@ -43,3 +43,43 @@ TEST_CASE("BR2 composite body: Roberts Table 4.3 below 500 Hz, Debut above") {
   REQUIRE(kClassicalGuitarBR2CompositeAreasM2[0] < 0.0);
   for (std::size_t i = 1; i < m.size(); ++i) REQUIRE(m[i].resonanceHz > m[i - 1].resonanceHz);
 }
+TEST_CASE("Statistical body: Woodhouse 2004 modes 1.4-5.19 kHz present and deterministic") {
+  const auto fitted = classicalGuitarBR2CompositeBodyModes();
+  const auto a = classicalGuitarBR2StatisticalBodyModes(), b = classicalGuitarBR2StatisticalBodyModes();
+  const auto areas = classicalGuitarBR2StatisticalAreasM2();
+  // Mean spacing 38 Hz over 3790 Hz: ~100 modes; allow wide statistical slack.
+  REQUIRE(a.size() > fitted.size() + 60);
+  REQUIRE(a.size() < fitted.size() + 160);
+  REQUIRE(areas.size() == a.size());
+  for (std::size_t i = 0; i < fitted.size(); ++i) {
+    REQUIRE(a[i].resonanceHz == fitted[i].resonanceHz);
+    REQUIRE(a[i].qualityFactor == fitted[i].qualityFactor);
+    REQUIRE(a[i].modalMassKg == fitted[i].modalMassKg);
+    REQUIRE(areas[i] == kClassicalGuitarBR2CompositeAreasM2[i]);
+  }
+  REQUIRE(b.size() == a.size());
+  double sumSpacing = 0.0;
+  for (std::size_t i = fitted.size(); i < a.size(); ++i) {
+    REQUIRE(a[i].resonanceHz > kWoodhouse2004StatisticalLowHz);
+    REQUIRE(a[i].resonanceHz < kWoodhouse2004StatisticalHighHz);
+    REQUIRE(a[i].qualityFactor >= kWoodhouse2004StatisticalQMin);
+    REQUIRE(a[i].qualityFactor <= kWoodhouse2004StatisticalQMax);
+    REQUIRE(a[i].modalMassKg >= 0.102);
+    REQUIRE(a[i].modalMassKg <= 2.705);
+    REQUIRE(areas[i] == 0.0);
+    REQUIRE(a[i].resonanceHz > a[i - 1].resonanceHz);
+    // Same seed, same guitar (libm may differ in the last ulp across compilers).
+    REQUIRE(std::abs(b[i].resonanceHz - a[i].resonanceHz) < 1e-9);
+    REQUIRE(b[i].qualityFactor == a[i].qualityFactor);
+    REQUIRE(b[i].modalMassKg == a[i].modalMassKg);
+    if (i > fitted.size()) sumSpacing += a[i].resonanceHz - a[i - 1].resonanceHz;
+  }
+  const double meanSpacing = sumSpacing / static_cast<double>(a.size() - fitted.size() - 1);
+  REQUIRE(meanSpacing > 30.0);
+  REQUIRE(meanSpacing < 46.0);
+  // Another seed draws another guitar from the same statistics.
+  const auto c = woodhouseStatisticalBodyModes(1400.0, 5190.0, 0.102, 2.705, kClassicalGuitarStatisticalSeed + 1);
+  REQUIRE(!c.empty());
+  REQUIRE(c[0].resonanceHz != a[fitted.size()].resonanceHz);
+  REQUIRE(woodhouseStatisticalBodyModes(1400.0, 1000.0, 0.1, 1.0).empty());
+}
