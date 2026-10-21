@@ -75,7 +75,11 @@ int main(int argc, char** argv) {
   const std::string which = argv[1];
   const double speed = U(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
   std::vector<double> out; std::vector<PhraseNote> notes; double T = 0;
-  PlayerAirwaySpec airSpec{}; airSpec.tongueReleaseSeconds = env("WP_TREL", airSpec.tongueReleaseSeconds); PlayerAirway airway(airSpec);
+  // WP_PROFILE=trumpet: the measured-player profile (wind_player_profile.h); WP_BUILD / WP_DROP override its attack build-up (Pa) and drop (s).
+  WindPlayerProfile prof{};
+  if (const char* pf = std::getenv("WP_PROFILE"); pf && std::strcmp(pf, "trumpet") == 0) prof = trumpetPlayerProfile();
+  prof.attackBuildUpPa = env("WP_BUILD", prof.attackBuildUpPa); prof.attackDropSec = env("WP_DROP", prof.attackDropSec);
+  PlayerAirwaySpec airSpec = prof.airwaySpec(); airSpec.tongueReleaseSeconds = env("WP_TREL", airSpec.tongueReleaseSeconds); PlayerAirway airway(airSpec);
   if (which == "clarinet") {
     const auto song = songFor(excerpts::kProClarinet); T = total(song);
     double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, clarinetSoundingLengthMeters(s.hertz));
@@ -86,7 +90,7 @@ int main(int argc, char** argv) {
     auto voice = U(BoreValveVoice::fromClarinet(cl, blow, kRate));
     double start = 0, held = longest;
     for (auto& s : song) { const double L = s.hertz > 0 ? clarinetSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4000.0 * env("WP_P", 1.0), 0); if (s.hertz > 0) held = L; start += s.seconds; }
-    out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs);
+    out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs, prof);
   } else if (which == "saxophone") {
     const auto song = songFor(excerpts::kProSaxophone); T = total(song);
     double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, saxophoneSoundingLengthMeters(s.hertz));
@@ -98,7 +102,7 @@ int main(int argc, char** argv) {
     auto voice = U(ConeValveVoice::fromSaxophone(sax, blow, kRate));
     double start = 0, held = longest;
     for (auto& s : song) { const double L = s.hertz > 0 ? saxophoneSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4200.0 * env("WP_P", 1.0), 0); if (s.hertz > 0) held = L; start += s.seconds; }
-    out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs);
+    out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs, prof);
   } else if (which == "flute") {
     const auto song = songFor(excerpts::kProFlute); T = total(song);
     const double span = 7.0e-3, sigma = 0.45, thickness = 1.0e-3, end = fluteEndCorrectionMeters();
@@ -137,7 +141,7 @@ int main(int argc, char** argv) {
       push(notes, s, start, r.length, lipHz, (std::fabs(s.hertz - env("WP_ROWHZ", -1.0)) < 0.05 && env("WP_ROWP", 0.0) > 0.0 ? env("WP_ROWP", 0.0) : (s.hertz > 0 ? trumpetMouthPressurePa(r) : 0.0)) * env("WP_P", 1.0), 0); notes.back().peakHz = impedancePeakHz(r.length, 0.26, r.mode, r.hertz);
       if (s.hertz > 0) held = r; start += s.seconds;
     }
-    out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs);
+    out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs, prof);
   } else if (which == "trombone") {
     const auto song = songFor(excerpts::kProTrombone); T = total(song);
     const bool measured = argc > 3 && std::strcmp(argv[3], "measured") == 0;
@@ -186,7 +190,7 @@ int main(int argc, char** argv) {
       notes.back().peakHz = impedancePeakHz(r.length, 0.60, r.mode, r.hertz);
       if (s.hertz > 0) held = r; start += s.seconds;
     }
-    out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs);
+    out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs, prof);
   } else return 1;
   std::printf("%s %.3f s, %zu samples, lead-in %.3f s\n", which.c_str(), T, out.size(), notes.empty() ? 0.0 : notes[1].startSec);
   FILE* o = std::fopen(argv[2], "wb"); std::fwrite(out.data(), 8, out.size(), o); std::fclose(o);

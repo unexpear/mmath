@@ -19,6 +19,7 @@
 #include "cone_valve.h"
 #include "player_airway.h"
 #include "wind_presets.h"
+#include "wind_player_profile.h"
 
 namespace mmathen {
 
@@ -110,7 +111,8 @@ constexpr double kBreathStealSec = 0.30;
 template <typename Voice>
 std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& notes,
                                double totalSec, bool fluteJet, double ringTailSec = 0.0,
-                               PlayerAirway* airway = nullptr, double sampleRateHz = 48000.0) {
+                               PlayerAirway* airway = nullptr, double sampleRateHz = 48000.0,
+                               const WindPlayerProfile& player = WindPlayerProfile{}) {
   const double rateHz = sampleRateHz;
   const auto scoreFrames = static_cast<std::uint64_t>(std::llround(totalSec * rateHz));
   const auto total =
@@ -121,9 +123,12 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
   // Bertsch and Hoole, fast single tonguing, about 40Ã¢â‚¬â€œ64 ms. The closure
   // is that long; the release is the note. The first note keeps the
   // blow's own tongue, if it has one.
-  constexpr std::uint64_t kTongue = 1920;
-  const double depth = std::pow(2.0, kVibratoCents / 1200.0) - 1.0;
-  const double brassDepth = std::pow(2.0, kBrassVibratoCents / 1200.0) - 1.0;
+  const std::uint64_t kTongue = player.tongueClosureSec > 0.0
+                                    ? static_cast<std::uint64_t>(std::llround(player.tongueClosureSec * rateHz))
+                                    : 1920;
+  const double depth = std::pow(2.0, player.vibratoCents / 1200.0) - 1.0;
+  const double brassDepth = std::pow(2.0, player.brassVibratoCents / 1200.0) - 1.0;
+  const double tuneScale = std::pow(2.0, -player.intonationCents / 1200.0);
   double stealStartSec = -1.0;
   // With the player's airway attached, the airway's breath feeds the
   // valve and its tongue articulates: the tip is on the reed (or behind
@@ -184,10 +189,10 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       const auto next = static_cast<std::size_t>(active) + 1;
       if (next < notes.size() && !notes[next].rest) {
         const auto join = static_cast<std::uint64_t>(notes[next].startSec * rateHz);
-        const auto steal = static_cast<std::uint64_t>(kBreathStealSec * rateHz);
+        const auto steal = static_cast<std::uint64_t>(player.breathStealSec * rateHz);
         if (breathing && frame < join) stolenBreath = true;
         else if (join > steal && frame >= join - steal && frame < join &&
-                 airway->needsBreath(kBreathMarginM3)) {
+                 airway->needsBreath(player.breathMarginM3)) {
           breathing = true; stolenBreath = true;
           stealStartSec = static_cast<double>(frame) / rateHz;
         }
@@ -198,8 +203,8 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     double brassRelease = -1.0;
     if (stolenBreath && notes[static_cast<std::size_t>(sounding)].lipHz > 0.0) {
       const double since = time - stealStartSec;
-      if (stealStartSec >= 0.0 && since < kBrassBreathReleaseSec) {
-        brassRelease = 1.0 - since / kBrassBreathReleaseSec;
+      if (stealStartSec >= 0.0 && since < player.brassBreathReleaseSec) {
+        brassRelease = 1.0 - since / player.brassBreathReleaseSec;
         stolenBreath = false;
       }
     }
@@ -269,7 +274,7 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     // A lip locked to one partial explodes if the bore glides through
     // another. Brass changes length at the note. Woodwind slurs glide.
     if (sounding > 0 && note.lipHz == 0.0 && !note.rest) {
-      const double glide = note.tongue ? 0.010 : 0.035;
+      const double glide = note.tongue ? player.tonguedGlideSec : player.slurGlideSec;
       double alpha = (time - note.startSec) / glide;
       if (alpha < 0.0) alpha = 0.0;
       if (alpha > 1.0) alpha = 1.0;
@@ -278,27 +283,42 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       length = prev.lengthM + (note.lengthM - prev.lengthM) * alpha;
     }
     double vibrato = 1.0;
-    if (note.vibrato && !note.rest && time > note.startSec + 0.20) {
+    if (note.vibrato && !note.rest && time > note.startSec + player.vibratoOnsetSec) {
       vibrato = note.lipHz > 0.0
-                    ? 1.0 - brassDepth * std::sin(constants::twoPi * kBrassVibratoHz * time)
-                    : 1.0 - depth * std::sin(constants::twoPi * kVibratoHz * time);
+                    ? 1.0 - brassDepth * std::sin(constants::twoPi * player.brassVibratoHz * time)
+                    : 1.0 - depth * std::sin(constants::twoPi * player.vibratoHz * time);
       length *= vibrato;
     }
+    if (player.intonationCents != 0.0) length *= tuneScale;
     if (!(voice.setSoundingLength(length))) return {};
-    if (!(voice.setBlowingPressure(breathOff ? 0.0 : note.pressure * env))) return {};
+    // Attack build-up (WindPlayerProfile::attackBuildUpPa, Bianco et al.
+    // 2012): behind the closed tongue before a tongued note that follows
+    // a sounding note, the pressure rises by the build-up over the
+    // closure; after the release it falls back over attackDropSec.
+    double buildUp = 0.0;
+    if (player.attackBuildUpPa > 0.0 && airway != nullptr && !note.rest && note.tongue && sounding > 0 &&
+        !notes[static_cast<std::size_t>(sounding - 1)].rest) {
+      const double release = note.startSec, closure = static_cast<double>(kTongue) / rateHz;
+      if (tongueShut && time < release) {
+        buildUp = player.attackBuildUpPa * std::clamp((time - (release - closure)) / closure, 0.0, 1.0);
+      } else if (time >= release && player.attackDropSec > 0.0 && time < release + player.attackDropSec) {
+        buildUp = player.attackBuildUpPa * (1.0 - (time - release) / player.attackDropSec);
+      }
+    }
+    if (!(voice.setBlowingPressure(breathOff ? 0.0 : note.pressure * player.pressureScale * env + buildUp))) return {};
     // Brass vibrato is made at the lips and jaw (Fletcher & Rossing, The
     // Physics of Musical Instruments, 2nd ed., sec. 14.7, VERIFY section):
     // the lip resonance moves with the pitch. Moving only the bore pulled
     // the bore partial away from a fixed lip and the 1.2 s vibrato notes
     // of Jingle Bells (E4, G4) lost the lock and died (-45 dB end vs mid).
-    if (note.lipHz > 0.0) if (!(voice.setLipResonanceHz(note.lipHz / vibrato))) return {};
+    if (note.lipHz > 0.0) if (!(voice.setLipResonanceHz(note.lipHz * player.lipRatioScale / vibrato))) return {};
     if constexpr (requires(Voice& probe) { probe.setJetDelaySamples(0.0); }) {
       if (!fluteJet || note.rest || breathOff) {  // no breath, no jet to time
         if (fluteJet && note.jetSamples > 0.0) if (!(voice.setJetDelaySamples(note.jetSamples))) return {};
       } else {
       double jetNote = note.jetSamples;
       if (sounding > 0 && notes[static_cast<std::size_t>(sounding - 1)].jetSamples > 0.0) {
-        const double glide = note.tongue ? 0.010 : 0.035;
+        const double glide = note.tongue ? player.tonguedGlideSec : player.slurGlideSec;
         double alpha = (time - note.startSec) / glide;
         if (alpha < 0.0) alpha = 0.0;
         if (alpha > 1.0) alpha = 1.0;

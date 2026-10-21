@@ -15,6 +15,7 @@
 #include <mmathen/instruments/wind_presets.h>
 #include <mmathen/instruments/snare_drum.h>
 #include <mmathen/instruments/guitar_pluck.h>
+#include <mmathen/instruments/phrase_player.h>
 
 using namespace mmathen;
 
@@ -345,4 +346,43 @@ TEST_CASE("piano board: every mode radiates, so no key falls between radiating m
   const double Dx = kSpruceEL * std::pow(kPianoBoardH, 3) / 12.0, H = std::sqrt(Dx * kPianoRibStiffnessRatio * Dx);
   const double k = 2.0 * constants::pi * 4000.0 / 343.0;
   CHECK(pianoModeArea(4000.0, 0.5, 0.0, rhoh, H) >= std::sqrt(constants::pi * kPianoBoardA * kPianoBoardB) / (k * 0.5) - 1e-12);
+}
+
+namespace {
+// Records the blowing pressure the phrase player sets, one value per hop.
+struct PressureProbe {
+  std::vector<double> pressure; double now = 0.0;
+  void attachAirway(PlayerAirway*) {}
+  void scheduleTongue(std::uint64_t) {}
+  bool setSoundingLength(double) { return true; }
+  bool setLipResonanceHz(double) { return true; }
+  bool setBlowingPressure(double p) { now = p; return true; }
+  Result<FrameCount, QuantityError> renderBlock(double*, FrameCount n) {
+    pressure.push_back(now);
+    return Result<FrameCount, QuantityError>::success(n);
+  }
+};
+}  // namespace
+
+TEST_CASE("wind player profile: default plays as before, trumpet builds pressure behind the tongue", "[band][player]") {
+  std::vector<PhraseNote> notes(2);
+  notes[0].name = "G4"; notes[0].startSec = 0.0; notes[0].targetHz = 392.0; notes[0].lengthM = 1.2;
+  notes[0].lipHz = 380.0; notes[0].pressure = 3700.0; notes[0].tongue = true;
+  notes[1] = notes[0]; notes[1].name = "B4"; notes[1].startSec = 0.3;
+  auto run = [&](const WindPlayerProfile& pro) {
+    PressureProbe probe; PlayerAirway airway(pro.airwaySpec());
+    (void)playPhrase(probe, notes, 0.6, false, 0.0, &airway, 48000.0, pro);
+    return probe.pressure;
+  };
+  const auto plain = run(WindPlayerProfile{});
+  const WindPlayerProfile tp = trumpetPlayerProfile();
+  const auto built = run(tp);
+  REQUIRE(plain.size() == built.size());
+  const auto hop = [](double t) { return static_cast<std::size_t>(t * 48000.0 / 64.0); };
+  CHECK(plain[hop(0.299)] == 3700.0);                                  // no build-up by default
+  CHECK(built[hop(0.15)] == 3700.0);                                   // mid-note: playing pressure
+  CHECK(built[hop(0.299)] > 3700.0 + 0.9 * tp.attackBuildUpPa);        // end of the closure (Bianco 2012)
+  CHECK(built[hop(0.301)] > 3700.0 + 0.9 * tp.attackBuildUpPa);        // falls after the release
+  CHECK(built[hop(0.30 + tp.attackDropSec + 0.01)] == 3700.0);         // back to the playing pressure
+  CHECK(tp.attackBuildUpPa == 560.0);
 }
