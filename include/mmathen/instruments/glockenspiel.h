@@ -45,6 +45,12 @@ inline constexpr double kGlockMalletLambda = 0.2;        // s/m, TUNED
 // at the centre) is excited more (UNSOURCED gesture; distance TUNED, 0.45 L
 // on every bar left the C6-C7 mode 2 at -22 dB or absent vs -2 to -27).
 inline constexpr double kGlockStrikeOffCentreM = 0.014;  // UNSOURCED, TUNED
+// Case under the bars: it blocks part of each bar's back-side flow, so the
+// bar is partly a baffled face (Rayleigh) and not only a width dipole
+// (BarListener::baffle). The fraction is UNSOURCED, TUNED: 0.3 brings the
+// G5/C6 (sounding) fundamentals to -1/0 dB of the strongest partial (ref
+// 0/0; free bars -9/-6); it also darkens G6-C7 mode 2 by 4-5 dB.
+inline constexpr double kGlockCaseBaffle = 0.3;          // UNSOURCED, TUNED
 inline constexpr double kGlockStrikeFraction = 0.45;     // the old fixed fraction, kept for callers
 [[nodiscard]] inline double glockenspielStrikeFraction(double lengthM) {
   return std::max(0.25, 0.5 - kGlockStrikeOffCentreM / lengthM);
@@ -83,6 +89,7 @@ inline constexpr double kGlockStrikeOffset = 0.15;       // of the width, UNSOUR
     l.polarRad = constants::pi / 6.0;
     l.azimuthRad = constants::pi / 6.0;
   }
+  if (l.baffle == 0.0) l.baffle = kGlockCaseBaffle;
   const BarSpec bar = glockenspielBar(hz);
   return StruckBarVoice::create(bar, glockenspielLosses(), glockenspielMallet(), speedMps,
                                 glockenspielStrikeFraction(bar.lengthM), kGlockStrikeOffset, rate, l);

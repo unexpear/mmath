@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
     const double hz = 440.0 * std::pow(2.0, (m - 69) / 12.0);
     BarLosses l = glockenspielLosses(); l.internalQ = E("GQ", l.internalQ); l.supportDashpotNsPerM = E("GC", l.supportDashpotNsPerM);
     BarMallet ml = glockenspielMallet(); ml.dampingPerMeterPerSecond = E("GL", ml.dampingPerMeterPerSecond); ml.stiffness *= E("GK", 1.0); ml.massKg = E("GM", ml.massKg);
-    BarListener li; li.polarRad = E("GP", 30.0) * constants::pi / 180.0; li.azimuthRad = E("GA", 30.0) * constants::pi / 180.0; li.distanceM = E("GR", 1.0);
+    BarListener li; li.polarRad = E("GP", 30.0) * constants::pi / 180.0; li.azimuthRad = E("GA", 30.0) * constants::pi / 180.0; li.distanceM = E("GR", 1.0); li.baffle = E("GB", kGlockCaseBaffle);
     auto v = StruckBarVoice::create(glockenspielBar(hz), l, ml, speed, (E("GX", 0.0) > 0.0 ? 0.5 - E("GX", 0.0) / glockenspielBar(hz).lengthM : E("GS", glockenspielStrikeFraction(glockenspielBar(hz).lengthM))), kGlockStrikeOffset, SampleRateHz{fs}, li);
     if (!v.ok()) { std::fprintf(stderr, "create %d at %d\n", (int)v.error(), m); return 2; }
     auto voice = std::move(v).value();

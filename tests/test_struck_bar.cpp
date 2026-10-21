@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <complex>
+#include <limits>
 #include <vector>
 
 #include <mmathen/instruments/glockenspiel.h>
@@ -89,6 +90,31 @@ TEST_CASE("glockenspiel: fixed off-centre strike reaches mode 2 on treble bars",
   CHECK(std::fabs((0.5 - glockenspielStrikeFraction(lo)) * lo - kGlockStrikeOffCentreM) < 1e-12);
 }
 
+TEST_CASE("bar radiation: a baffle lifts the fundamental of a long bar", "[bar][glock]") {
+  const BarSpec b = glockenspielBar(784.0);
+  auto modes = barModes(b, glockenspielLosses(), 20000.0);
+  REQUIRE(modes.ok());
+  BarListener free;
+  free.polarRad = constants::pi / 6.0;
+  free.azimuthRad = constants::pi / 6.0;
+  BarListener cased = free;
+  cased.baffle = 1.0;
+  const BarMode* m1 = nullptr;
+  const BarMode* m2 = nullptr;
+  for (const BarMode& m : modes.value()) {
+    if (m.torsion) continue;
+    if (!m1) m1 = &m;
+    else if (!m2) { m2 = &m; break; }
+  }
+  REQUIRE(m1);
+  REQUIRE(m2);
+  const double freeRatio = barListenerGain(*m1, b, free) / barListenerGain(*m2, b, free);
+  const double casedRatio = barListenerGain(*m1, b, cased) / barListenerGain(*m2, b, cased);
+  CHECK(casedRatio > 1.5 * freeRatio);
+  free.baffle = 0.0;
+  CHECK(barListenerGain(*m1, b, free) > 0.0);
+}
+
 TEST_CASE("celesta: resonator lifts the fundamental and the note rings at pitch", "[bar][celesta]") {
   const double fs = 48000.0, hz = 523.25;
   auto with = celestaNote(hz, 1.0, SampleRateHz{fs});
@@ -169,4 +195,32 @@ TEST_CASE("handbell: size-scaled clapper keeps a small bell's (3,0) audible", "[
   const double r = 20.0 * std::log10(amp(3.0 * f1) / amp(f1));
   CHECK(r > -16.0);  // radwoc G6 (English-tuned, CC0): -7 dB
   CHECK(r < 0.0);
+}
+
+TEST_CASE("handbell: breathing second harmonic is quadratic and decays at twice the rate", "[handbell]") {
+  const double fs = 48000.0, f1 = 174.61, axisAngle = 20.0 * constants::pi / 180.0;
+  auto ratioAt = [&](double speed, int from) {
+    auto v = HandbellVoice::create(f1, speed, SampleRateHz{fs}, 1.0, 0.0, 4, 0.0, axisAngle);
+    REQUIRE(v.ok());
+    auto voice = std::move(v).value();
+    std::vector<double> y(from + 24000);
+    REQUIRE(voice.renderBlock(y.data(), FrameCount{y.size()}).ok());
+    auto amp = [&](double f) {
+      std::complex<double> s{};
+      for (int i = from; i < from + 24000; ++i) s += y[i] * std::polar(1.0, -2.0 * constants::pi * f * i / fs);
+      return std::abs(s);
+    };
+    return amp(2.0 * f1) / amp(f1);
+  };
+  const double soft = ratioAt(0.5, 4800), loud = ratioAt(1.0, 4800);
+  // 2f pressure ~ q^2, f1 ~ q: the ratio doubles with the amplitude
+  // (the felt contact is not linear, so allow 1.6-3x; measured 2.5).
+  CHECK(loud / soft > 1.6);
+  CHECK(loud / soft < 3.0);
+  // The ratio falls as the ring decays: 2 sigma against sigma.
+  const double early = ratioAt(1.0, 4800), late = ratioAt(1.0, 96000);
+  const double sigma = kHandbellSigmaAtF3;
+  CHECK(std::fabs(std::log(early / late) - sigma * (96000 - 4800) / fs) < 0.15);
+  CHECK_FALSE(HandbellVoice::create(f1, 1.0, SampleRateHz{fs}, 1.0, 0.0, 4, 0.0,
+                                     std::numeric_limits<double>::quiet_NaN()).ok());
 }

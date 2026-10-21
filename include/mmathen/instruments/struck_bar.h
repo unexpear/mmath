@@ -204,6 +204,10 @@ struct BarListener {
   double azimuthRad = 0.0;
   double airDensity = 1.204;  // 20 C (Kinsler et al., Fundamentals of Acoustics, table)
   double soundSpeed = 343.2;
+  // Fraction of the bar's back-side flow blocked by a case or frame under
+  // the bars (0 = free bar, a dipole across its width; 1 = a perfect
+  // baffle, one face radiating as a Rayleigh integral). Mixed linearly.
+  double baffle = 0.0;
 };
 
 namespace bar_detail {
@@ -339,7 +343,22 @@ inline double directivity(const BarMode& m, const BarSpec& b, double rho0, doubl
     }
     return weight * sum * dx;
   };
-  if (!m.torsion) return barAddedMassPerLength(b.section, li.airDensity) * std::abs(field(0.0, 1.0));
+  if (!m.torsion) {
+    const std::complex<double> dipole = barAddedMassPerLength(b.section, li.airDensity) * field(0.0, 1.0);
+    if (!(li.baffle > 0.0)) return std::abs(dipole);
+    // Baffled face: Rayleigh integral, p = rho/(2 pi R) * width * accel per
+    // length (Kinsler et al., Fundamentals of Acoustics, sec. 7.4).
+    std::complex<double> face{};
+    for (int i = 0; i < N; ++i) {
+      const double x = i * dx - 0.5 * L, rx = ox - x;
+      const double R = std::sqrt(rx * rx + oy * oy + oz * oz);
+      const double wgt = (i == 0 || i == N - 1) ? 0.5 : 1.0;
+      face += wgt * m.shape[static_cast<std::size_t>(i)] * std::polar(1.0, -k * R) / (2.0 * constants::pi * R);
+    }
+    face *= li.airDensity * b.section.widthM * dx;
+    const double beta = std::min(1.0, li.baffle);
+    return std::abs((1.0 - beta) * dipole + beta * face);
+  }
   const double w = b.section.widthM, half = li.airDensity * constants::pi * (w / 4.0) * (w / 4.0);
   return half * (w / 4.0) * std::abs(field(w / 4.0, 1.0) - field(-w / 4.0, 1.0));
 }
