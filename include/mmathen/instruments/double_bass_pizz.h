@@ -46,7 +46,11 @@ inline constexpr double kDoubleBassPizzStoppedT60At6F0 = 0.6;  // sweep 1.8/0.6/
 
 struct DoubleBassBodyMode { double frequencyHz; double q; double effectiveMassKg; double areaM2; };
 inline constexpr std::array<DoubleBassBodyMode, 9> kDoubleBassBodyModes{{
-    {65.0, 30.0, 1.2, -0.30},   // A0 Helmholtz (Askenfelt 1982), Q/M/A TUNED
+    // A0 Q 30 -> 15 (TUNED, jb8): at 30 the A0 ring held G1 (49 Hz, under
+    // A0) +35 c sharp over 80-270 ms (VSCO G1 +2 / +10 c; 15: +16, 10: +14)
+    // and left C2, on A0, 6.5 dB over D2 (VSCO 0.7 dB; 15: 4.9). Centroid
+    // and H2-H6 re VSCO unchanged (+0.05 oct, -5.7 dB) at 30, 15 and 10.
+    {65.0, 15.0, 1.2, -0.30},   // A0 Helmholtz (Askenfelt 1982), Q/M/A TUNED
     {115.0, 25.0, 0.8, 0.25},   // T1/A1 115 Hz (Brown 2003/2004; Askenfelt 110). At 110 Hz the mode sat on A2 and drained it to T60 0.8-0.9 s (ref 3.4) at 0.8 and 2.0 kg
     {155.0, 25.0, 1.5, 0.12},   // C3/A2 (Brown 2003/2004)
     {200.0, 25.0, 2.0, 0.08},   // plate set, VERIFY
