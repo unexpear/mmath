@@ -122,14 +122,15 @@ struct DoubleBassNote { StringCourse course; int stringIndex; bool stopped = fal
 // One pizzicato voice. amplitudeMeters is the finger's pull at the pluck.
 [[nodiscard]] inline Result<SoundboardVoice, QuantityError> doubleBassPizzVoice(
     const DoubleBassNote& note, double amplitudeMeters, SampleRateHz rate,
-    double distanceMeters = 1.0, double stoppedT60At6F0 = kDoubleBassPizzStoppedT60At6F0) {
+    double distanceMeters = 1.0, double stoppedT60At6F0 = kDoubleBassPizzStoppedT60At6F0,
+    double pluckFromBridgeM = kDoubleBassPizzFromBridgeM) {
   using R = Result<SoundboardVoice, QuantityError>;
   static const auto modes = doubleBassBodyModes();
   static const auto areas = doubleBassBodyAreasM2();
   auto loss = doubleBassPizzLoss(note.course, note.stopped, stoppedT60At6F0);
   if (!loss.ok()) return R::failure(loss.error());
   const double L = note.course.geometry.vibratingLength.value();
-  double frac = kDoubleBassPizzFromBridgeM / L;
+  double frac = pluckFromBridgeM / L;
   if (frac > 0.5) frac = 0.5;
   // Excitation position is from the nut; the bridge end is 1 - frac.
   return SoundboardVoice::create(note.course, Excitation{ExcitationKind::Pluck, 1.0 - frac, amplitudeMeters},

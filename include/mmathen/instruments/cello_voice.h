@@ -170,6 +170,18 @@ inline constexpr double kCelloBowForceFraction = 0.4;  // TUNED
 inline constexpr std::array<double, 4> kCelloIntonationCents = {10.5, 7.8, 4.9, 4.4};  // TUNED
 inline constexpr double kCelloReleaseSeconds = 0.12;  // UNSOURCED
 
+// A cellist's bowing and vibrato habits (player_profile.h,
+// BowedPlayerProfile). The default is the constants above, so a note made
+// without habits and one made with CelloPlayerHabits{} are identical.
+struct CelloPlayerHabits {
+  double bowForceScale = 1.0;     // on kCelloBowForceFraction's force
+  double bowSpeedScale = 1.0;     // on kCelloBowSpeed x level
+  double contactPointScale = 1.0; // on the bow-bridge distance beta
+  double vibratoHz = kCelloVibratoRateHz;
+  double vibratoCents = kCelloVibratoCents;
+  double vibratoOnsetSeconds = kCelloVibratoOnsetSeconds;
+};
+
 // Highest open string at or below f (the fingering a hymn line uses).
 [[nodiscard]] inline int celloCourseFor(const StringInstrument& c, double hz) {
   int best = 0;
@@ -182,7 +194,7 @@ inline constexpr double kCelloReleaseSeconds = 0.12;  // UNSOURCED
 // buffer and run it through CelloBody.
 [[nodiscard]] inline Result<OversampledBowedStringVoice, QuantityError> makeCelloNote(
     const StringInstrument& cello, double hz, double seconds, double level, SampleRateHz rate,
-    bool vibrato = true) {
+    bool vibrato = true, const CelloPlayerHabits& habits = CelloPlayerHabits{}) {
   using R = Result<OversampledBowedStringVoice, QuantityError>;
   const int k = celloCourseFor(cello, hz);
   // The player's peg tuning: the whole course is lowered by the
@@ -194,18 +206,19 @@ inline constexpr double kCelloReleaseSeconds = 0.12;  // UNSOURCED
   const double lv = std::clamp(level, 0.05, 2.0);
   const double ldb = 20.0 * std::log10(lv);
   const double x = std::clamp(0.5 - ldb / 24.0, 0.0, 1.0);  // +-12 dB span (UNSOURCED)
-  const double beta = kCelloBetaForte + x * (kCelloBetaPiano - kCelloBetaForte);
+  const double beta = (kCelloBetaForte + x * (kCelloBetaPiano - kCelloBetaForte)) * habits.contactPointScale;
   auto loss = celloStringLoss(c);
   if (!loss.ok()) return R::failure(loss.error());
-  BowStroke stroke = violinBowStroke(c, beta, kCelloBowSpeed * lv);
+  BowStroke stroke = violinBowStroke(c, beta, kCelloBowSpeed * lv * habits.bowSpeedScale);
   stroke.normalForceNewtons *= kCelloBowForceFraction / kViolinBowForceFraction;
+  stroke.normalForceNewtons *= habits.bowForceScale;
   auto v = OversampledBowedStringVoice::create(
       c, stroke, loss.value(), 0.0, 4, 0, rate,
       static_cast<std::uint64_t>(std::max(0.0, seconds) * rate.value()), 4);
   if (!v.ok()) return R::failure(v.error());
   OversampledBowedStringVoice voice = std::move(v).value();
-  BowExpression e{vibrato ? kCelloVibratoRateHz : 0.0, vibrato ? kCelloVibratoCents : 0.0,
-                  kCelloVibratoOnsetSeconds, kCelloVibratoRampSeconds, kCelloAttackSeconds,
+  BowExpression e{vibrato ? habits.vibratoHz : 0.0, vibrato ? habits.vibratoCents : 0.0,
+                  habits.vibratoOnsetSeconds, kCelloVibratoRampSeconds, kCelloAttackSeconds,
                   0.2, kCelloReleaseSeconds};
   if (!voice.setExpression(e)) return R::failure(QuantityError::InvalidArgument);
   voice.setBridgeForceOutput(true);
