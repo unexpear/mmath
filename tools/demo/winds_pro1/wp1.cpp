@@ -67,7 +67,7 @@ void push(std::vector<PhraseNote>& notes, const ScoreNote& src, double start, do
 }
 // Sweep overrides (harness only): WP_P scales the blowing pressure,
 // WP_AIM the flute jet aim (thicknesses), WP_TURB the reed/jet turbulence,
-// WP_CUT the reflection corner (Hz); trumpet WP_BT 0/1 bell transmission; sax: WP_BRK Benade break (0 off), WP_RAD radiation corner; flute: WP_RMAG reflection magnitude, WP_FWFIT 0/1 wall fit; WP_WFIT 0/1 clarinet wall fit; trumpet: WP_BRASS brassiness, WP_LIPR lip/partial ratio.
+// WP_TREL tongue release (s), WP_CUP cup volume (m^3), WP_MASS lip mass scale (stiffness kept at the lip resonance), WP_THR lip threshold preload (Pa): the jb8 attack sweeps; // WP_CUT the reflection corner (Hz); trumpet WP_BT 0/1 bell transmission; sax: WP_BRK Benade break (0 off), WP_RAD radiation corner; flute: WP_RMAG reflection magnitude, WP_FWFIT 0/1 wall fit; WP_WFIT 0/1 clarinet wall fit; trumpet: WP_BRASS brassiness, WP_LIPR lip/partial ratio.
 double env(const char* k, double d) { const char* v = std::getenv(k); return v ? std::atof(v) : d; }
 double total(const std::vector<ScoreNote>& s) { double t = 0; for (auto& n : s) t += n.seconds; return t; }
 int main(int argc, char** argv) {
@@ -75,7 +75,7 @@ int main(int argc, char** argv) {
   const std::string which = argv[1];
   const double speed = U(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
   std::vector<double> out; std::vector<PhraseNote> notes; double T = 0;
-  PlayerAirway airway(PlayerAirwaySpec{});
+  PlayerAirwaySpec airSpec{}; airSpec.tongueReleaseSeconds = env("WP_TREL", airSpec.tongueReleaseSeconds); PlayerAirway airway(airSpec);
   if (which == "clarinet") {
     const auto song = songFor(excerpts::kProClarinet); T = total(song);
     double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, clarinetSoundingLengthMeters(s.hertz));
@@ -123,12 +123,12 @@ int main(int argc, char** argv) {
     out = playPhrase(voice, notes, T, true, 0.50, &airway, kFs);
   } else if (which == "trumpet") {
     const auto song = songFor(excerpts::kProTrumpet); T = total(song);
-    auto tp = U(makeTrumpet(phraseTrumpetSpec(speed, kAir, kTemp, env("WP_TLEN", kPhraseTrumpetLengthMeters))));
+    TrumpetSpec tpSpec = phraseTrumpetSpec(speed, kAir, kTemp, env("WP_TLEN", kPhraseTrumpetLengthMeters)); tpSpec.cupVolumeM3 = env("WP_CUP", tpSpec.cupVolumeM3); tpSpec.lipMassKg *= env("WP_MASS", 1.0); tpSpec.lipStiffnessNewtonsPerMeter *= env("WP_MASS", 1.0); auto tp = U(makeTrumpet(tpSpec));
     const double tpP = 2800.0 * env("WP_P", 1.0);
     ValveBlow lip = sustained(tpP, 10000.0, kTrumpetAttack); lip.frames = (std::uint64_t)std::llround(T * kFs);
     lip.reflectionMagnitude = 0.999; lip.initialDisplacementMeters = 0.0; lip.tongueReleaseFrames = 0;
     lip.brassiness = env("WP_BRASS", 1.0); lip.reedTurbulence = kTrumpetReedTurbulence; applyBach37Bell(lip); lip.bellTransmission = env("WP_BT", 1.0) > 0.5; lip.radiationHz = env("WP_RAD", kTrumpetRadiationHz);
-    auto voice = U(ConeValveVoice::fromTrumpet(tp, 0.26, lip, kRate)); if (env("WP_LIPQ", 0.0) > 0.0 && !voice.setLipQualityFactor(env("WP_LIPQ", 0.0))) return 4; if (env("WP_BURG", 0.0) > 0.0 && !voice.setBoreBurgers(true, env("WP_BURG", 0.0), (int)env("WP_BURGM", 32))) return 6; if (env("WP_LUMPS", 0.0) > 0.0 && !voice.setBurgersLossLumps((int)env("WP_LUMPS", 1.0))) return 7; if (env("WP_LIPC", 0.0) > 0.5) { if (!voice.setLipCollision(true, env("WP_LIPK", 3.0), env("WP_LIPZ", 1.1))) return 5; }
+    auto voice = U(ConeValveVoice::fromTrumpet(tp, 0.26, lip, kRate)); if (env("WP_THR", 0.0) > 0.0 && !voice.setLipThresholdPa(env("WP_THR", 0.0))) return 8; if (env("WP_LIPQ", 0.0) > 0.0 && !voice.setLipQualityFactor(env("WP_LIPQ", 0.0))) return 4; if (env("WP_BURG", 0.0) > 0.0 && !voice.setBoreBurgers(true, env("WP_BURG", 0.0), (int)env("WP_BURGM", 32))) return 6; if (env("WP_LUMPS", 0.0) > 0.0 && !voice.setBurgersLossLumps((int)env("WP_LUMPS", 1.0))) return 7; if (env("WP_LIPC", 0.0) > 0.5) { if (!voice.setLipCollision(true, env("WP_LIPK", 3.0), env("WP_LIPZ", 1.1))) return 5; }
     double start = 0; BrassFinger held = kTrumpetFingers[0];
     for (auto& s : song) {
       BrassFinger r = s.hertz > 0 ? trumpetFinger(s.hertz) : held; if (const char* rf = std::getenv("WP_ROWFILE"); rf && s.hertz > 0) { std::ifstream in(rf); double h, l; while (in >> h >> l) if (std::fabs(h - s.hertz) < 0.05) r.length = l; }
