@@ -6,6 +6,7 @@
 #include <cmath>
 #include <complex>
 #include <limits>
+#include <tuple>
 #include <vector>
 
 #include <mmathen/instruments/glockenspiel.h>
@@ -223,4 +224,41 @@ TEST_CASE("handbell: breathing second harmonic is quadratic and decays at twice 
   CHECK(std::fabs(std::log(early / late) - sigma * (96000 - 4800) / fs) < 0.15);
   CHECK_FALSE(HandbellVoice::create(f1, 1.0, SampleRateHz{fs}, 1.0, 0.0, 4, 0.0,
                                      std::numeric_limits<double>::quiet_NaN()).ok());
+}
+
+TEST_CASE("handbell: a swung clapper strikes by momentum, its spring returns it", "[handbell]") {
+  const double fs = 48000.0, f1 = 174.61;
+  auto ring = [&](double swing, double stop, double springHz, double zeta) {
+    auto v = HandbellVoice::create(f1, 1.0, SampleRateHz{fs});
+    REQUIRE(v.ok());
+    auto voice = std::move(v).value();
+    REQUIRE(voice.setSwing(swing, stop, kHandbellClapperGapM, springHz, zeta));
+    std::vector<double> y(48000);
+    REQUIRE(voice.renderBlock(y.data(), FrameCount{y.size()}).ok());
+    double peak = 0.0;
+    for (double s : y) { REQUIRE(std::isfinite(s)); peak = std::max(peak, std::fabs(s)); }
+    return std::make_tuple(voice.strikeCount(), voice.strikeSpeedMps(), peak);
+  };
+  // Default spring: one stroke; the strike speed is what the stop leaves
+  // of the swing, below it and growing with it.
+  auto [n1, v1, p1] = ring(1.0, kHandbellSwingStopSeconds, kHandbellClapperSpringHz, kHandbellClapperSpringDamping);
+  auto [n2, v2, p2] = ring(1.5, kHandbellSwingStopSeconds, kHandbellClapperSpringHz, kHandbellClapperSpringDamping);
+  CHECK(n1 == 1);
+  CHECK(n2 == 1);
+  CHECK(v1 > 0.2);
+  CHECK(v1 < 1.0);
+  CHECK(v2 > v1);
+  CHECK(p2 > p1);
+  // A swing too gentle for the spring never reaches the bronze.
+  auto [n0, v0, p0] = ring(0.5, kHandbellSwingStopSeconds, kHandbellClapperSpringHz, kHandbellClapperSpringDamping);
+  CHECK(n0 == 0);
+  CHECK(p0 == 0.0);
+  // A soft, lightly damped spring lets the head come back: more strokes.
+  auto [n3, v3, p3] = ring(1.0, kHandbellSwingStopSeconds, 3.0, 0.05);
+  CHECK(n3 > 1);
+  auto bad = HandbellVoice::create(f1, 1.0, SampleRateHz{fs});
+  REQUIRE(bad.ok());
+  auto b = std::move(bad).value();
+  CHECK_FALSE(b.setSwing(0.0));
+  CHECK_FALSE(b.setSwing(1.0, 0.0));
 }

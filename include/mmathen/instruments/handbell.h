@@ -95,6 +95,21 @@ inline constexpr double kHandbellClapperMassKg = 0.025;  // at F3, VERIFY
 inline constexpr double kHandbellClapperExponent = 2.5;  // Chaigne-Askenfelt felt
 inline constexpr double kHandbellClapperStiffness = 1.0e9;  // N/m^2.5 at F3, TUNED
 inline constexpr double kHandbellClapperRefHz = 174.61;
+// Swung stroke (opt-in, setSwing). The ringer carries the bell and the
+// clapper together at the swing speed, then stops the bell; the clapper
+// head keeps its momentum across the gap to the soundbow, so the strike
+// speed is what the stop leaves of the swing, not a set number. A
+// handbell clapper is held off the bronze by a spring at its pivot and
+// rides on one plane (hinged clapper); that spring, with its own loss,
+// returns the head after the bounce instead of a one-stroke flag, so a
+// soft spring or a hard stop can strike twice. Gap, spring and stop are
+// UNSOURCED arguments (no measured handbell clapper spring found): the
+// head rests about a centimetre off the rim, the spring is a few hertz
+// with the head on it, and a ringer's stop takes a few tens of ms.
+inline constexpr double kHandbellClapperGapM = 0.012;        // UNSOURCED
+inline constexpr double kHandbellClapperSpringHz = 6.0;      // UNSOURCED
+inline constexpr double kHandbellClapperSpringDamping = 0.3; // damping ratio, UNSOURCED
+inline constexpr double kHandbellSwingStopSeconds = 0.030;   // UNSOURCED
 inline double handbellClapperMassKg(double f1) {
   return kHandbellClapperMassKg * std::pow(f1 / kHandbellClapperRefHz, -1.5);
 }
@@ -158,6 +173,30 @@ class HandbellVoice final : public IVoice {
     return R::success(std::move(v));
   }
 
+  // Swung stroke: the bell and clapper move together at swingMps (the
+  // clapper head's speed), then the bell stops at a constant
+  // deceleration over stopSeconds. The head starts at rest gapM off the
+  // rim on its pivot spring (springHz with the head's mass, damping
+  // ratio zeta). The create() speed is then unused. Returns false on a
+  // bad argument; call before rendering (it resets the voice).
+  bool setSwing(double swingMps, double stopSeconds = kHandbellSwingStopSeconds,
+                double gapM = kHandbellClapperGapM, double springHz = kHandbellClapperSpringHz,
+                double zeta = kHandbellClapperSpringDamping) {
+    if (!(swingMps > 0.0) || !(stopSeconds > 0.0) || !(gapM > 0.0) || !(springHz > 0.0) ||
+        !(zeta >= 0.0) || !std::isfinite(swingMps + stopSeconds + gapM + springHz + zeta))
+      return false;
+    swing_ = true;
+    swingMps_ = swingMps;
+    stopSeconds_ = stopSeconds;
+    gap_ = gapM;
+    springOmega_ = constants::twoPi * springHz;
+    zeta_ = zeta;
+    reset();
+    return true;
+  }
+  [[nodiscard]] int strikeCount() const noexcept { return strikes_; }
+  [[nodiscard]] double strikeSpeedMps() const noexcept { return strikeSpeed_; }
+
   [[nodiscard]] SampleRateHz sampleRate() const override { return rate_; }
   [[nodiscard]] std::size_t modeCount() const noexcept { return modes_.size(); }
   [[nodiscard]] double contactSeconds() const noexcept { return contact_; }
@@ -175,10 +214,18 @@ class HandbellVoice final : public IVoice {
         const double pen = y_ - u;
         double F = 0.0;
         if (pen > 0.0 && armed_) {
+          if (!touching_) {
+            touching_ = true;
+            ++strikes_;
+            if (strikes_ == 1) strikeSpeed_ = vy_;
+          }
           F = K_ * std::pow(pen, kHandbellClapperExponent);
           contact_ += dt_;
-        } else if (contact_ > 0.0 && vy_ < 0.0) {
-          armed_ = false;  // one stroke: the clapper spring holds it off after the bounce
+        } else {
+          touching_ = false;
+          // One stroke: the clapper spring holds it off after the bounce.
+          // A swung clapper has that spring in its own equation instead.
+          if (!swing_ && contact_ > 0.0 && vy_ < 0.0) armed_ = false;
         }
         double p = 0.0, breath = 0.0;
         for (Mode& m : modes_) {
@@ -192,7 +239,15 @@ class HandbellVoice final : public IVoice {
           breath -= constants::pi * m.breathe * he_ * (m.s.velocity * m.s.velocity + m.s.displacement * acc);
         }
         p += monopole_ * breath;
-        vy_ += -F / clapperMass_ * dt_;
+        double a = -F / clapperMass_;
+        if (swing_) {
+          // In the bell's frame: the pivot spring about the rest gap, its
+          // loss, and the stop's inertial push toward the rim.
+          a += -springOmega_ * springOmega_ * (y_ + gap_) - 2.0 * zeta_ * springOmega_ * vy_;
+          if (t_ < stopSeconds_) a += swingMps_ / stopSeconds_;
+          t_ += dt_;
+        }
+        vy_ += a * dt_;
         y_ += vy_ * dt_;
         if (!std::isfinite(p)) return R::failure(QuantityError::RangeError);
         sum += p;
@@ -204,10 +259,14 @@ class HandbellVoice final : public IVoice {
 
   void reset() override {
     for (Mode& m : modes_) m.s = {};
-    y_ = 0.0;
-    vy_ = speed_;
+    y_ = swing_ ? -gap_ : 0.0;
+    vy_ = swing_ ? 0.0 : speed_;
     contact_ = 0.0;
     armed_ = true;
+    touching_ = false;
+    strikes_ = 0;
+    strikeSpeed_ = 0.0;
+    t_ = 0.0;
   }
 
  private:
@@ -221,7 +280,10 @@ class HandbellVoice final : public IVoice {
   int factor_ = 1;
   double dt_ = 0.0, speed_ = 0.0, K_ = 0.0, clapperMass_ = kHandbellClapperMassKg, he_ = 0.0, monopole_ = 0.0;
   double y_ = 0.0, vy_ = 0.0, contact_ = 0.0;
-  bool armed_ = true;
+  bool armed_ = true, touching_ = false, swing_ = false;
+  int strikes_ = 0;
+  double strikeSpeed_ = 0.0, t_ = 0.0, swingMps_ = 0.0, stopSeconds_ = kHandbellSwingStopSeconds,
+         gap_ = kHandbellClapperGapM, springOmega_ = 0.0, zeta_ = kHandbellClapperSpringDamping;
 };
 
 }  // namespace mmathen
