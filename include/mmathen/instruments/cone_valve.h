@@ -235,10 +235,29 @@ class ConeValveVoice final : public IVoice {
           Trumpet lipNow = trumpet_;
           if (lipNow.lipCollisionStiffness > 0.0)
             lipNow.lipClosureMeters = lipPreload() - restOpening_ / slitWidth_;
-          auto stepped =
-              trumpetLipAcceleration(lipNow, displacement_, velocity_, delta);
-          if (!stepped.ok()) return R::failure(stepped.error());
-          acceleration = stepped.value();
+          // The contact spring and damper are stepped backward-Euler
+          // (implicit in x and v), so a stiff, heavily damped contact
+          // stays stable at the audio rate; the free lip keeps the
+          // semi-implicit step below.
+          const bool touching = lipNow.lipCollisionStiffness > 0.0 &&
+                                displacement_ < lipNow.lipClosureMeters;
+          if (touching) {
+            Trumpet free = lipNow;
+            free.lipCollisionStiffness = 0.0;
+            auto f = trumpetLipAcceleration(free, displacement_, velocity_, delta);
+            if (!f.ok()) return R::failure(f.error());
+            const double m = lipNow.lipMassKg, kc = lipNow.lipCollisionStiffness,
+                         rc = lipNow.lipCollisionDamping;
+            const double pen = displacement_ - lipNow.lipClosureMeters;
+            const double vNew = (velocity_ + dt * (f.value() - kc * pen / m)) /
+                                (1.0 + dt * rc / m + dt * dt * kc / m);
+            acceleration = (vNew - velocity_) / dt;
+          } else {
+            auto stepped =
+                trumpetLipAcceleration(lipNow, displacement_, velocity_, delta);
+            if (!stepped.ok()) return R::failure(stepped.error());
+            acceleration = stepped.value();
+          }
         } else {
           auto moved = stepReedTip(inertia_, displacement_, velocity_, delta, dt);
           if (!moved.ok()) return R::failure(moved.error());
@@ -797,8 +816,14 @@ class ConeValveVoice final : public IVoice {
     return true;
   }
 
-  bool setLipCollision(bool on) {
+  // stiffnessRatio is the contact spring over k; dampingRatio the closed
+  // lip's damping ratio. Defaults are Ishizaka-Flanagan (3, 1.1).
+  bool setLipCollision(bool on, double stiffnessRatio = 3.0, double dampingRatio = 1.1) {
     if (!lip_) return false;
+    if (on && (!std::isfinite(stiffnessRatio) || !(stiffnessRatio > 0.0) ||
+               !std::isfinite(dampingRatio) || dampingRatio < 0.0)) return false;
+    trumpet_.lipCollisionStiffnessRatio = stiffnessRatio;
+    trumpet_.lipCollisionDampingRatio = dampingRatio;
     if (on) enableLipCollision(trumpet_); else { trumpet_.lipCollisionStiffness = 0.0; trumpet_.lipCollisionDamping = 0.0; }
     return true;
   }

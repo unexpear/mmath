@@ -101,6 +101,10 @@ struct Trumpet {
   double lipCollisionStiffness = 0.0;
   double lipCollisionDamping = 0.0;
   double lipClosureMeters = 0.0;
+  // Contact stiffness as a multiple of k, and the damping ratio of the
+  // closed lip (stiffness k + contact). Ishizaka-Flanagan values 3, 1.1.
+  double lipCollisionStiffnessRatio = 3.0;
+  double lipCollisionDampingRatio = 1.1;
   const char* source = nullptr;
 };
 
@@ -380,9 +384,11 @@ trumpetMouthpieceImpedance(const Trumpet& trumpet, double frequencyHz) {
 inline void enableLipCollision(Trumpet& trumpet) {
   const double k = trumpet.lipStiffnessNewtonsPerMeter;
   const double m = trumpet.lipMassKg;
-  trumpet.lipCollisionStiffness = 3.0 * k;
+  const double ratio = trumpet.lipCollisionStiffnessRatio > 0.0 ? trumpet.lipCollisionStiffnessRatio : 3.0;
+  const double zeta = trumpet.lipCollisionDampingRatio >= 0.0 ? trumpet.lipCollisionDampingRatio : 1.1;
+  trumpet.lipCollisionStiffness = ratio * k;
   trumpet.lipCollisionDamping =
-      2.0 * 1.1 * std::sqrt(m * 4.0 * k) - trumpet.lipDampingNewtonSecondsPerMeter;
+      2.0 * zeta * std::sqrt(m * (1.0 + ratio) * k) - trumpet.lipDampingNewtonSecondsPerMeter;
   if (trumpet.lipCollisionDamping < 0.0) trumpet.lipCollisionDamping = 0.0;
   trumpet.lipClosureMeters = -trumpet.restOpeningAreaM2 / trumpet.slitWidthMeters;
 }

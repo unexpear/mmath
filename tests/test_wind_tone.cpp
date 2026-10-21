@@ -3238,3 +3238,42 @@ TEST_CASE("saxophone on the player airway", "[.saxairway]") {
     writePhrase(samples, mode ? "sax-airway-on.wav" : "sax-airway-off.wav", kFs);
   }
 }
+
+TEST_CASE("trumpet lip contact: ratios, damping, stiff contact stays stable", "[wind][trumpet][lipcontact]") {
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  auto trumpet = unwrap(makeTrumpet(phraseTrumpetSpec(speed, kAir, kTemp)));
+  Trumpet ref = trumpet;
+  enableLipCollision(ref);
+  const double k = ref.lipStiffnessNewtonsPerMeter, m = ref.lipMassKg;
+  CHECK(std::fabs(ref.lipCollisionStiffness - 3.0 * k) < 1e-9 * k);
+  const double r0 = std::max(0.0, 2.2 * std::sqrt(m * 4.0 * k) - ref.lipDampingNewtonSecondsPerMeter);
+  CHECK(std::fabs(ref.lipCollisionDamping - r0) <= 1e-9 * (r0 + 1e-12));
+  CHECK(std::fabs(ref.lipClosureMeters + ref.restOpeningAreaM2 / ref.slitWidthMeters) < 1e-15);
+  double peak[2] = {0.0, 0.0};
+  for (int pass = 0; pass < 2; ++pass) {
+    ValveBlow lip = sustained(2800.0, 10000.0, kTrumpetAttack);
+    lip.frames = 48000;
+    lip.reflectionMagnitude = 0.999;
+    lip.initialDisplacementMeters = 0.0;
+    lip.tongueReleaseFrames = 0;
+    lip.reedTurbulence = 0.0;
+    applyBach37Bell(lip);
+    auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
+    CHECK_FALSE(voice.setLipCollision(true, -1.0, 1.1));
+    CHECK_FALSE(voice.setLipCollision(true, 3.0, -0.5));
+    // A contact 1e4 times the lip spring with damping ratio 1.1: the
+    // explicit step is unstable here (r dt / m about 10); the backward-Euler contact
+    // step keeps the note bounded.
+    if (pass == 1) REQUIRE(voice.setLipCollision(true, 1.0e4, 1.1));
+    std::vector<double> out(48000);
+    for (std::size_t i = 0; i < out.size(); ++i) {
+      REQUIRE(voice.renderBlock(out.data() + i, FrameCount{1}).ok());
+      REQUIRE(std::isfinite(out[i]));
+      REQUIRE(voice.lipOpeningM2() >= 0.0);
+      if (i > 24000) peak[pass] = std::max(peak[pass], std::fabs(out[i]));
+    }
+  }
+  CHECK(peak[0] > 0.0);
+  CHECK(peak[1] > 0.1 * peak[0]);
+  CHECK(peak[1] < 10.0 * peak[0]);
+}
