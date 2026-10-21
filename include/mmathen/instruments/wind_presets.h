@@ -289,6 +289,12 @@ inline void applyScottBell(ValveBlow& blow) {
 // the one-pole corner falls 6 dB/oct where Luce and Clark (JASA 42, 1967)
 // measured 15-25 dB/oct above about 1 kHz.
 inline constexpr double kTrumpetRadiationHz = 3000.0;
+// Opt-in Burgers steepening (ConeValveVoice::setBoreBurgers): L_eff as a
+// fraction of the sounding length. TUNED to the Lick Trumpet H2-H6
+// (0.45 lands within 1.5 dB on H2, H3, H4, H6; 0.60 is 2.5-4.5 dB over).
+// Below Myers et al.'s B = 0.58-0.76 (JASA 131, 2012) because the line
+// has no wall loss and its input is the wave already at the bell.
+inline constexpr double kTrumpetBurgersFraction = 0.45;
 inline void applyBach37Bell(ValveBlow& blow) {
   constexpr double kLength = 1.335 - 0.716;
   constexpr double kGamma = 0.7;

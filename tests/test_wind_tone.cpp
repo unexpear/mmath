@@ -3277,3 +3277,73 @@ TEST_CASE("trumpet lip contact: ratios, damping, stiff contact stays stable", "[
   CHECK(peak[1] > 0.1 * peak[0]);
   CHECK(peak[1] < 10.0 * peak[0]);
 }
+
+TEST_CASE("Burgers line: Fubini harmonics before the shock, no new extrema", "[wind][burgers]") {
+  const double fs = 48000.0, rho = 1.2, c = 343.0, L = 1.7, f = 300.0;
+  BurgersLine line;
+  REQUIRE(line.configure(L, 32, fs, rho, c));
+  CHECK_FALSE(line.configure(-1.0, 32, fs, rho, c));
+  for (double A : {1000.0, 3000.0, 6000.0}) {
+    line.reset();
+    std::vector<double> y(48000);
+    for (std::size_t i = 0; i < y.size(); ++i) y[i] = line.step(A * std::sin(constants::twoPi * f * i / fs));
+    auto h = [&](int k) {
+      double re = 0, im = 0;
+      for (std::size_t i = 24000; i < y.size(); ++i) {
+        re += y[i] * std::cos(constants::twoPi * f * k * i / fs);
+        im += y[i] * std::sin(constants::twoPi * f * k * i / fs);
+      }
+      return 2.0 * std::sqrt(re * re + im * im) / 24000.0;
+    };
+    const double a = 1.2 / (rho * c * c * c), sigma = L * a * A * constants::twoPi * f;
+    const double fubini = std::cyl_bessel_j(2, 2.0 * sigma) / (2.0 * std::cyl_bessel_j(1, sigma));
+    CHECK(std::fabs(h(2) / h(1) - fubini) < 0.05 * fubini);
+    double peak = 0;
+    for (std::size_t i = 24000; i < y.size(); ++i) peak = std::max(peak, std::fabs(y[i]));
+    CHECK(peak <= A * (1.0 + 1e-9));  // TVD: the shock does not overshoot
+    CHECK(line.clampCount() == 0);
+  }
+}
+
+TEST_CASE("trumpet: opt-in Burgers steepening brightens the radiated note", "[wind][trumpet][burgers]") {
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  auto trumpet = unwrap(makeTrumpet(phraseTrumpetSpec(speed, kAir, kTemp)));
+  double h2[2] = {0, 0}, h1[2] = {0, 0}, f0[2] = {0, 0};
+  for (int pass = 0; pass < 2; ++pass) {
+    ValveBlow lip = sustained(2800.0, 10000.0, kTrumpetAttack);
+    lip.frames = 48000;
+    lip.reflectionMagnitude = 0.999;
+    lip.initialDisplacementMeters = 0.0;
+    lip.tongueReleaseFrames = 0;
+    lip.reedTurbulence = 0.0;
+    lip.brassiness = 0.0;
+    applyBach37Bell(lip);
+    auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
+    CHECK_FALSE(voice.setBoreBurgers(true, 0.0));
+    if (pass == 1) REQUIRE(voice.setBoreBurgers(true, kTrumpetBurgersFraction));
+    std::vector<double> out(48000);
+    REQUIRE(voice.renderBlock(out.data(), FrameCount{out.size()}).ok());
+    for (double s : out) REQUIRE(std::isfinite(s));
+    auto amp = [&](double fr) {
+      double re = 0, im = 0;
+      for (std::size_t i = 24000; i < out.size(); ++i) {
+        re += out[i] * std::cos(constants::twoPi * fr * i / kFs);
+        im += out[i] * std::sin(constants::twoPi * fr * i / kFs);
+      }
+      return std::sqrt(re * re + im * im);
+    };
+    // Fundamental: the strongest line, 80-1200 Hz without steepening;
+    // with it, the strongest within 3 % of that.
+    const double lo = pass == 0 ? 80.0 : 0.97 * f0[0], hi = pass == 0 ? 1200.0 : 1.03 * f0[0];
+    double best = 0.0;
+    for (double fr = lo; fr < hi; fr += 0.25) {
+      const double a = amp(fr);
+      if (a > best) { best = a; f0[pass] = fr; }
+    }
+    h1[pass] = amp(f0[pass]);
+    h2[pass] = amp(2.0 * f0[pass]);
+    if (pass == 1) CHECK(voice.boreBurgers().clampCount() == 0);
+  }
+  CHECK(std::fabs(f0[1] - f0[0]) < 0.5);  // the lip sees the linear return
+  CHECK(h2[1] / h1[1] > 1.5 * h2[0] / h1[0]);
+}

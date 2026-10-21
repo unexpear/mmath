@@ -53,6 +53,7 @@
 #include <vector>
 
 #include "../math/constants.h"
+#include "../physics/burgers.h"
 #include "../physics/radiation.h"
 #include "../render/voice.h"
 #include "bore_valve.h"
@@ -289,12 +290,32 @@ class ConeValveVoice final : public IVoice {
       // limit cycle (and a length change) stays the one the note was
       // tuned with. See ValveBlow::brassiness.
       double atBell = incident;
-      if (!rfOn_ && lip_ && brassiness_ > 0.0) atBell = steepenAtBell(incident);
+      if (!rfOn_ && lip_ && burgersOn_) {
+        if (soundingLength_ != burgersLength_ && soundingLength_ > 0.0) {
+          burgersLength_ = soundingLength_;
+          burgers_.setLength(burgersFraction_ * soundingLength_, rate_.value());
+        }
+        atBell = burgers_.step(incident);
+      } else if (!rfOn_ && lip_ && brassiness_ > 0.0) {
+        atBell = steepenAtBell(incident);
+      }
+      // The Burgers line delays its output `stages` samples; the return
+      // wave R p+ is delayed to match, so the bell sees (1 + R) of the
+      // same p+. R of the steepening's own harmonics is left out: a
+      // flared bell reflects little above its cutoff, where they lie.
+      double atBellReturn = incoming;
+      if (!rfOn_ && lip_ && burgersOn_) {
+        const std::size_t m = static_cast<std::size_t>(burgers_.stages());
+        if (burgersReturn_.size() != m) { burgersReturn_.assign(m, 0.0); burgersPos_ = 0; }
+        atBellReturn = burgersReturn_[burgersPos_];
+        burgersReturn_[burgersPos_] = incoming;
+        burgersPos_ = (burgersPos_ + 1) % m;
+      }
       // ValveBlow::bellTransmission: the transmitted wave (1 + R) p+.
       const double bellFlow = rfOn_ ? convolveHistory(uf_, steepRfOn_ ? histS_ : hist_)
                               : (bellTransmit_ && flareOn_)
-                                    ? (atBell + incoming) / impedance_ * bellScale_
-                                    : (atBell - incoming) / impedance_ * bellScale_;
+                                    ? (atBell + atBellReturn) / impedance_ * bellScale_
+                                    : (atBell - atBellReturn) / impedance_ * bellScale_;
       double radiated = valve_detail::radiateBell(density_, listener_, bellFlow, bellFlow_,
                                                  radiationState_, radiationCorner_, dt);
       // Benade and Lutgen's external envelope, when a break frequency
@@ -357,6 +378,8 @@ class ConeValveVoice final : public IVoice {
     lipLocked_ = false;
     prevOutgoing_ = 0.0;
     std::fill(steepHist_, steepHist_ + 16, 0.0);
+    burgers_.reset();
+    std::fill(burgersReturn_.begin(), burgersReturn_.end(), 0.0);
     steepPos_ = 0;
     displacement_ = initialDisplacement_;
     velocity_ = 0.0;
@@ -681,6 +704,29 @@ class ConeValveVoice final : public IVoice {
     return true;
   }
   [[nodiscard]] bool measuredBoreSteepeningOn() const noexcept { return steepRfOn_; }
+
+  // Opt-in conservative nonlinear steepening of the wave heard at the
+  // bell (physics/burgers.h): the inviscid Burgers equation marched over
+  // L_eff = fraction x the sounding length in `stages` Godunov steps
+  // (Hirschberg, Gilbert, Msallam and Wijnands, JASA 99, 1754-1758,
+  // 1996; L_eff as the brassiness integral of Myers, Pyle, Gilbert,
+  // Campbell, Chick and Logie, JASA 131, 678-688, 2012: B = L_eff/L_ecl
+  // about 0.58-0.76 for Bb trumpets). Replaces the four-sample advance
+  // of ValveBlow::brassiness while on. The radiated wave only: the lip
+  // keeps the linear return, so tuning is unchanged; the line adds
+  // `stages` samples of latency to the radiated sound. Cone/cylinder
+  // bore only (not the measured-bore reflection function).
+  bool setBoreBurgers(bool on, double lengthFraction = 1.0, int stages = 32) {
+    if (!lip_ || rfOn_) return false;
+    if (on && (!std::isfinite(lengthFraction) || !(lengthFraction > 0.0) || stages < 1)) return false;
+    burgersOn_ = on;
+    if (!on) return true;
+    burgersFraction_ = lengthFraction;
+    burgersLength_ = soundingLength_;
+    return burgers_.configure(lengthFraction * std::max(soundingLength_, 1e-3), stages, rate_.value(),
+                              density_, speed_, acoustic_constants::dryAirGamma);
+  }
+  [[nodiscard]] const BurgersLine& boreBurgers() const noexcept { return burgers_; }
 
   // Two-dimensional swinging-door lip of Adachi and Sato, JASA 99,
   // 1200-1209 (1996), eqs. 1-5 and 8, Table I (checked against the
@@ -1342,6 +1388,11 @@ class ConeValveVoice final : public IVoice {
   double lockedBreath_ = -1.0;
   double brassiness_ = 0.0;
   double soundingLength_ = 0.0;
+  BurgersLine burgers_;
+  bool burgersOn_ = false;
+  std::vector<double> burgersReturn_;
+  std::size_t burgersPos_ = 0;
+  double burgersFraction_ = 1.0, burgersLength_ = 0.0;
   double prevOutgoing_ = 0.0;
   double steepHist_[16] = {};
   int steepPos_ = 0;
