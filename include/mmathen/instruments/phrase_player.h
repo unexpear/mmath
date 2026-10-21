@@ -288,6 +288,12 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
                     ? 1.0 - brassDepth * std::sin(constants::twoPi * player.brassVibratoHz * time)
                     : 1.0 - depth * std::sin(constants::twoPi * player.vibratoHz * time);
       length *= vibrato;
+      // Breath vibrato (WindPlayerProfile::vibratoPressureFraction): the
+      // diaphragm swings the blowing pressure; the pitch and the upper
+      // partials follow through the jet or the reed (Fletcher 1975).
+      // The flute's jet delay below reads env, so the jet speed follows.
+      if (player.vibratoPressureFraction > 0.0)
+        env *= 1.0 + player.vibratoPressureFraction * std::sin(constants::twoPi * player.vibratoHz * time);
     }
     if (player.intonationCents != 0.0) length *= tuneScale;
     if (!(voice.setSoundingLength(length))) return {};

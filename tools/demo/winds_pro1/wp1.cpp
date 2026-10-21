@@ -78,6 +78,8 @@ int main(int argc, char** argv) {
   // WP_PROFILE=trumpet: the measured-player profile (wind_player_profile.h); WP_BUILD / WP_DROP override its attack build-up (Pa) and drop (s).
   WindPlayerProfile prof{};
   if (const char* pf = std::getenv("WP_PROFILE"); pf && std::strcmp(pf, "trumpet") == 0) prof = trumpetPlayerProfile();
+  if (const char* pf = std::getenv("WP_PROFILE"); pf && std::strcmp(pf, "flute") == 0) prof = flutePlayerProfile();
+  prof.vibratoPressureFraction = env("WP_VPF", prof.vibratoPressureFraction); prof.vibratoCents = env("WP_VC", prof.vibratoCents); prof.breathMarginM3 = env("WP_BM", prof.breathMarginM3);
   prof.attackBuildUpPa = env("WP_BUILD", prof.attackBuildUpPa); prof.attackDropSec = env("WP_DROP", prof.attackDropSec);
   PlayerAirwaySpec airSpec = prof.airwaySpec(); airSpec.tongueReleaseSeconds = env("WP_TREL", airSpec.tongueReleaseSeconds); PlayerAirway airway(airSpec);
   if (which == "clarinet") {
@@ -124,7 +126,7 @@ int main(int argc, char** argv) {
       const double j = s.hertz > 0 ? kFs * U(fluteConvectionTime(fl, p)) : hJ;
       push(notes, s, start, L, 0, (p > 0 ? p : hP) * env("WP_P", 1.0) * (std::getenv("WP_SONGFILE") ? fluteVoicingFor(s.dynamic).pressureScale : 1.0), j); if (s.hertz > 0) { hL = L; hJ = j; hP = p; } start += s.seconds;
     }
-    out = playPhrase(voice, notes, T, true, 0.50, &airway, kFs);
+    out = playPhrase(voice, notes, T, true, 0.50, &airway, kFs, prof);
   } else if (which == "trumpet") {
     const auto song = songFor(excerpts::kProTrumpet); T = total(song);
     TrumpetSpec tpSpec = phraseTrumpetSpec(speed, kAir, kTemp, env("WP_TLEN", kPhraseTrumpetLengthMeters)); tpSpec.cupVolumeM3 = env("WP_CUP", tpSpec.cupVolumeM3); tpSpec.lipMassKg *= env("WP_MASS", 1.0); tpSpec.lipStiffnessNewtonsPerMeter *= env("WP_MASS", 1.0); auto tp = U(makeTrumpet(tpSpec));

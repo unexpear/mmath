@@ -191,7 +191,29 @@ class ConeValveVoice final : public IVoice {
         // not change sign, and a sounding bore aborts the note. A buzz
         // is a finite fraction of the rest opening, so this cut is
         // roundoff, not a lip area.
-        opening *= tongueOpen;
+        // The tongue and the lips are two orifices in series (jb11). The
+        // tongue channel is tongueOpen times the oral tract's area
+        // (PlayerAirway::oralAreaM2, about 5.8 cm^2); the lip slit is
+        // about 1e-5 m^2. Steady Bernoulli flow through both: the gap
+        // between them sits at p_gap = p_cup + (p_mouth - p_cup) At^2 /
+        // (At^2 + Al^2) and the flow sees At Al / sqrt(At^2 + Al^2).
+        // Under the closed tongue the lips feel no mouth pressure and
+        // rest; once the tongue has moved a few percent of the way the
+        // gap is at mouth pressure, so the lips take the pressure as a
+        // step (a plosive, Bianco et al., JNMR 41, 49 (2012): the lips
+        // start in the pressure drop of the tongue release) and ring at
+        // amplitude, instead of following the 8 ms tongue path and
+        // growing from the noise seed. Multiplying the slit by the
+        // tongue fraction (the earlier model) held the lips at their
+        // blown equilibrium under the tongue and gave no step.
+        if (airway_ != nullptr) {
+          const double at = tongueOpen * airway_->oralAreaM2(), al = opening;
+          lipSide_ = at > 0.0 ? at * at / (at * at + al * al) : 0.0;
+          opening = (at > 0.0 && al > 0.0) ? at * al / std::sqrt(at * at + al * al) : 0.0;
+        } else {
+          lipSide_ = 1.0;
+          opening *= tongueOpen;
+        }
         if (restOpening_ > 0.0 && opening < restOpening_ * 1.0e-6) opening = 0.0;
         lastOpening_ = opening;
       } else if (open && mouth > 0.0) {
@@ -234,7 +256,7 @@ class ConeValveVoice final : public IVoice {
       previousPressure_ = pressure;
       cupPressure_ = pressure;
       if (open && mouth > 0.0 && !tongued) {
-        const double delta = mouth - pressure;
+        const double delta = (lip_ ? lipSide_ : 1.0) * (mouth - pressure);  // lips feel the gap pressure
         double acceleration = 0.0;
         if (lip_ && as_.on) {
           stepAdachiSato(delta, pressure, opening, dt);
@@ -388,6 +410,7 @@ class ConeValveVoice final : public IVoice {
 
   void reset() override {
     std::fill(line_.begin(), line_.end(), 0.0);
+    lipSide_ = 1.0;
     pos_ = 0;
     boreX_ = 0.0;
     boreY_ = 0.0;
@@ -1441,6 +1464,7 @@ class ConeValveVoice final : public IVoice {
   double bellScale_ = 1.0;
   double lipThresholdPa_ = 0.0;
   double lipQ_ = 0.0;
+  double lipSide_ = 1.0;  // gap-to-mouth pressure fraction at the lips (series tongue)
   double lastOpening_ = 0.0;
   PlayerAirway* airway_ = nullptr;
   bool lipLocked_ = false;

@@ -50,6 +50,9 @@ struct WindPlayerProfile {
   double vibratoHz = 5.5, vibratoCents = 12.0;             // woodwinds: arguments (kVibratoHz)
   double brassVibratoHz = 5.84, brassVibratoCents = 11.7;  // VSCO 2 CE trumpet susvib (kBrassVibrato*)
   double vibratoOnsetSec = 0.20;                           // vibrato starts after this (UNSOURCED)
+  // Breath vibrato: fraction of the blowing pressure swung at vibratoHz
+  // (0 = none; the vibrato is then the bore-length swing above).
+  double vibratoPressureFraction = 0.0;
   // --- Slurs ---------------------------------------------------------
   double slurGlideSec = 0.035, tonguedGlideSec = 0.010;    // woodwind bore glides (UNSOURCED)
   // --- Breath placement ----------------------------------------------
@@ -80,6 +83,24 @@ struct WindPlayerProfile {
   p.name = "trumpet (Bianco 2012 professional)";
   p.attackBuildUpPa = 560.0;
   p.attackDropSec = 0.060;  // VERIFY: Bianco Fig. 8 trend only; JB sweep 15/30/60 ms, 60 kept the YIN gate (steady worst -37 c vs -55 c at 30 ms)
+  return p;
+}
+
+// A flutist. N. H. Fletcher, "Acoustical correlates of flute performance
+// technique", JASA 57, 233-237 (1975), four experienced players: vibrato
+// "consistently about 5 Hz", made by the diaphragm as "a 10 % variation
+// in blowing pressure", with frequency modulation of the partials under
+// 1 % and mostly amplitude modulation of the upper partials (Table I).
+// So the vibrato is breath, not a bore-length swing: vibratoCents 0 and
+// the jet (pressure -> jet speed -> convection delay) makes whatever
+// pitch and timbre swing follows. Fletcher, Acoustics Australia 28, 55
+// (2000): 5-6 Hz. Tongue, release and breath plan stay at the defaults.
+[[nodiscard]] inline WindPlayerProfile flutePlayerProfile() {
+  WindPlayerProfile p;
+  p.name = "flute (Fletcher 1975)";
+  p.vibratoHz = 5.0;
+  p.vibratoCents = 0.0;
+  p.vibratoPressureFraction = 0.10;
   return p;
 }
 
