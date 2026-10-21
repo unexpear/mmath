@@ -43,10 +43,15 @@
 // angles to the axis, second and sixth along it. The listener angle is
 // an argument (default 90 deg, side on).
 //
-// Losses. A constant decay rate per bell (measured: F3 handbell sigma
-// 0.35-0.39 1/s on (2,0), (3,0) and the 6.1 mode), scaled with the
-// fundamental as sqrt(f1 / 175 Hz) to the Freesound radwoc G6 bell
-// (sigma 1.2 1/s); TUNED.
+// Losses. Internal: a constant decay rate per bell (measured: F3
+// handbell sigma 0.35-0.39 1/s on (2,0), (3,0) and the 6.1 mode), scaled
+// with the fundamental as sqrt(f1 / 175 Hz) to the Freesound radwoc G6
+// bell (sigma 1.2 1/s); TUNED. Internal damping is about the same for
+// all the principal modes (Schad and Warlimont, Acustica 29, 1973); the
+// higher modes decay faster because they radiate more (Rossing and
+// Perrin 1987, sec. 5.4). So each mode adds the radiation damping of its
+// own far field (create()), which is negligible on the large bells
+// (F3: under 1e-3 1/s) and sets the upper partials of the small ones.
 
 #include <algorithm>
 #include <array>
@@ -172,6 +177,16 @@ class HandbellVoice final : public IVoice {
       o.radiate = rho0 * a * a * h / std::sqrt(1.0 + h * h) /
                   (4.0 * constants::pi * distanceM);
       if (hm.n > 0) o.radiate *= 0.5;  // a nodal circle splits the rim region (VERIFY)
+      // Radiation damping (see Losses): the power this mode's own far
+      // field carries off, p = A w^2 q sin^m(theta) cos(m phi) / r with
+      // A = radiate * r, is P = (A w^2 q)^2 pi J_m / (2 rho c), J_m =
+      // integral of sin^(2m+1) over [0, pi] = 2 (2m)!! / (2m+1)!!;
+      // against the mode energy M w^2 q^2 / 2 the amplitude decays at
+      // sigma_rad = A^2 w^2 pi J_m / (2 rho c M).
+      double jm = 2.0;
+      for (int j = 1; j <= hm.m; ++j) jm *= (2.0 * j) / (2.0 * j + 1.0);
+      const double A = o.radiate * distanceM;
+      o.sigma += A * A * o.omega * o.omega * constants::pi * jm / (2.0 * rho0 * c * o.mass);
       o.radiate *= std::pow(std::fabs(std::sin(listenerPolarRad)), hm.m);
       o.breathe = 1.0 - 1.0 / (hm.m * hm.m);
       v.modes_.push_back(o);
