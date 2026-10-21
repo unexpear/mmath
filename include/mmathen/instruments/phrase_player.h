@@ -189,10 +189,19 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       const auto next = static_cast<std::size_t>(active) + 1;
       if (next < notes.size() && !notes[next].rest) {
         const auto join = static_cast<std::uint64_t>(notes[next].startSec * rateHz);
-        const auto steal = static_cast<std::uint64_t>(player.breathStealSec * rateHz);
+        // A player breathes on a note that can spare the time: at most
+        // breathMaxNoteFraction of the note is taken, and a short note
+        // is passed over for a later, longer one unless the lungs are
+        // within half the margin of residual (jb13: a 0.3 s steal ate
+        // whole 0.3 s Jingle Bells notes).
+        const double noteSec = notes[next].startSec - notes[static_cast<std::size_t>(active)].startSec;
+        const double spare = player.breathMaxNoteFraction * noteSec;
+        const bool roomy = spare >= player.breathStealSec;
+        const auto steal = static_cast<std::uint64_t>(std::min(player.breathStealSec, spare) * rateHz);
         if (breathing && frame < join) stolenBreath = true;
-        else if (join > steal && frame >= join - steal && frame < join &&
-                 airway->needsBreath(player.breathMarginM3)) {
+        else if (join > steal && steal > 0 && frame >= join - steal && frame < join &&
+                 airway->needsBreath(player.breathMarginM3) &&
+                 (roomy || airway->needsBreath(0.5 * player.breathMarginM3))) {
           breathing = true; stolenBreath = true;
           stealStartSec = static_cast<double>(frame) / rateHz;
         }

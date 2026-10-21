@@ -386,3 +386,27 @@ TEST_CASE("wind player profile: default plays as before, trumpet builds pressure
   CHECK(built[hop(0.30 + tp.attackDropSec + 0.01)] == 3700.0);         // back to the playing pressure
   CHECK(tp.attackBuildUpPa == 560.0);
 }
+
+TEST_CASE("wind player profiles carry the measured values", "[band][player]") {
+  const WindPlayerProfile fl = flutePlayerProfile(), cl = clarinetPlayerProfile(), sx = saxophonePlayerProfile(),
+                          tb = trombonePlayerProfile(), d{};
+  CHECK(fl.vibratoHz == 5.0); CHECK(fl.vibratoPressureFraction == 0.10); CHECK(fl.vibratoCents == 0.0);  // Fletcher 1975
+  CHECK(cl.vibratoCents == 0.0);                                                                       // straight tone
+  CHECK(sx.vibratoHz == 5.96); CHECK(sx.vibratoCents == kSaxVibratoSwingCents);                       // concert soloists
+  CHECK(tb.attackBuildUpPa == trumpetPlayerProfile().attackBuildUpPa);
+  CHECK(d.breathMaxNoteFraction == 0.5);
+}
+
+TEST_CASE("a stolen breath takes at most half a note", "[band][player]") {
+  // Lungs start near residual so every join wants a breath; 0.3 s notes.
+  PlayerAirwaySpec spec{}; spec.initialLungVolumeM3 = spec.residualVolumeM3 + 0.4e-3;
+  std::vector<PhraseNote> notes(4);
+  for (int i = 0; i < 4; ++i) {
+    notes[i].name = "G4"; notes[i].startSec = 0.3 * i; notes[i].targetHz = 392.0; notes[i].lengthM = 1.2;
+    notes[i].lipHz = 380.0; notes[i].pressure = 3700.0; notes[i].tongue = true;
+  }
+  PressureProbe probe; PlayerAirway airway(spec);
+  (void)playPhrase(probe, notes, 1.2, false, 0.0, &airway, 48000.0, WindPlayerProfile{});
+  // Every hop of the first note's first half still blows.
+  for (std::size_t h = 0; h < static_cast<std::size_t>(0.15 * 48000.0 / 64.0); ++h) CHECK(probe.pressure[h] > 0.0);
+}

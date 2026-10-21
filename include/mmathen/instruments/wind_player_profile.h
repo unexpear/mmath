@@ -57,6 +57,10 @@ struct WindPlayerProfile {
   double slurGlideSec = 0.035, tonguedGlideSec = 0.010;    // woodwind bore glides (UNSOURCED)
   // --- Breath placement ----------------------------------------------
   double breathMarginM3 = 1.0e-3, breathStealSec = 0.30;   // kBreathMarginM3 / kBreathStealSec (UNSOURCED)
+  // Largest part of a note a breath may take; shorter notes are passed
+  // over until the lungs are within half the margin (UNSOURCED; players
+  // breathe at phrase joins on longer notes, Bouhuys 1964, VERIFY).
+  double breathMaxNoteFraction = 0.5;
   // --- Intonation ----------------------------------------------------
   // Lip resonance over the instrument row's ratio (brass): a player who
   // "lips up" sits above the row. 1 = the row.
@@ -101,6 +105,59 @@ struct WindPlayerProfile {
   p.vibratoHz = 5.0;
   p.vibratoCents = 0.0;
   p.vibratoPressureFraction = 0.10;
+  return p;
+}
+
+// A classical clarinettist. Blowing pressure: L. Fuks & J. Sundberg,
+// "Blowing pressures in bassoon, clarinet, oboe and saxophone", Acustica
+// 85, 267 (1999) (TMH-QPSR 37(3), 41, 1996), two professionals: 2-5.4
+// kPa, 2-3 kPa soft and 4-4.5 kPa loud (Fletcher, Acoustics Australia
+// 28, 53, 2000); the harness's 4 kPa sits inside, so the scale is 1.
+// Tongue: the reed returns from the tongue in about 8 ms (Li, Almeida,
+// Smith & Wolfe, JASA 140, 1089, 2016), the default. Release: by the
+// breath (kReedBreathReleaseSec, Li et al. 2016). Vibrato: the
+// classical (German / Viennese / most orchestral) clarinet plays
+// straight; a note marked vibrato is played without it (VERIFY: a
+// performance-practice statement, no measurement).
+[[nodiscard]] inline WindPlayerProfile clarinetPlayerProfile() {
+  WindPlayerProfile p;
+  p.name = "clarinet (Fuks & Sundberg 1999; straight tone)";
+  p.vibratoCents = 0.0;
+  return p;
+}
+
+// A concert saxophonist. Vibrato: 873 notes by eight concert soloists,
+// mean rate 5.96 Hz (SD 0.74) and pitch extent 37.3 c peak to peak (SD
+// 16.7), i.e. +/-18.7 c ("An analysis of concert
+// saxophone vibrato through the examination of recordings by eight
+// prominent soloists", DMA thesis, U. Cincinnati, 2013, OhioLINK
+// ucin1384428227; author VERIFY). Gilbert, Simon & Terroir, JASA
+// 118, 2649 (2005): mostly jaw ("a la machoire") vibrato, the jaw
+// moving the reed; here the bore-length swing stands in for it, and
+// vibratoCents is the swing that sounds +/-18.7 c (TUNED, see
+// kSaxVibratoSwingCents). Pressure: Fuks & Sundberg 1999, 1.5-7.8 kPa
+// (about 2 kPa soft); the harness's 4.2 kPa is inside, scale 1.
+// Swing TUNED on Silent Night (alto part, 9 vibrato notes, YIN 21 ms
+// frames): a swing of 18.7 c sounded +/-14.1 c median (the reed and bore
+// share the change), 24.8 c sounds +/-18.9 c (14.9-22.0).
+inline constexpr double kSaxVibratoSwingCents = 24.8;
+[[nodiscard]] inline WindPlayerProfile saxophonePlayerProfile() {
+  WindPlayerProfile p;
+  p.name = "alto sax (concert soloists, 5.96 Hz +/-18.7 c)";
+  p.vibratoHz = 5.96;
+  p.vibratoCents = kSaxVibratoSwingCents;
+  return p;
+}
+
+// A trombonist. The brass attack is the trumpet's (Bianco et al. 2012
+// measured trumpeters; the 0.56 kPa build-up is taken over, VERIFY for
+// trombone, whose playing pressures are lower: 1.6 kPa here). Scaled by
+// the pressure ratio would be about 0.24 kPa; the measured 0.56 kPa
+// is used as an upper bound and swept. Vibrato: the trumpet's VSCO
+// values (VERIFY: trombone players use slide or lip vibrato).
+[[nodiscard]] inline WindPlayerProfile trombonePlayerProfile() {
+  WindPlayerProfile p = trumpetPlayerProfile();
+  p.name = "trombone (trumpet attack, VERIFY)";
   return p;
 }
 
