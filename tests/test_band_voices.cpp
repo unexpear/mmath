@@ -20,6 +20,7 @@
 #include <mmathen/instruments/snare_drum.h>
 #include <mmathen/instruments/guitar_pluck.h>
 #include <mmathen/instruments/phrase_player.h>
+#include <mmathen/instruments/player_profile.h>
 
 using namespace mmathen;
 
@@ -289,6 +290,37 @@ TEST_CASE("violin, viola and arco bass bow at pitch after intonation (step 14)",
         const double heard = 0.5 * bandPeak(x, 24000, 43200, 2.0 * f * 0.99, 2.0 * f * 1.01);
         INFO(c.name << " string " << k << " level " << lv);
         CHECK(std::fabs(1200.0 * std::log2(heard / f)) < 5.0);
+      }
+    }
+  }
+}
+
+TEST_CASE("bowed player profiles stay in tune on the step-14 voicings", "[band][bowed][player]") {
+  // Each profile's own vibrato (player_profile.h) on its voicing: the
+  // power-weighted centre of H2 over 0.8-2.3 s (a symmetric vibrato's
+  // centre is its carrier; the strongest bin can be a sideband) within 5 c.
+  struct Case { const char* name; Result<StringInstrument, QuantityError> inst; BowedVoicing v; BowedPlayerProfile p; };
+  Case cases[] = {{"violin", violin(), violinBowedVoicing(), violinistPlayerProfile()},
+                  {"viola", viola(), violaBowedVoicing(), violistPlayerProfile()},
+                  {"bass", doubleBass(), doubleBassBowedVoicing(), arcoBassistPlayerProfile()}};
+  for (auto& c : cases) {
+    REQUIRE(c.inst.ok());
+    for (int k = 0; k < kStringInstrumentCourses; ++k) {
+      const double f = c.inst.value().courses[static_cast<std::size_t>(k)].tuning.frequency.value();
+      for (double lv : {0.25, 0.5}) {
+        auto note = makeBowedNote(c.inst.value(), f, 2.5, lv, SampleRateHz{kBandFs}, c.v, true, c.p.strings);
+        REQUIRE(note.ok());
+        auto voice = std::move(note).value();
+        std::vector<double> x(120000);
+        REQUIRE(voice.renderBlock(x.data(), FrameCount{x.size()}).ok());
+        double pw = 0.0, pf = 0.0;
+        for (double h = 2.0 * f * 0.98; h <= 2.0 * f * 1.02; h += 0.25) {
+          const double a = bandAmplitude(x, 38400, 72000, h);
+          pw += a * a;
+          pf += a * a * h;
+        }
+        INFO(c.name << " string " << k << " level " << lv);
+        CHECK(std::fabs(1200.0 * std::log2(0.5 * pf / pw / f)) < 5.0);
       }
     }
   }

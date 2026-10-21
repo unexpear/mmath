@@ -175,6 +175,18 @@ struct BowedPlayerProfile {
   return p;
 }
 
+// Step 14 (kept current): the violinist, violist and arco-bassist
+// profiles play on violinBowedVoicing / violaBowedVoicing /
+// doubleBassBowedVoicing, which carry measured intonation
+// (BowedVoicing::intonationCents) and a body (BowedBodySpec; the harness
+// runs BowedBody on a part's summed bridge force). The profiles' habits
+// leave bow force, speed and contact point at x1, where the intonation was
+// measured, and their vibrato is centred on the corrected pitch: with each
+// profile's vibrato the power-weighted centre of H2 over 0.8-2.3 s of an
+// open-string note sits -0.5..+0.1 c (violin), -0.5..0.0 c (viola) and
+// -3.6..+0.6 c (arco bass; the A string at level 1 is double slip, as in
+// the step-14 gate) from the open string (test_band_voices.cpp). No
+// profile value had to move.
 // Violinists and violists: R. B. MacLeod, "Influences of dynamic level and
 // pitch register on the vibrato rates and widths of violin and viola
 // players", JRME 56 (2008), doi:10.1177/0022429408323070, 48 high-school and university players:
