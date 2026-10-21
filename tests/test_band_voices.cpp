@@ -257,6 +257,12 @@ TEST_CASE("cello string loss follows absolute frequency; open strings bow at pit
   CHECK(celloBowedVoicing().t60HighHz == kCelloT60HighHz);
   CHECK(violinBowedVoicing().t60HighHz == 0.0);
   CHECK(doubleBassBowedVoicing().t60HighHz == 0.0);
+  // Step 16: only the bass attack moved; cello, violin, viola keep the cello's.
+  CHECK(doubleBassBowedVoicing().attackSeconds == kDoubleBassArcoAttackSeconds);
+  CHECK(kDoubleBassArcoAttackSeconds == 0.027);
+  CHECK(celloBowedVoicing().attackSeconds == kCelloAttackSeconds);
+  CHECK(violinBowedVoicing().attackSeconds == kCelloAttackSeconds);
+  CHECK(violaBowedVoicing().attackSeconds == kCelloAttackSeconds);
   // Re-measured intonation: each open string's bowed H2 / 2 within 4 cents
   // of the written pitch (beta 0.11, level 0.25, no vibrato).
   for (double f : {65.41, 98.0, 146.83, 220.0}) {
@@ -274,9 +280,8 @@ TEST_CASE("violin, viola and arco bass bow at pitch after intonation (step 14)",
   struct Case { const char* name; Result<StringInstrument, QuantityError> inst; BowedVoicing v; std::vector<double> levels; };
   Case cases[] = {{"violin", violin(), violinBowedVoicing(), {0.25, 0.5, 1.0}},
                   {"viola", viola(), violaBowedVoicing(), {0.25, 0.5, 1.0}},
-                  // Bass A string at level 1.0 falls into double slip (H2 over H1);
-                  // the gate covers 0.25 and 0.5 (see the report of step 14).
-                  {"bass", doubleBass(), doubleBassBowedVoicing(), {0.25, 0.5}}};
+                  // Bass at full level too since the step 16 attack (0.027 s).
+                  {"bass", doubleBass(), doubleBassBowedVoicing(), {0.25, 0.5, 1.0}}};
   for (auto& c : cases) {
     REQUIRE(c.inst.ok());
     for (int k = 0; k < kStringInstrumentCourses; ++k) {

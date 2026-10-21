@@ -228,6 +228,11 @@ struct BowedPlayerProfile {
 // Thibeault, American String Teacher 47, 1997); the students' mean is
 // kept so all three bowed profiles come from like players. Timing: as the
 // pizzicato bassist (Goebl & Palmer lower bound, VERIFY).
+// Step 16: the bow attack is the voicing's (doubleBassBowedVoicing,
+// kDoubleBassArcoAttackSeconds 0.027 s TUNED, fails the +-10 % robustness
+// map 23/351, /workspace/s16/NOTES.md); this player brings no attack of
+// their own, so no habit changes. With it the A string plays at pitch at
+// full level and the full-level exclusion is gone from the pitch test.
 [[nodiscard]] inline BowedPlayerProfile arcoBassistPlayerProfile() {
   BowedPlayerProfile p;
   p.name = "arco bassist (2024 double bass vibrato study)";
