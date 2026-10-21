@@ -81,6 +81,14 @@ TEST_CASE("a glockenspiel note sounds its pitch, rings, and the mallet leaves", 
   CHECK(late > 0.01 * early);  // a glockenspiel rings for seconds
 }
 
+TEST_CASE("glockenspiel: fixed off-centre strike reaches mode 2 on treble bars", "[bar][glock]") {
+  const double lo = glockenspielBar(784.0).lengthM, hi = glockenspielBar(4186.0).lengthM;
+  CHECK(glockenspielStrikeFraction(lo) > glockenspielStrikeFraction(hi));
+  CHECK(glockenspielStrikeFraction(lo) < 0.5);
+  CHECK(glockenspielStrikeFraction(hi) >= 0.25);
+  CHECK(std::fabs((0.5 - glockenspielStrikeFraction(lo)) * lo - kGlockStrikeOffCentreM) < 1e-12);
+}
+
 TEST_CASE("celesta: resonator lifts the fundamental and the note rings at pitch", "[bar][celesta]") {
   const double fs = 48000.0, hz = 523.25;
   auto with = celestaNote(hz, 1.0, SampleRateHz{fs});

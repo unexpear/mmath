@@ -5,6 +5,7 @@
 // Sounding pitch is the bar's first flexural mode; the bar length is
 // solved for it with a fixed section. Constants are labelled at each line.
 
+#include <algorithm>
 #include <cmath>
 
 #include "struck_bar.h"
@@ -28,15 +29,26 @@ inline constexpr double kGlockSupportDashpot = 0.6;      // N s/m per support, T
 // Mallet: a "medium" head, radius 12.5 mm, 10 g moving mass (VERIFY).
 // Head modulus TUNED to the VSCO glock_medium spectra: polycarbonate
 // (2.4 GPa, contact 0.17 ms) put mode 3 21 dB over the fundamental at
-// G5; 0.24 GPa (hard rubber range, VERIFY) gives a 0.43 ms contact and
-// the fundamental within 4 dB of the strongest partial on every bar.
+// G5; 0.24 GPa (hard rubber range, VERIFY) gave a 0.43 ms contact and
+// the fundamental within 4 dB of the strongest partial on every bar but
+// left C6-C7 too dark. 0.36 GPa with the fixed off-centre strike below
+// scores best over the six bars (mode 1, 2, 3 levels and centroid;
+// tools/demo/glock glgrid.py), TUNED.
 inline constexpr double kGlockMalletRadiusM = 12.5e-3;   // VERIFY
 inline constexpr double kGlockMalletMassKg = 0.010;      // VERIFY
-inline constexpr double kGlockMalletYoungsPa = 0.24e9;   // TUNED
+inline constexpr double kGlockMalletYoungsPa = 0.36e9;   // TUNED
 inline constexpr double kGlockMalletPoisson = 0.4;       // VERIFY
 inline constexpr double kGlockMalletLambda = 0.2;        // s/m, TUNED
-// Players strike near the bar centre, slightly off it (UNSOURCED values).
-inline constexpr double kGlockStrikeFraction = 0.45;     // UNSOURCED (0.40 put mode 2 10 dB over the G5 fundamental)
+// Players strike near the bar centre, a fixed distance off it: the
+// mallet head lands about 14 mm from the centre on every bar, so short
+// treble bars are struck relatively farther out and their mode 2 (node
+// at the centre) is excited more (UNSOURCED gesture; distance TUNED, 0.45 L
+// on every bar left the C6-C7 mode 2 at -22 dB or absent vs -2 to -27).
+inline constexpr double kGlockStrikeOffCentreM = 0.014;  // UNSOURCED, TUNED
+inline constexpr double kGlockStrikeFraction = 0.45;     // the old fixed fraction, kept for callers
+[[nodiscard]] inline double glockenspielStrikeFraction(double lengthM) {
+  return std::max(0.25, 0.5 - kGlockStrikeOffCentreM / lengthM);
+}
 inline constexpr double kGlockStrikeOffset = 0.15;       // of the width, UNSOURCED
 
 [[nodiscard]] inline BarSpec glockenspielBar(double hz) {
@@ -71,8 +83,9 @@ inline constexpr double kGlockStrikeOffset = 0.15;       // of the width, UNSOUR
     l.polarRad = constants::pi / 6.0;
     l.azimuthRad = constants::pi / 6.0;
   }
-  return StruckBarVoice::create(glockenspielBar(hz), glockenspielLosses(), glockenspielMallet(), speedMps,
-                                kGlockStrikeFraction, kGlockStrikeOffset, rate, l);
+  const BarSpec bar = glockenspielBar(hz);
+  return StruckBarVoice::create(bar, glockenspielLosses(), glockenspielMallet(), speedMps,
+                                glockenspielStrikeFraction(bar.lengthM), kGlockStrikeOffset, rate, l);
 }
 
 }  // namespace mmathen

@@ -1,6 +1,6 @@
 // glock1: glockenspiel notes for the pro check against VSCO 2 CE
 // glock_medium (sounding G5 C6 G6 C7 G7 C8 = the files' G4..C7 names).
-//   glock1 out.f64 [speed m/s] [seconds per note]   (env GQ, GC, GL, GS override Q_int, dashpot, lambda, strike)
+//   glock1 out.f64 [speed m/s] [seconds per note]   (env GQ, GC, GL, GS override Q_int, dashpot, lambda, strike; GX off-centre metres)
 #include <mmathen/instruments/glockenspiel.h>
 #include <cstdio>
 #include <cstdlib>
@@ -18,7 +18,7 @@ int main(int argc, char** argv) {
     BarLosses l = glockenspielLosses(); l.internalQ = E("GQ", l.internalQ); l.supportDashpotNsPerM = E("GC", l.supportDashpotNsPerM);
     BarMallet ml = glockenspielMallet(); ml.dampingPerMeterPerSecond = E("GL", ml.dampingPerMeterPerSecond); ml.stiffness *= E("GK", 1.0); ml.massKg = E("GM", ml.massKg);
     BarListener li; li.polarRad = E("GP", 30.0) * constants::pi / 180.0; li.azimuthRad = E("GA", 30.0) * constants::pi / 180.0; li.distanceM = E("GR", 1.0);
-    auto v = StruckBarVoice::create(glockenspielBar(hz), l, ml, speed, E("GS", kGlockStrikeFraction), kGlockStrikeOffset, SampleRateHz{fs}, li);
+    auto v = StruckBarVoice::create(glockenspielBar(hz), l, ml, speed, (E("GX", 0.0) > 0.0 ? 0.5 - E("GX", 0.0) / glockenspielBar(hz).lengthM : E("GS", glockenspielStrikeFraction(glockenspielBar(hz).lengthM))), kGlockStrikeOffset, SampleRateHz{fs}, li);
     if (!v.ok()) { std::fprintf(stderr, "create %d at %d\n", (int)v.error(), m); return 2; }
     auto voice = std::move(v).value();
     std::vector<double> y((size_t)(sec * fs));
