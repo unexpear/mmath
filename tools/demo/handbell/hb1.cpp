@@ -1,5 +1,5 @@
 // hb1: handbells F3, C6, G6, C7 (= Freesound 557142 F3 and radwoc c1, g1, c2; CC0).
-//   hb1 out.f64 [speed] [sec]; env HK/HM clapper stiffness/mass (0 = engine defaults), HKB/HMB size exponents
+//   hb1 out.f64 [speed] [sec]; env HK/HM clapper stiffness/mass (0 = engine defaults), HKB/HMB size exponents, HP listener angle from the axis (deg)
 #include <mmathen/instruments/handbell.h>
 #include <cmath>
 #include <cstdio>
@@ -15,7 +15,7 @@ int main(int argc, char** argv) {
   for (double hz : hzs) {
     const double sc = hz / 174.61;
     auto v = HandbellVoice::create(hz, speed, SampleRateHz{fs}, 1.0, E("HK", 0.0) * std::pow(sc, E("HKB", 0.0)), 4,
-                                   E("HM", 0.0) * std::pow(sc, -E("HMB", 0.0)));
+                                   E("HM", 0.0) * std::pow(sc, -E("HMB", 0.0)), E("HP", 90.0) * constants::pi / 180.0);
     if (!v.ok()) { std::fprintf(stderr, "create %d\n", (int)v.error()); return 2; }
     auto voice = std::move(v).value();
     std::vector<double> y((size_t)(sec * fs));

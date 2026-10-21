@@ -23,12 +23,25 @@
 // counting, Morse and Ingard sec. 7.2; VERIFY prefactor), saturating above
 // ka = 1. Rossing and
 // Sathoff measured each mode radiating also at twice its frequency
-// (strongest on axis). Here that comes from the mouth's area change: a rim
-// r(theta) = a + q cos(m theta) encloses pi a^2 + (pi/2) q^2, so the
-// mouth breathes a volume (pi/2) q^2 h_e (h_e an effective rim height,
-// VERIFY) and radiates as a monopole, rho/(4 pi r) d^2/dt^2 of it: second
-// harmonic from (2,0), sixth from (3,0) (each mode's own q^2; cross terms
-// between modes of different m vanish around the rim).
+// (strongest on axis); its intensity grows as the fourth power of the
+// vibration amplitude (Rossing and Perrin 1987, sec. 5.3), so its
+// pressure is quadratic in q. Here that comes from the mouth's area
+// change. An inextensional ring mode (midline strain v' + w = 0:
+// radial q cos(m theta), tangential -(q/m) sin(m theta)) encloses
+// pi a^2 - (pi/2)(1 - 1/m^2) q^2 (second order; checked numerically),
+// so the bell breathes a volume -(pi/2)(1 - 1/m^2) q^2 h_e, with h_e
+// the height over which the mode's q^2 acts (a linear fall of q from
+// rim to crown over a height H about the diameter gives h_e = H/3 =
+// 2a/3, VERIFY), and radiates as a monopole, rho/(4 pi r) d^2/dt^2 of
+// it: second harmonic from (2,0), sixth from (3,0) (each mode's own q^2;
+// cross terms between modes of different m vanish around the rim).
+//
+// Directivity. Direct radiation of an (m, n) mode varies as sin^m of the
+// angle from the bell axis (the cos(m phi) multipole's associated
+// Legendre P_m^m), zero on the axis; the breathing monopole is omni.
+// Rossing and Sathoff: first and third harmonics strongest at right
+// angles to the axis, second and sixth along it. The listener angle is
+// an argument (default 90 deg, side on).
 //
 // Losses. A constant decay rate per bell (measured: F3 handbell sigma
 // 0.35-0.39 1/s on (2,0), (3,0) and the 6.1 mode), scaled with the
@@ -71,7 +84,7 @@ inline constexpr std::array<HandbellMode, 8> kHandbellModes = {{
 inline constexpr double kHandbellC5DiameterM = 0.114;  // VERIFY
 inline constexpr double kHandbellC5MassKg = 0.45;      // VERIFY
 inline constexpr double kHandbellModalMassFraction = 0.25;  // VERIFY
-inline constexpr double kHandbellRimHeightFraction = 0.25;  // h_e / a, VERIFY
+inline constexpr double kHandbellRimHeightFraction = 2.0 / 3.0;  // h_e / a = H/3 with H = 2a, VERIFY
 inline constexpr double kHandbellSigmaAtF3 = 0.37;     // 1/s, TUNED (measured)
 // Clapper: 25 g head at F3 (VERIFY) on a felt pad, K TUNED to the
 // (3,0)/(2,0) balance of the F3 recording (-6 dB; model -4) at 1 m/s.
@@ -97,10 +110,11 @@ class HandbellVoice final : public IVoice {
   [[nodiscard]] static Result<HandbellVoice, QuantityError> create(
       double f1, double speedMps, SampleRateHz rate, double distanceM = 1.0,
       double clapperStiffness = 0.0, int oversample = 4,
-      double clapperMassKg = 0.0) {
+      double clapperMassKg = 0.0, double listenerPolarRad = constants::pi / 2.0) {
     using R = Result<HandbellVoice, QuantityError>;
     if (!(f1 > 20.0) || !(speedMps > 0.0) || !(rate.value() > 0.0) || !(distanceM > 0.0) ||
-        !(clapperStiffness >= 0.0) || oversample < 1 || !(clapperMassKg >= 0.0))
+        !(clapperStiffness >= 0.0) || oversample < 1 || !(clapperMassKg >= 0.0) ||
+        !std::isfinite(listenerPolarRad))
       return R::failure(QuantityError::InvalidArgument);
     HandbellVoice v;
     v.rate_ = rate;
@@ -136,6 +150,8 @@ class HandbellVoice final : public IVoice {
       o.radiate = rho0 * a * a * h / std::sqrt(1.0 + h * h) /
                   (4.0 * constants::pi * distanceM);
       if (hm.n > 0) o.radiate *= 0.5;  // a nodal circle splits the rim region (VERIFY)
+      o.radiate *= std::pow(std::fabs(std::sin(listenerPolarRad)), hm.m);
+      o.breathe = 1.0 - 1.0 / (hm.m * hm.m);
       v.modes_.push_back(o);
     }
     v.reset();
@@ -172,8 +188,8 @@ class HandbellVoice final : public IVoice {
           if (!st.ok()) return R::failure(st.error());
           m.s = st.value();
           p += m.radiate * acc;
-          // d^2/dt^2 of (pi/2) q^2 h_e = pi h_e (q'^2 + q q'')
-          breath += constants::pi * he_ * (m.s.velocity * m.s.velocity + m.s.displacement * acc);
+          // d^2/dt^2 of -(pi/2)(1 - 1/m^2) q^2 h_e = -pi (1 - 1/m^2) h_e (q'^2 + q q'')
+          breath -= constants::pi * m.breathe * he_ * (m.s.velocity * m.s.velocity + m.s.displacement * acc);
         }
         p += monopole_ * breath;
         vy_ += -F / clapperMass_ * dt_;
@@ -196,7 +212,7 @@ class HandbellVoice final : public IVoice {
 
  private:
   struct Mode {
-    double omega = 0.0, sigma = 0.0, mass = 1.0, radiate = 0.0;
+    double omega = 0.0, sigma = 0.0, mass = 1.0, radiate = 0.0, breathe = 0.75;
     int m = 2;
     OscillatorState s;
   };
