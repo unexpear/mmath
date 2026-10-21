@@ -44,6 +44,10 @@ struct WindPlayerProfile {
   // the release (Bianco's Segment B; the paper gives its trend only,
   // shorter for louder notes, Fig. 8). VERIFY.
   double attackDropSec = 0.0;
+  // When > 0, the build-up scales with the note's playing pressure:
+  // attackBuildUpPa at this pressure (the measured note's), in proportion
+  // elsewhere. 0 = the same build-up on every note.
+  double attackBuildUpRefPa = 0.0;
   // --- Release -------------------------------------------------------
   double brassBreathReleaseSec = 0.12;  // kBrassBreathReleaseSec (TUNED to Lick_Trumpet)
   // --- Vibrato -------------------------------------------------------
@@ -85,7 +89,17 @@ struct WindPlayerProfile {
 [[nodiscard]] inline WindPlayerProfile trumpetPlayerProfile() {
   WindPlayerProfile p;
   p.name = "trumpet (Bianco 2012 professional)";
-  p.attackBuildUpPa = 560.0;
+  // Mean + 1 SD of Bianco's concatenated build-up (0.56 + 0.48 kPa): the
+  // most proficient of the three players built the most (sec. 4.1).
+  // JB sweep (jb14): 0.56 / 1.0 / 1.5 / 2.5 kPa, slowest leap attack
+  // 107 / 89 / 83 / 71 ms, silent starts 1 / 0 / 0 / 0, steady worst
+  // -36 / -35 / -34 / -36 c; 1.5 and 2.5 kPa lie outside one SD.
+  p.attackBuildUpPa = 1040.0;
+  // ... at the C5 mf playing pressure of this model (9.5 Pa/Hz x 523 Hz),
+  // in proportion on other notes (UNSOURCED: Bianco report one level per
+  // player, not per note). A fixed 1.04 kPa over-blew D4 (2.4 kPa) into a
+  // 155 ms attack; scaled: slowest leap 83 ms, 0 silent, steady -35 c.
+  p.attackBuildUpRefPa = 4970.0;
   p.attackDropSec = 0.060;  // VERIFY: Bianco Fig. 8 trend only; JB sweep 15/30/60 ms, 60 kept the YIN gate (steady worst -37 c vs -55 c at 30 ms)
   return p;
 }
@@ -150,7 +164,7 @@ inline constexpr double kSaxVibratoSwingCents = 24.8;
 }
 
 // A trombonist. The brass attack is the trumpet's (Bianco et al. 2012
-// measured trumpeters; the 0.56 kPa build-up is taken over, VERIFY for
+// measured trumpeters; their mean 0.56 kPa build-up is taken over, VERIFY for
 // trombone, whose playing pressures are lower: 1.6 kPa here). Scaled by
 // the pressure ratio would be about 0.24 kPa; the measured 0.56 kPa
 // is used as an upper bound and swept. Vibrato: the trumpet's VSCO
@@ -158,6 +172,8 @@ inline constexpr double kSaxVibratoSwingCents = 24.8;
 [[nodiscard]] inline WindPlayerProfile trombonePlayerProfile() {
   WindPlayerProfile p = trumpetPlayerProfile();
   p.name = "trombone (trumpet attack, VERIFY)";
+  p.attackBuildUpPa = 560.0;  // Bianco mean (the trumpet profile takes mean + 1 SD)
+  p.attackBuildUpRefPa = 0.0;
   return p;
 }
 

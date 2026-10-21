@@ -381,10 +381,13 @@ TEST_CASE("wind player profile: default plays as before, trumpet builds pressure
   const auto hop = [](double t) { return static_cast<std::size_t>(t * 48000.0 / 64.0); };
   CHECK(plain[hop(0.299)] == 3700.0);                                  // no build-up by default
   CHECK(built[hop(0.15)] == 3700.0);                                   // mid-note: playing pressure
-  CHECK(built[hop(0.299)] > 3700.0 + 0.9 * tp.attackBuildUpPa);        // end of the closure (Bianco 2012)
-  CHECK(built[hop(0.301)] > 3700.0 + 0.9 * tp.attackBuildUpPa);        // falls after the release
+  const double amount = tp.attackBuildUpPa * 3700.0 / tp.attackBuildUpRefPa;  // scales with playing pressure
+  CHECK(built[hop(0.299)] > 3700.0 + 0.9 * amount);                    // end of the closure (Bianco 2012)
+  CHECK(built[hop(0.299)] < 3700.0 + 1.0 * amount + 1e-9);
+  CHECK(built[hop(0.301)] > 3700.0 + 0.9 * amount);                    // falls after the release
   CHECK(built[hop(0.30 + tp.attackDropSec + 0.01)] == 3700.0);         // back to the playing pressure
-  CHECK(tp.attackBuildUpPa == 560.0);
+  CHECK(tp.attackBuildUpPa == 1040.0);  // Bianco 2012 mean + 1 SD
+  CHECK(tp.attackBuildUpRefPa == 4970.0);
 }
 
 TEST_CASE("wind player profiles carry the measured values", "[band][player]") {
@@ -393,7 +396,7 @@ TEST_CASE("wind player profiles carry the measured values", "[band][player]") {
   CHECK(fl.vibratoHz == 5.0); CHECK(fl.vibratoPressureFraction == 0.10); CHECK(fl.vibratoCents == 0.0);  // Fletcher 1975
   CHECK(cl.vibratoCents == 0.0);                                                                       // straight tone
   CHECK(sx.vibratoHz == 5.96); CHECK(sx.vibratoCents == kSaxVibratoSwingCents);                       // concert soloists
-  CHECK(tb.attackBuildUpPa == trumpetPlayerProfile().attackBuildUpPa);
+  CHECK(tb.attackBuildUpPa == 560.0); CHECK(tb.attackBuildUpRefPa == 0.0);
   CHECK(d.breathMaxNoteFraction == 0.5);
 }
 

@@ -84,7 +84,7 @@ int main(int argc, char** argv) {
   if (const char* pf = std::getenv("WP_PROFILE"); pf && std::strcmp(pf, "trombone") == 0) prof = trombonePlayerProfile();
   prof.vibratoHz = env("WP_VHZ", prof.vibratoHz);
   prof.vibratoPressureFraction = env("WP_VPF", prof.vibratoPressureFraction); prof.vibratoCents = env("WP_VC", prof.vibratoCents); prof.breathMarginM3 = env("WP_BM", prof.breathMarginM3);
-  prof.attackBuildUpPa = env("WP_BUILD", prof.attackBuildUpPa); prof.brassVibratoCents = env("WP_BVC", prof.brassVibratoCents); prof.attackDropSec = env("WP_DROP", prof.attackDropSec);
+  prof.attackBuildUpPa = env("WP_BUILD", prof.attackBuildUpPa); prof.brassVibratoCents = env("WP_BVC", prof.brassVibratoCents); prof.attackDropSec = env("WP_DROP", prof.attackDropSec); prof.attackBuildUpRefPa = env("WP_BREF", prof.attackBuildUpRefPa);
   PlayerAirwaySpec airSpec = prof.airwaySpec(); airSpec.tongueReleaseSeconds = env("WP_TREL", airSpec.tongueReleaseSeconds); PlayerAirway airway(airSpec);
   if (which == "clarinet") {
     const auto song = songFor(excerpts::kProClarinet); T = total(song);

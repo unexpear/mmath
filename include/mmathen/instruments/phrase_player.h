@@ -314,10 +314,13 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     if (player.attackBuildUpPa > 0.0 && airway != nullptr && !note.rest && note.tongue && sounding > 0 &&
         !notes[static_cast<std::size_t>(sounding - 1)].rest) {
       const double release = note.startSec, closure = static_cast<double>(kTongue) / rateHz;
+      const double amount = player.attackBuildUpRefPa > 0.0
+                                ? player.attackBuildUpPa * note.pressure * player.pressureScale / player.attackBuildUpRefPa
+                                : player.attackBuildUpPa;
       if (tongueShut && time < release) {
-        buildUp = player.attackBuildUpPa * std::clamp((time - (release - closure)) / closure, 0.0, 1.0);
+        buildUp = amount * std::clamp((time - (release - closure)) / closure, 0.0, 1.0);
       } else if (time >= release && player.attackDropSec > 0.0 && time < release + player.attackDropSec) {
-        buildUp = player.attackBuildUpPa * (1.0 - (time - release) / player.attackDropSec);
+        buildUp = amount * (1.0 - (time - release) / player.attackDropSec);
       }
     }
     if (!(voice.setBlowingPressure(breathOff ? 0.0 : note.pressure * player.pressureScale * env + buildUp))) return {};
