@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
     }
     double start = 0, heldM = base; BrassFinger held = kTromboneFingers[0];
     for (auto& s : song) {
-      BrassFinger r = s.hertz > 0 ? tromboneFinger(s.hertz) : held; if (const char* rf = std::getenv("WP_ROWFILE"); rf && s.hertz > 0) { std::ifstream in(rf); double h, l; while (in >> h >> l) if (std::fabs(h - s.hertz) < 0.05) r.length = l; }
+      BrassFinger r = s.hertz > 0 ? tromboneFinger(s.hertz) : held; if (const char* rf = std::getenv("WP_ROWFILE"); rf && s.hertz > 0) { std::ifstream in(rf); std::string line; while (std::getline(in, line)) { std::istringstream ls(line); double h, l; int m; if (!(ls >> h >> l)) continue; if (std::fabs(h - s.hertz) < 0.05) { r.length = l; if (ls >> m) r.mode = m; } } }
       if (measured) {
         if (s.hertz > 0) {
           int bestS = 0; double bestErr = 1e9;

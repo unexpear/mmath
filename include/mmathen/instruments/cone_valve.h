@@ -717,9 +717,15 @@ class ConeValveVoice final : public IVoice {
   // Here the gap opening is set by the outward mode (the one-mass lip,
   // unchanged) plus a second oscillator of the same mass at ratio times
   // the outward resonance, quality q, driven by minus gain times the
-  // pressure force. Newton prints no amplitude for the weaker peak nor
-  // its Q; gain and q are the caller's. Off (bit-identical) by default;
-  // ratio <= 0 turns it off.
+  // pressure force. Newton's thesis (Edinburgh 2009, sec. 4.4, figs.
+  // 4.10-4.13) fits the upper human peak at Q 2-2.5 (AJ Bb1), ~5 (AJ
+  // Bb2), 2.8-5 (TJ Bb2), 4-5 (TJ F3), outward Q 1.5-2.4; TJ Bb2 has the
+  // pair at 55-58 and 165-173 Hz around 116 Hz played, TJ F3 at 100 and
+  // 200 Hz around 170 Hz. No amplitude is printed; the figures' magnitude
+  // axes (labelled dB, VERIFY) put the upper peak 1.2-1.5 dB under the
+  // outward one. In this model the peak ratio is gain q w1^2 / (Q1 w2^2).
+  // Measured only from Bb1 to F3. gain and q are the caller's. Off
+  // (bit-identical) by default; ratio <= 0 turns it off.
   bool setInwardLipMode(double ratio, double q, double gain) {
     if (!lip_ || as_.on || !std::isfinite(ratio) || !std::isfinite(q) || !std::isfinite(gain))
       return false;
