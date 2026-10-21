@@ -1,5 +1,5 @@
 // hb1: handbells F3, C6, G6, C7 (= Freesound 557142 F3 and radwoc c1, g1, c2; CC0).
-//   hb1 out.f64 [speed] [sec]; env HK/HM clapper stiffness/mass (0 = engine defaults), HKB/HMB size exponents, HP listener angle from the axis (deg)
+//   hb1 out.f64 [speed] [sec]; env HK/HM clapper stiffness/mass (0 = engine defaults), HKB/HMB size exponents, HP listener angle from the axis (deg), HS swing speed m/s (setSwing; 0 = fixed clapper speed, -1 = kHandbellRingerSwingMps)
 #include <mmathen/instruments/handbell.h>
 #include <cmath>
 #include <cstdio>
@@ -18,10 +18,12 @@ int main(int argc, char** argv) {
                                    E("HM", 0.0) * std::pow(sc, -E("HMB", 0.0)), E("HP", 90.0) * constants::pi / 180.0);
     if (!v.ok()) { std::fprintf(stderr, "create %d\n", (int)v.error()); return 2; }
     auto voice = std::move(v).value();
+    const double hs = E("HS", 0.0) < 0.0 ? kHandbellRingerSwingMps : E("HS", 0.0);
+    if (hs > 0.0 && !voice.setSwing(hs)) return 4;
     std::vector<double> y((size_t)(sec * fs));
     if (!voice.renderBlock(y.data(), FrameCount{y.size()}).ok()) return 3;
     double pk = 0; for (double s : y) pk = std::max(pk, std::fabs(s));
-    std::printf("f1 %.0f modes %zu contact %.2f ms peak %.3g Pa\n", hz, voice.modeCount(), voice.contactSeconds() * 1e3, pk);
+    std::printf("f1 %.0f modes %zu contact %.2f ms peak %.3g Pa strikes %d strike %.2f m/s\n", hz, voice.modeCount(), voice.contactSeconds() * 1e3, pk, voice.strikeCount(), voice.strikeSpeedMps());
     all.insert(all.end(), y.begin(), y.end());
   }
   FILE* o = std::fopen(argv[1], "wb"); std::fwrite(all.data(), 8, all.size(), o); std::fclose(o);

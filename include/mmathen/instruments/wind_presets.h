@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // Wind presets that define the instruments of the wind excerpts and songs:
 // the Bach 37 / Bach 42 bells, the phrase trumpet and trombone bores and
@@ -432,6 +432,12 @@ struct BrassFinger {
       // D5 for the song passages: the Db5 row scaled, then lengthened by the
       // +33 cents that scaling measured.
       {587.33, 1.6435, 6},
+      // Silent Night alto (MEASURED, YIN on the phrase render, wp1 trombone):
+      // the scaled neighbours read B3 -32, C4 -14, B4 +44 cents. C4 moved
+      // by its cents, (L + 0.60) x 2^(c/1200); B3 and B4 interpolated from
+      // length sweeps (B3: 1.92 m +27 c, 1.98 m -20 c; B4: 1.2226 m +44 c,
+      // 1.2690 m -18 c). Now B3 0, C4 +3, B4 0 cents.
+      {246.94, 1.9545, 3}, {261.63, 1.8264, 3}, {493.88, 1.2554, 4},
   };
   inline BrassFinger tromboneFinger(double hertz) {
       for (const BrassFinger& row : kTromboneFingers)

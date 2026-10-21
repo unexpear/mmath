@@ -249,6 +249,12 @@ TEST_CASE("handbell: a swung clapper strikes by momentum, its spring returns it"
   CHECK(v1 < 1.0);
   CHECK(v2 > v1);
   CHECK(p2 > p1);
+  // The ringer's stroke (kHandbellRingerSwingMps): one strike on F3, the
+  // stop leaving 1.30 m/s at the rim (the swing sweep in handbell.h).
+  auto [nr, vr, pr] = ring(kHandbellRingerSwingMps, kHandbellSwingStopSeconds, kHandbellClapperSpringHz, kHandbellClapperSpringDamping);
+  CHECK(nr == 1);
+  CHECK(vr > 1.2);
+  CHECK(vr < 1.4);
   // A swing too gentle for the spring never reaches the bronze.
   auto [n0, v0, p0] = ring(0.5, kHandbellSwingStopSeconds, kHandbellClapperSpringHz, kHandbellClapperSpringDamping);
   CHECK(n0 == 0);

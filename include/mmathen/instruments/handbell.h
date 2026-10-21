@@ -110,6 +110,13 @@ inline constexpr double kHandbellClapperGapM = 0.012;        // UNSOURCED
 inline constexpr double kHandbellClapperSpringHz = 6.0;      // UNSOURCED
 inline constexpr double kHandbellClapperSpringDamping = 0.3; // damping ratio, UNSOURCED
 inline constexpr double kHandbellSwingStopSeconds = 0.030;   // UNSOURCED
+// A ringer's swing for a full (mf) stroke. TUNED, UNSOURCED as a speed:
+// against the rung Freesound 557142 F3 (spectral centroid 324 Hz, H3 -6 dB,
+// 4.85 f1 -23 dB) the swing sweep 1.0 / 1.5 / 2.5 / 3.0 / 4.0 m/s gives
+// F3 centroid 186, 237, 296, 317, 356 Hz (fixed 1 m/s strike:
+// 272 Hz); at 3.0 m/s the stop leaves 1.30 m/s at the rim, one strike on
+// F3-C7, H3 -2 dB, 4.83 f1 -21 dB. 4.0 m/s strikes C6-C7 twice.
+inline constexpr double kHandbellRingerSwingMps = 3.0;
 inline double handbellClapperMassKg(double f1) {
   return kHandbellClapperMassKg * std::pow(f1 / kHandbellClapperRefHz, -1.5);
 }

@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
   prof.vibratoHz = env("WP_VHZ", prof.vibratoHz);
   prof.vibratoPressureFraction = env("WP_VPF", prof.vibratoPressureFraction); prof.vibratoCents = env("WP_VC", prof.vibratoCents); prof.breathMarginM3 = env("WP_BM", prof.breathMarginM3);
   prof.attackBuildUpPa = env("WP_BUILD", prof.attackBuildUpPa); prof.brassVibratoCents = env("WP_BVC", prof.brassVibratoCents); prof.attackDropSec = env("WP_DROP", prof.attackDropSec); prof.attackBuildUpRefPa = env("WP_BREF", prof.attackBuildUpRefPa);
-  PlayerAirwaySpec airSpec = prof.airwaySpec(); airSpec.tongueReleaseSeconds = env("WP_TREL", airSpec.tongueReleaseSeconds); PlayerAirway airway(airSpec);
+  PlayerAirwaySpec airSpec = prof.airwaySpec(); airSpec.tongueReleaseSeconds = env("WP_TREL", airSpec.tongueReleaseSeconds); airSpec.initialLungVolumeM3 = env("WP_LUNG0", airSpec.initialLungVolumeM3); PlayerAirway airway(airSpec);
   if (which == "clarinet") {
     const auto song = songFor(excerpts::kProClarinet); T = total(song);
     double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, clarinetSoundingLengthMeters(s.hertz));
@@ -171,7 +171,7 @@ int main(int argc, char** argv) {
     }
     double start = 0, heldM = base; BrassFinger held = kTromboneFingers[0];
     for (auto& s : song) {
-      const BrassFinger r = s.hertz > 0 ? tromboneFinger(s.hertz) : held;
+      BrassFinger r = s.hertz > 0 ? tromboneFinger(s.hertz) : held; if (const char* rf = std::getenv("WP_ROWFILE"); rf && s.hertz > 0) { std::ifstream in(rf); double h, l; while (in >> h >> l) if (std::fabs(h - s.hertz) < 0.05) r.length = l; }
       if (measured) {
         if (s.hertz > 0) {
           int bestS = 0; double bestErr = 1e9;
