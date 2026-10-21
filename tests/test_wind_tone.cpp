@@ -1761,11 +1761,13 @@ TEST_CASE("blown winds reach a periodic limit cycle", "[contact][wind]") {
   // 80 ms on a 40 ms rise with the lip free; the old 25 ms snap held
   // near 60 ms. Trombone measured 345 ms on the 128 ms rise. The wider
   // bore and lighter lip damping move that hold; the pressure law is
-  // unchanged.
+  // unchanged. With the bell return aligned to the steepened wave
+  // (steepReturn_, cone_valve.h) the trombone 1 dB hold measured 435 ms
+  // (MSVC run, winds trumpet fix); its pitch and spectrum checks hold.
   CHECK(trumpetMs > 50.0);
   CHECK(trumpetMs < 180.0);
   CHECK(tromboneMs > 140.0);
-  CHECK(tromboneMs < 400.0);
+  CHECK(tromboneMs < 500.0);
 
   const double playbackLufs[] = {clarinetLufs, saxLufs, fluteLufs, trumpetLufs,
                                  tromboneLufs};
@@ -2053,7 +2055,7 @@ TEST_CASE("wind excerpts are audition passages", "[contact][wind][phrase]") {
     for (const auto& src : excerpts::kTrumpet) {
       const Finger row = src.hertz > 0.0 ? find(src.hertz) : held;
       const double lipHz =
-          row.mode == 0 ? 0.75 * speed / row.length : trumpetLipPartialRatio(row.mode) * conePartial(row.length, 0.26, row.mode);
+          row.mode == 0 ? 0.75 * speed / row.length : trumpetLipRatio(row) * conePartial(row.length, 0.26, row.mode);
       push(notes, src, start, row.length, lipHz, 2800.0, 0.0, 25.0, 0.01);
       notes.back().peakHz = impedancePeakHz(row.length, 0.26, row.mode, row.hertz);
       if (src.hertz > 0.0) held = row;
@@ -2287,7 +2289,7 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
     for (const auto& src : song) {
       const Finger row = src.hertz > 0.0 ? find(src.hertz) : held;
       const double lipHz =
-          row.mode == 0 ? 0.75 * speed / row.length : trumpetLipPartialRatio(row.mode) * conePartial(row.length, 0.26, row.mode);
+          row.mode == 0 ? 0.75 * speed / row.length : trumpetLipRatio(row) * conePartial(row.length, 0.26, row.mode);
       if (measured)
         push(notes, src, start, row.length,
              voice.tuneAdachiSatoLipHz(src.hertz > 0.0 ? src.hertz : row.hertz, row.length,
@@ -2687,7 +2689,7 @@ TEST_CASE("brass graded notes ring when the breath stops", "[contact][wind]") {
         const Finger row =
             find(trumpetRows, static_cast<int>(std::size(trumpetRows)), src.hertz);
         const double lip = row.mode == 0 ? 0.75 * speed / row.length
-                                         : trumpetLipPartialRatio(row.mode) * conePartial(row.length, 0.26, row.mode);
+                                         : trumpetLipRatio(row) * conePartial(row.length, 0.26, row.mode);
         const double peak = impedancePeakHz(row.length, 0.26, row.mode, src.hertz);
         const auto frames = static_cast<std::uint64_t>(std::llround(src.seconds * kFs));
         ValveBlow blow = sustained(2800.0, 10000.0, kTrumpetAttack);
@@ -3305,7 +3307,74 @@ TEST_CASE("Burgers line: Fubini harmonics before the shock, no new extrema", "[w
   }
 }
 
-TEST_CASE("trumpet: opt-in Burgers steepening brightens the radiated note", "[wind][trumpet][burgers]") {
+TEST_CASE("trumpet: the Q 4 lip starts a tongued note on its pitch", "[wind][trumpet][lip]") {
+  // Two tongued notes from the airway, A4 then C5, the Lick excerpt's
+  // worst attack. Pass 0 is the old fixed lip damping (Q ~ 85).
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  auto trumpet = unwrap(makeTrumpet(phraseTrumpetSpec(speed, kAir, kTemp)));
+  double attackCents[2] = {0, 0}, steadyCents[2] = {0, 0};
+  for (int pass = 0; pass < 2; ++pass) {
+    ValveBlow lip = sustained(2800.0, 10000.0, kTrumpetAttack);
+    lip.frames = 72000;
+    lip.reflectionMagnitude = 0.999;
+    lip.initialDisplacementMeters = 0.0;
+    lip.tongueReleaseFrames = 0;
+    lip.brassiness = 1.0;
+    lip.reedTurbulence = 0.0;
+    applyBach37Bell(lip);
+    CHECK(lip.lipQualityFactor == kTrumpetLipQualityFactor);
+    if (pass == 0) lip.lipQualityFactor = 0.0;
+    auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
+    std::vector<PhraseNote> notes;
+    const double hz[2] = {440.0, 523.25}, at[2] = {0.2, 0.8};
+    for (int k = 0; k < 2; ++k) {
+      const BrassFinger row = trumpetFinger(hz[k]);
+      PhraseNote n;
+      n.name = k == 0 ? "A4" : "C5";
+      n.startSec = at[k];
+      n.targetHz = hz[k];
+      n.lengthM = row.length;
+      n.lipHz = trumpetLipRatio(row) * conePartial(row.length, 0.26, row.mode);
+      n.pressure = 2800.0;
+      n.tongue = true;
+      notes.push_back(n);
+    }
+    PlayerAirway airway(PlayerAirwaySpec{});
+    auto out = playPhrase(voice, notes, 1.5, false, 0.0, &airway);
+    for (double s : out) REQUIRE(std::isfinite(s));
+    // Autocorrelation period near the written C5, parabolic peak.
+    auto cents = [&](double from, double to) {
+      const auto a = static_cast<std::size_t>(from * kFs), b = static_cast<std::size_t>(to * kFs);
+      const double period = kFs / 523.25;
+      const int lo = static_cast<int>(0.8 * period), hi = static_cast<int>(1.25 * period) + 1;
+      std::vector<double> r(static_cast<std::size_t>(hi + 2), 0.0);
+      for (int lag = lo - 1; lag <= hi + 1; ++lag) {
+        double num = 0, e0 = 0, e1 = 0;
+        for (std::size_t i = a; i + static_cast<std::size_t>(lag) < b; ++i) {
+          num += out[i] * out[i + lag];
+          e0 += out[i] * out[i];
+          e1 += out[i + lag] * out[i + lag];
+        }
+        r[static_cast<std::size_t>(lag)] = num / std::sqrt(e0 * e1 + 1e-30);
+      }
+      int best = lo;
+      for (int lag = lo; lag <= hi; ++lag)
+        if (r[static_cast<std::size_t>(lag)] > r[static_cast<std::size_t>(best)]) best = lag;
+      const double y0 = r[best - 1], y1 = r[best], y2 = r[best + 1];
+      const double lag = best + 0.5 * (y0 - y2) / (y0 - 2.0 * y1 + y2);
+      return 1200.0 * std::log2(kFs / lag / 523.25);
+    };
+    attackCents[pass] = cents(0.8 + 0.015, 0.8 + 0.060);
+    steadyCents[pass] = cents(1.0, 1.4);
+  }
+  // Box run: old damping attack +28.6 c over a +13.0 c steady; Q 4
+  // attack +3.4 c over -1.0 c (rows retuned for Q 4).
+  CHECK(std::fabs(steadyCents[1]) < 10.0);
+  CHECK(std::fabs(attackCents[1] - steadyCents[1]) < 10.0);
+  CHECK(std::fabs(attackCents[0] - steadyCents[0]) > std::fabs(attackCents[1] - steadyCents[1]));
+}
+
+TEST_CASE("trumpet: Burgers steepening (the default) brightens the radiated note", "[wind][trumpet][burgers]") {
   const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
   auto trumpet = unwrap(makeTrumpet(phraseTrumpetSpec(speed, kAir, kTemp)));
   double h2[2] = {0, 0}, h1[2] = {0, 0}, f0[2] = {0, 0};
@@ -3318,6 +3387,8 @@ TEST_CASE("trumpet: opt-in Burgers steepening brightens the radiated note", "[wi
     lip.reedTurbulence = 0.0;
     lip.brassiness = 0.0;
     applyBach37Bell(lip);
+    CHECK(lip.burgersFraction == kTrumpetBurgersFraction);  // the trumpet default
+    lip.burgersFraction = 0.0;  // pass 0: the linear bell
     auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.26, lip, kRate));
     CHECK_FALSE(voice.setBoreBurgers(true, 0.0));
     if (pass == 1) REQUIRE(voice.setBoreBurgers(true, kTrumpetBurgersFraction));

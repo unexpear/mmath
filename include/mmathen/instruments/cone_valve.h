@@ -98,10 +98,18 @@ class ConeValveVoice final : public IVoice {
       return R::failure(QuantityError::InvalidArgument);
     ReedCharacteristic unused{};
     ReedInertia inertia{};
-    return create(unused, inertia, trumpet.lengthMeters, apexDistanceMeters,
-                  trumpet.crossSectionM2, trumpet.soundSpeedMetersPerSecond,
-                  trumpet.airDensityKgPerM3, trumpet.acousticImpedance, 0.0, blow,
-                  rate, true, trumpet, extraLengthMeters);
+    auto made = create(unused, inertia, trumpet.lengthMeters, apexDistanceMeters,
+                       trumpet.crossSectionM2, trumpet.soundSpeedMetersPerSecond,
+                       trumpet.airDensityKgPerM3, trumpet.acousticImpedance, 0.0, blow,
+                       rate, true, trumpet, extraLengthMeters);
+    if (!made.ok() || !(blow.burgersFraction > 0.0 || blow.lipQualityFactor > 0.0)) return made;
+    ConeValveVoice voice = std::move(made).value();
+    if (blow.lipQualityFactor > 0.0 && !voice.setLipQualityFactor(blow.lipQualityFactor))
+      return R::failure(QuantityError::InvalidArgument);
+    if (!(blow.burgersFraction > 0.0)) return R::success(std::move(voice));
+    if (!std::isfinite(blow.burgersFraction) || !voice.setBoreBurgers(true, blow.burgersFraction))
+      return R::failure(QuantityError::InvalidArgument);
+    return R::success(std::move(voice));
   }
 
   [[nodiscard]] SampleRateHz sampleRate() const override { return rate_; }
@@ -295,7 +303,20 @@ class ConeValveVoice final : public IVoice {
           burgersLength_ = soundingLength_;
           burgers_.setLength(burgersFraction_ * soundingLength_, rate_.value());
         }
-        atBell = burgers_.step(incident);
+        // The wave enters the line before the trip's wall loss; the loss is
+        // spread over the steps (same magnitude at 1 kHz and same flat gain
+        // after the march), so steepening and loss act together.
+        if (wall_.pole != burgersWallPole_ || wall_.gain != burgersWallGain_) {
+          burgersWallPole_ = wall_.pole;
+          burgersWallGain_ = wall_.gain;
+          const double M = static_cast<double>(burgers_.stages());
+          const double fit = 1000.0, fs = rate_.value();
+          const double mag = valve_detail::onePoleMagnitude(wall_.pole, fit, fs);
+          const double pole = wall_.pole > 0.0 ? valve_detail::onePoleMatching(std::pow(mag, 1.0 / M), fit, fs) : 0.0;
+          const double gain = wall_.gain > 0.0 && wall_.gain <= 1.0 ? std::pow(wall_.gain, 1.0 / M) : 1.0;
+          burgers_.setStageLoss(pole, gain);
+        }
+        atBell = burgers_.step(preWall_);
       } else if (!rfOn_ && lip_ && brassiness_ > 0.0) {
         atBell = steepenAtBell(incident);
       }
@@ -304,6 +325,13 @@ class ConeValveVoice final : public IVoice {
       // same p+. R of the steepening's own harmonics is left out: a
       // flared bell reflects little above its cutoff, where they lie.
       double atBellReturn = incoming;
+      if (!rfOn_ && lip_ && !burgersOn_ && brassiness_ > 0.0) {
+        // steepenAtBell reads its wave four samples late (kSteepAtBellDelay);
+        // the return is delayed the same so (1 + R) acts on one p+.
+        atBellReturn = steepReturn_[steepReturnPos_];
+        steepReturn_[steepReturnPos_] = incoming;
+        steepReturnPos_ = (steepReturnPos_ + 1) % kSteepAtBellDelay;
+      }
       if (!rfOn_ && lip_ && burgersOn_) {
         const std::size_t m = static_cast<std::size_t>(burgers_.stages());
         if (burgersReturn_.size() != m) { burgersReturn_.assign(m, 0.0); burgersPos_ = 0; }
@@ -379,7 +407,11 @@ class ConeValveVoice final : public IVoice {
     prevOutgoing_ = 0.0;
     std::fill(steepHist_, steepHist_ + 16, 0.0);
     burgers_.reset();
+    burgersWallPole_ = -1.0;
+    burgersWallGain_ = -1.0;
     std::fill(burgersReturn_.begin(), burgersReturn_.end(), 0.0);
+    std::fill(steepReturn_, steepReturn_ + kSteepAtBellDelay, 0.0);
+    steepReturnPos_ = 0;
     steepPos_ = 0;
     displacement_ = initialDisplacement_;
     velocity_ = 0.0;
@@ -1138,6 +1170,7 @@ class ConeValveVoice final : public IVoice {
       boreY_ = y;
       x = y;
     }
+    preWall_ = x;
     x = wall_.step(x);
     // A zero at z = âˆ’1. An odd-length delay plus a reed that is still
     // a negative resistance at fs/2 otherwise locks onto Nyquist, and
@@ -1174,7 +1207,7 @@ class ConeValveVoice final : public IVoice {
     }
     const double beta = 0.5 * (acoustic_constants::dryAirGamma + 1.0);
     double adv = brassiness_ * beta * incident * soundingLength_ * rate_.value() / denom;
-    constexpr double kDelay = 4.0;
+    constexpr double kDelay = static_cast<double>(kSteepAtBellDelay);
     if (adv > kDelay) adv = kDelay;
     if (adv < -kDelay) adv = -kDelay;
     const double age = kDelay - adv;
@@ -1390,7 +1423,11 @@ class ConeValveVoice final : public IVoice {
   double soundingLength_ = 0.0;
   BurgersLine burgers_;
   bool burgersOn_ = false;
+  double preWall_ = 0.0, burgersWallPole_ = -1.0, burgersWallGain_ = -1.0;
   std::vector<double> burgersReturn_;
+  static constexpr int kSteepAtBellDelay = 4;
+  double steepReturn_[kSteepAtBellDelay] = {};
+  int steepReturnPos_ = 0;
   std::size_t burgersPos_ = 0;
   double burgersFraction_ = 1.0, burgersLength_ = 0.0;
   double prevOutgoing_ = 0.0;

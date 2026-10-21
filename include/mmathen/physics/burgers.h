@@ -20,8 +20,10 @@
 // delays its output one sample; the line delays M samples overall. The
 // Courant number a |p| dx / dtau is held at or below 1 by clamping the
 // characteristic speed (reported by clampCount()); with M = 32 over
-// 1.7 m at 48 kHz that bound is about 15 kPa. Wall loss along the way is
-// not modelled, so the steepening is an upper bound (as Myers et al.).
+// 1.7 m at 48 kHz that bound is about 15 kPa. Wall loss (setStageLoss) is
+// a one-pole low-pass and flat gain applied after every step, so the loss
+// of the duct is spread along the march and acts on the harmonics as the
+// steepening makes them (the generalized Burgers equation's split step).
 
 #include <algorithm>
 #include <cmath>
@@ -48,6 +50,13 @@ class BurgersLine {
   bool setLength(double lengthM, double rateHz) {
     if (!(lengthM > 0.0) || !std::isfinite(lengthM) || stage_.empty() || !(rateHz > 0.0)) return false;
     lambda_ = (lengthM / static_cast<double>(stage_.size())) * rateHz;
+    return true;
+  }
+  // Per-step wall loss: (1-p)/(1-p z^-1) times gain; p = 0, gain 1 is none.
+  bool setStageLoss(double pole, double gain) {
+    if (!(pole >= 0.0) || !(pole < 1.0) || !(gain > 0.0) || !(gain <= 1.0)) return false;
+    lossPole_ = pole;
+    lossGain_ = gain;
     return true;
   }
   void reset() {
@@ -80,15 +89,20 @@ class BurgersLine {
   }
   struct Stage {
     double prev = 0.0, cur = 0.0;  // u_{i-1}, u_i
+    double lp = 0.0;
     double push(double next, BurgersLine& line) {
-      const double out = cur - line.lambda_ * (line.flux(cur, next) - line.flux(prev, cur));
+      double out = cur - line.lambda_ * (line.flux(cur, next) - line.flux(prev, cur));
       prev = cur;
       cur = next;
-      return out;
+      if (line.lossPole_ > 0.0) {
+        lp = (1.0 - line.lossPole_) * out + line.lossPole_ * lp;
+        out = lp;
+      }
+      return line.lossGain_ * out;
     }
   };
   std::vector<Stage> stage_;
-  double a_ = 0.0, lambda_ = 0.0;
+  double a_ = 0.0, lambda_ = 0.0, lossPole_ = 0.0, lossGain_ = 1.0;
   std::uint64_t clamps_ = 0;
 };
 

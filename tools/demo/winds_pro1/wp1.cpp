@@ -132,7 +132,7 @@ int main(int argc, char** argv) {
     double start = 0; BrassFinger held = kTrumpetFingers[0];
     for (auto& s : song) {
       BrassFinger r = s.hertz > 0 ? trumpetFinger(s.hertz) : held; if (s.hertz > 0 && std::fabs(s.hertz - env("WP_ROWHZ", -1.0)) < 0.05) { r.length = env("WP_ROWL", r.length); r.mode = (int)env("WP_ROWM", r.mode); }
-      const double lipHz = r.mode == 0 ? 0.75 * speed / r.length : env("WP_LIPR", trumpetLipPartialRatio(r.mode)) * conePartial(r.length, 0.26, r.mode);
+      const double lipHz = r.mode == 0 ? 0.75 * speed / r.length : env("WP_LIPR", trumpetLipRatio(r)) * conePartial(r.length, 0.26, r.mode);
       push(notes, s, start, r.length, lipHz, tpP, 0); notes.back().peakHz = impedancePeakHz(r.length, 0.26, r.mode, r.hertz);
       if (s.hertz > 0) held = r; start += s.seconds;
     }

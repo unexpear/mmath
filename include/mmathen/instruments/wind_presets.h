@@ -289,12 +289,25 @@ inline void applyScottBell(ValveBlow& blow) {
 // the one-pole corner falls 6 dB/oct where Luce and Clark (JASA 42, 1967)
 // measured 15-25 dB/oct above about 1 kHz.
 inline constexpr double kTrumpetRadiationHz = 3000.0;
-// Opt-in Burgers steepening (ConeValveVoice::setBoreBurgers): L_eff as a
-// fraction of the sounding length. TUNED to the Lick Trumpet H2-H6
-// (0.45 lands within 1.5 dB on H2, H3, H4, H6; 0.60 is 2.5-4.5 dB over).
-// Below Myers et al.'s B = 0.58-0.76 (JASA 131, 2012) because the line
-// has no wall loss and its input is the wave already at the bell.
-inline constexpr double kTrumpetBurgersFraction = 0.45;
+// Burgers steepening (ConeValveVoice::setBoreBurgers): L_eff as a
+// fraction of the sounding length, the Myers brassiness B (Myers, Pyle,
+// Gilbert, Campbell, Chick and Logie, JASA 131, 678-688, 2012: Bb
+// trumpets 0.58-0.76). With the trip's wall loss spread over the march,
+// the top of that range scored best of the in-range values on the Lick
+// Trumpet excerpt (winds_pro1/tscore.py: 0.58-0.60 40.5, 0.76 36.8; the
+// lossless line needed 0.45, outside the range). Value: Myers et al.
+inline constexpr double kTrumpetBurgersFraction = 0.76;
+// Lip quality factor. The fixed 0.001 N s/m of the phrase spec is Q ~ 85
+// at A4: the lip rang at its own resonance for 50-110 ms before the bore
+// took it, so every note started 70-320 c flat (winds_pro1 h/tp ptrack.py,
+// YIN at 1 c: Lick excerpt attacks G4 -314, C5 -165, F4 an octave low;
+// Jingle Bells 85 of 98 attacks off by > 50 c). Measured lips: human
+// Q about 1.2-1.8, artificial 8-10 (Newton, Campbell and Gilbert, JASA
+// 123, EL14-EL20, 2008). Q 1.5 and 3 lost the regime (notes an octave
+// or more off); 4 is the lowest that held every note. TUNED to that,
+// with the 0.80 lip ratio: Jingle Bells attacks off by > 50 c 85 -> 8
+// of 98, settle (within 25 c for 30 ms) median 65 -> 23 ms.
+inline constexpr double kTrumpetLipQualityFactor = 4.0;
 inline void applyBach37Bell(ValveBlow& blow) {
   constexpr double kLength = 1.335 - 0.716;
   constexpr double kGamma = 0.7;
@@ -308,6 +321,11 @@ inline void applyBach37Bell(ValveBlow& blow) {
   blow.bellCoefficient = mouth * std::pow(offset, kGamma);
   blow.bellMouthOffsetMeters = offset;
   blow.bellTransmission = true;
+  // The trumpet default steepens with the Burgers line (it scored best of
+  // the old four-sample advance, that advance with the bell return aligned,
+  // and Burgers, on the Lick Trumpet excerpt; winds_pro1/tscore.py).
+  blow.burgersFraction = kTrumpetBurgersFraction;
+  blow.lipQualityFactor = kTrumpetLipQualityFactor;
   blow.radiationHz = kTrumpetRadiationHz;
 }
 inline double clarinetSoundingLengthMeters(double frequency) {
@@ -383,6 +401,9 @@ struct BrassFinger {
   double hertz;
   double length;
   int mode;
+  // Lip natural frequency over the cone partial for this row; zero takes
+  // the mode's ratio (trumpetLipPartialRatio).
+  double lipRatio = 0.0;
 };
 
   inline constexpr BrassFinger kTromboneFingers[] = {
@@ -407,7 +428,7 @@ struct BrassFinger {
           nearest = &row;
       const double apex = nearest->mode == 0 ? 0.0 : 0.60;
       return BrassFinger{hertz, (nearest->length + apex) * nearest->hertz / hertz - apex,
-                    nearest->mode};
+                    nearest->mode, nearest->lipRatio};
     }
 
   // Tuned so this lip and this length play the concert pitch, and the
@@ -427,11 +448,17 @@ struct BrassFinger {
       // (L + apex) x 2^(cents/1200) for the cents read at 0.70 in Jingle
       // Bells, one pass: G4 0, Bb4 -18 (its B4 read -18), A4 -15, F#4 -3,
       // E4 -25, D4 -4 (D4 trial 1.665 m).
-      {392.00, 1.2198, 3}, {349.23, 0.912, 0}, {466.16, 1.0097, 3},
-      {523.25, 1.2102, 4}, {698.46, 1.410, 6}, {587.33, 1.0597, 4},
+      // All rows retuned for the Q 4 lip (kTrumpetLipQualityFactor) and its
+      // ratios, one pass, (L + apex) x 2^(cents/1200) (mode 0: L x ...) for
+      // the steady cents read by YIN (winds_pro1 h/tp ptrack.py on the Lick
+      // excerpt, jbtrack.py on Jingle Bells): G4 -7.7, F4 -33.0, Bb4 -10.8,
+      // C5 +3.5, D5 +16.0, A4 +3.2, E5 -9.2 then +11.6 at 0.85, C#5 +17.3,
+      // E4 -11.3, F#4 -8.2, D4 +6 at 0.78, F5 -21.8 at 0.92.
+      {392.00, 1.2132, 3}, {349.23, 0.8948, 0}, {466.16, 1.0018, 3},
+      {523.25, 1.2132, 4}, {698.46, 1.3891, 6, 0.92}, {587.33, 1.0720, 4},
       // A4 for When the Saints: the Bb4 row scaled sat 27.8 cents flat;
       // (L + apex) shortened by that measured ratio.
-      {440.00, 1.0661, 3},
+      {440.00, 1.0686, 3},
       // Jingle Bells (tools/demo/christmas): D4 scaled from the F4 row read
       // +68 c, E5 scaled from F5 -39 c, C#5 scaled from D5 -27 c; each row
       // is that scaled length (cone + apex for a cone mode) times
@@ -447,8 +474,11 @@ struct BrassFinger {
       // 1.24 m -38 c); C#5 and D5 are its cone + apex scaled by the
       // frequency ratio; D5 then read +13 c and is lengthened by it. E5 (mode 5, lip 0.75) from 1.22 m -11 c, 1.26 m
       // -64 c.
-      {293.66, 1.6606, 3}, {659.26, 1.2117, 5}, {554.37, 1.1277, 4},
-      {329.63, 1.4766, 3}, {369.99, 1.2998, 3},
+      {293.66, 1.6661, 3, 0.78}, {659.26, 1.2137, 5}, {554.37, 1.1416, 4},
+      // B4 (Jingle Bells) was the Bb4 row scaled; at the Q 4 / 0.80 lip it
+      // read +5.3 c and is that scaled length lengthened by it.
+      {493.88, 0.9421, 3},
+      {329.63, 1.4653, 3}, {369.99, 1.2924, 3},
   };
   // Lip natural frequency over the bore partial it drives. An
   // outward-striking lip plays just above its own resonance, so the lip
@@ -464,8 +494,23 @@ struct BrassFinger {
   // H2 ~0, H3 -6 to -9 dB; as 4th-mode rows at 0.70 they lock with
   // H2 +2, H3 ~0 (grid 1.20-1.32 m x 0.60-0.80). Mode 5 (E5) locks at
   // 0.75-0.80 and splits at 0.70; mode 6 (F5) split below 0.78.
+  // Those were found with the old fixed lip damping (Q ~ 85). With the lip
+  // Q at kTrumpetLipQualityFactor the ratios move up: at 0.70 the low-Q
+  // lip lost C5-E5 (-450 c and more), at 0.75 D5 split (Jingle Bells grid
+  // Q 3-8 x 0.70-0.80, winds_pro1 h/tp jbtrack.py); 0.80 holds modes 3-4.
+  // The ratio has to clear (n-1)/n, the next partial down, which a broad
+  // low-Q lip also drives: E5 (mode 5, 0.80 = 4/5) sat 25 dB down with the
+  // mode 4 partial in its attack, so modes 5-6 take 0.85, and the F5 row
+  // 0.92 (0.85: -27 c, attack -132 c; 0.88 / 0.92: attack -76 / -40 c).
+  // D4 at 0.75 and 0.80 drifted to F4 on its 1.2 s vibrato notes (+305 c),
+  // its row takes 0.78, which held. TUNED. Cost: the 0.80 notes are rounder
+  // (Lick excerpt centroid 847 -> 741 Hz, H3 +4.9 -> +2.9 dB; recording
+  // 1436 Hz, +6.0 dB).
   inline constexpr double trumpetLipPartialRatio(int mode) {
-    return mode <= 4 ? 0.70 : (mode == 5 ? 0.75 : 0.80);
+    return mode <= 0 ? 0.75 : (mode <= 4 ? 0.80 : 0.85);
+  }
+  inline constexpr double trumpetLipRatio(const BrassFinger& row) {
+    return row.lipRatio > 0.0 ? row.lipRatio : trumpetLipPartialRatio(row.mode);
   }
   inline BrassFinger trumpetFinger(double hertz) {
       for (const BrassFinger& row : kTrumpetFingers)
@@ -479,7 +524,7 @@ struct BrassFinger {
           nearest = &row;
       const double apex = nearest->mode == 0 ? 0.0 : 0.26;
       return BrassFinger{hertz, (nearest->length + apex) * nearest->hertz / hertz - apex,
-                    nearest->mode};
+                    nearest->mode, nearest->lipRatio};
     }
 
 // Exact fingering row for a listed pitch (within 0.02 Hz); a zero row when

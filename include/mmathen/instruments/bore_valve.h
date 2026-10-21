@@ -165,6 +165,13 @@ struct ValveBlow {
   // (measurement reference only); no paper prints this ratio.
   double lockedBreathFraction = -1.0;
   double brassiness = 0.0;
+  // When positive, a lip voice steepens its bell wave with the Burgers
+  // line over this fraction of the sounding length
+  // (ConeValveVoice::setBoreBurgers), in place of `brassiness`.
+  double burgersFraction = 0.0;
+  // When positive, a lip voice holds this lip quality factor Q = m omega / r
+  // as the lip resonance moves (ConeValveVoice::setLipQualityFactor).
+  double lipQualityFactor = 0.0;
   double spectrumBreakHz = 0.0;
   // When positive, Kirchhoff's round-trip loss is fitted at this
   // frequency on the cylindrical bore radius, instead of the default
