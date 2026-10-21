@@ -6,8 +6,9 @@
 //   BP_DUMP=path writes the performed part (BP_DUMPONLY=1 stops there).
 // Families:
 //   bowed   violin / viola / arco double bass: makeBowedNote (bowed_note.h)
-//           on the instrument's BowedVoicing, string force on a rigid
-//           bridge (no body model). Level = vel / 80, as band1's cello.
+//           on the instrument's BowedVoicing; the part's bridge force goes
+//           through the voicing's BowedBody (step 14). Level = vel / 80, as
+//           band1's cello.
 //   plucked harp / harpsichord / electric guitar: PluckedStringVoice (ideal
 //           string, instrument_pluck_demo's T60 pair 2.0 s at f0 and 0.25 s
 //           at 6 f0, listen node 0.23); the electric guitar reads the coil
@@ -89,6 +90,12 @@ static int renderBowed(const char* which, const std::vector<PartNote>& w, double
     const size_t len = std::min((size_t)((e.durSec + voicing.releaseSeconds + 0.4) * FS), mix.size() - a);  // 0.4 s ring after the release (harness)
     std::vector<double> x(len); if (!v.renderBlock(x.data(), FrameCount{len}).ok()) { ++fail; continue; }
     addInto(mix, a, x);
+  }
+  // Step 14: the voicing's body (BowedBody) on the part's summed bridge
+  // force. BP_NOBODY=1 keeps the string force (harness check).
+  if (voicing.body.present && !(std::getenv("BP_NOBODY") && std::atoi(std::getenv("BP_NOBODY")) == 1)) {
+    BowedBody body(voicing.body, FS);
+    body.processInPlace(mix);
   }
   std::printf("%s notes=%zu fail=%d\n", which, ev.size(), fail);
   return writeOut(mix, out) ? 1 : (fail ? 3 : 0);

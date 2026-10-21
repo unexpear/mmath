@@ -114,6 +114,19 @@ class SignatureModeFilter {
       a1_[m] = (2.0 * w * w - 2.0 * k * k) / a0; a2_[m] = (k * k - k * w / q + w * w) / a0;
     }
   }
+  // Any instrument's four signature modes: frequency, Q and gain per mode
+  // (a gain of 0 leaves a mode out). The violin constructor above is this
+  // with the violin's numbers and its Q floor of 8.
+  SignatureModeFilter(double sampleRate, const double (&hz)[4], const double (&q)[4], const double (&gain)[4]) {
+    for (int m = 0; m < 4; ++m) {
+      g_[m] = gain[m];
+      const double w = constants::twoPi * hz[m];
+      const double k = w / std::tan(w / (2.0 * sampleRate));
+      const double a0 = k * k + k * w / q[m] + w * w;
+      b0_[m] = k * w / q[m] / a0; b2_[m] = -b0_[m];
+      a1_[m] = (2.0 * w * w - 2.0 * k * k) / a0; a2_[m] = (k * k - k * w / q[m] + w * w) / a0;
+    }
+  }
   double process(double x) noexcept {
     double y = x;
     for (int m = 0; m < 4; ++m) {

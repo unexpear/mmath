@@ -13,6 +13,9 @@
 #include <mmathen/instruments/piano_voice.h>
 #include <mmathen/instruments/cello_voice.h>
 #include <mmathen/instruments/bowed_note.h>
+#include <mmathen/instruments/violin.h>
+#include <mmathen/instruments/viola.h>
+#include <mmathen/instruments/double_bass.h>
 #include <mmathen/instruments/wind_presets.h>
 #include <mmathen/instruments/snare_drum.h>
 #include <mmathen/instruments/guitar_pluck.h>
@@ -264,6 +267,63 @@ TEST_CASE("cello string loss follows absolute frequency; open strings bow at pit
     const double heard = 0.5 * bandPeak(x, 24000, 43200, 2.0 * f * 0.99, 2.0 * f * 1.01);
     CHECK(std::fabs(1200.0 * std::log2(heard / f)) < 4.0);
   }
+}
+
+TEST_CASE("violin, viola and arco bass bow at pitch after intonation (step 14)", "[band][bowed]") {
+  struct Case { const char* name; Result<StringInstrument, QuantityError> inst; BowedVoicing v; std::vector<double> levels; };
+  Case cases[] = {{"violin", violin(), violinBowedVoicing(), {0.25, 0.5, 1.0}},
+                  {"viola", viola(), violaBowedVoicing(), {0.25, 0.5, 1.0}},
+                  // Bass A string at level 1.0 falls into double slip (H2 over H1);
+                  // the gate covers 0.25 and 0.5 (see the report of step 14).
+                  {"bass", doubleBass(), doubleBassBowedVoicing(), {0.25, 0.5}}};
+  for (auto& c : cases) {
+    REQUIRE(c.inst.ok());
+    for (int k = 0; k < kStringInstrumentCourses; ++k) {
+      const double f = c.inst.value().courses[static_cast<std::size_t>(k)].tuning.frequency.value();
+      for (double lv : c.levels) {
+        auto note = makeBowedNote(c.inst.value(), f, 1.6, lv, SampleRateHz{kBandFs}, c.v, false);
+        REQUIRE(note.ok());
+        auto voice = std::move(note).value();
+        std::vector<double> x(67200);
+        REQUIRE(voice.renderBlock(x.data(), FrameCount{x.size()}).ok());
+        const double heard = 0.5 * bandPeak(x, 24000, 43200, 2.0 * f * 0.99, 2.0 * f * 1.01);
+        INFO(c.name << " string " << k << " level " << lv);
+        CHECK(std::fabs(1200.0 * std::log2(heard / f)) < 5.0);
+      }
+    }
+  }
+}
+
+TEST_CASE("bowed bodies: the violin chain is violin_body.h's, viola and bass are their own (step 14)", "[band][bowed]") {
+  // The violin spec is violin_body.h's filters sample for sample.
+  BowedBody body(violinBodySpec(), kBandFs);
+  BridgeHillFilter hill(kBandFs);
+  SignatureModeFilter modes(kBandFs);
+  RadiationHighpass rad(kBandFs);
+  for (int i = 0; i < 4800; ++i) {
+    const double x = std::sin(0.031 * i) + (i == 10 ? 1.0 : 0.0);
+    CHECK(body.process(x) == rad.process(modes.process(hill.process(x))));
+  }
+  CHECK(!celloBowedVoicing().body.present);
+  CHECK(violaBowedVoicing().body.present);
+  CHECK(doubleBassBowedVoicing().body.present);
+  // Steady-state gain of a body at f (dB).
+  auto gain = [](const BowedBodySpec& s, double f) {
+    BowedBody b(s, kBandFs);
+    double e = 0, ei = 0;
+    for (int i = 0; i < 48000; ++i) {
+      const double x = std::sin(2.0 * constants::pi * f * i / kBandFs), y = b.process(x);
+      if (i >= 24000) { e += y * y; ei += x * x; }
+    }
+    return 10.0 * std::log10(e / ei);
+  };
+  const BowedBodySpec va = violaBodySpec(), vb = doubleBassBodySpec();
+  CHECK(std::fabs(va.modeHz[0] - 224.0) < 1e-12);           // Powell 2012 A0
+  CHECK(gain(va, 224.0) > gain(va, 270.0));                  // A0 peak below the violin's 275 Hz
+  CHECK(std::fabs(vb.modeHz[0] - 65.0) < 1e-12);            // Askenfelt 1982 A0
+  CHECK(gain(vb, 110.0) > gain(vb, 85.0));                   // T1
+  CHECK(gain(vb, 2000.0) < gain(vb, 300.0) - 12.0);          // above the 400 Hz bridge hill
+  CHECK(gain(violinBodySpec(), 2000.0) > gain(vb, 2000.0) + 12.0);
 }
 
 TEST_CASE("soft flute voicing centres the jet and lowers the pressure", "[band][flute]") {
