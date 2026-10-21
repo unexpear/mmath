@@ -161,7 +161,7 @@ int main(int argc, char** argv) {
     bone.brassiness = 1.0; bone.reedTurbulence = kTromboneReedTurbulence; applyScottBell(bone); bone.bellTransmission = env("WP_TBT", 0.0) > 0.5; if (env("WP_TRAD", 0.0) > 0.0) bone.radiationHz = env("WP_TRAD", 0.0);
     bone.wallRadiusMeters = kBach42BoreRadiusMeters;
     if (measured) { bone.brassiness = 0.0; bone.reedTurbulence = 0.0; }
-    auto voice = U(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate));
+    auto voice = U(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate)); if (env("WP_LIPQ", 0.0) > 0.0 && !voice.setLipQualityFactor(env("WP_LIPQ", 0.0))) return 4;
     // Measured path, as the suite's bolero-measured: bbTromboneProfile bore,
     // Myers steepening, Adachi-Sato lip tuned per note; the slide position
     // is the real one, the Bb harmonic n (2..8 of 58.27 Hz) that needs 0-6
@@ -193,7 +193,7 @@ int main(int argc, char** argv) {
         }
         push(notes, s, start, heldM, voice.tuneAdachiSatoLipHz(s.hertz > 0 ? s.hertz : r.hertz, heldM, kMeasuredBonePa), kMeasuredBonePa, 0);
       } else {
-        push(notes, s, start, r.length, 0.80 * conePartial(r.length, 0.60, r.mode), 1600.0, 0);
+        push(notes, s, start, r.length, env("WP_TBLR", 0.80) * conePartial(r.length, 0.60, r.mode), env("WP_TBP", 1600.0), 0);
       }
       notes.back().peakHz = impedancePeakHz(r.length, 0.60, r.mode, r.hertz);
       if (s.hertz > 0) held = r; start += s.seconds;
