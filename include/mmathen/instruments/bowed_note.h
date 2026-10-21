@@ -28,7 +28,10 @@ namespace mmathen {
 struct BowedVoicing {
   const char* name = "cello";
   double t60LowSeconds = kCelloT60LowSeconds;    // string loss at f0
-  double t60HighSeconds = kCelloT60HighSeconds;  // and at 6 f0
+  double t60HighSeconds = kCelloT60HighSeconds;  // and at t60HighHz
+  // Frequency of t60HighSeconds; 0 = 6 f0 of the course (the violin's and
+  // the bass's loss as fitted). The cello: kCelloT60HighHz (cello_voice.h).
+  double t60HighHz = kCelloT60HighHz;
   double betaForte = kCelloBetaForte;            // bow-bridge distance / string length at +12 dB
   double betaPiano = kCelloBetaPiano;            // and at -12 dB
   double bowSpeedMps = kCelloBowSpeed;           // at level 1
@@ -59,6 +62,7 @@ struct BowedVoicing {
   v.name = "violin";
   v.t60LowSeconds = kViolinT60LowSeconds;
   v.t60HighSeconds = kViolinT60HighSeconds;
+  v.t60HighHz = 0.0;  // 6 f0, as kViolinT60* were fitted
   v.betaForte = kViolinBetaForte;
   v.betaPiano = kViolinBetaPiano;
   v.bowSpeedMps = 0.2;  // VERIFY (stock violin stroke)
@@ -87,6 +91,7 @@ struct BowedVoicing {
 [[nodiscard]] inline BowedVoicing doubleBassBowedVoicing() {
   BowedVoicing v;
   v.name = "double bass (arco)";
+  v.t60HighHz = 0.0;  // 6 f0: the bass arco loss as before step 10 (VERIFY)
   v.intonationCents = {0.0, 0.0, 0.0, 0.0};  // UNSOURCED
   return v;
 }
@@ -123,7 +128,8 @@ struct BowedPlayerHabits {
   auto ideal = courseString(c);
   if (!ideal.ok()) return R::failure(ideal.error());
   auto loss = lossFromT60(ideal.value().speed, FrequencyHz{f}, DurationSeconds{voicing.t60LowSeconds},
-                          FrequencyHz{6.0 * f}, DurationSeconds{voicing.t60HighSeconds});
+                          FrequencyHz{voicing.t60HighHz > 0.0 ? voicing.t60HighHz : 6.0 * f},
+                          DurationSeconds{voicing.t60HighSeconds});
   if (!loss.ok()) return R::failure(loss.error());
   BowStroke stroke = violinBowStroke(c, beta, voicing.bowSpeedMps * lv * habits.bowSpeedScale);
   stroke.normalForceNewtons *= voicing.bowForceFraction / kViolinBowForceFraction;

@@ -128,17 +128,32 @@ class CelloBody {
   std::size_t pos_ = 0;
 };
 
-// String loss: T60 at f0 and at 6 f0 (TUNED to the Sarabande note tails
-// and harmonic slopes; cello strings ring longer than violin strings).
+// String loss: T60 at f0 and at kCelloT60HighHz (TUNED to the Sarabande
+// note tails and harmonic slopes; cello strings ring longer than violin
+// strings).
+//
+// Step 10: the high-frequency anchor is a fixed frequency, not 6 f0 of each
+// course. A string's loss factor is a function of absolute frequency (air
+// viscosity, internal friction and bending losses: Valette, "The mechanics
+// of vibrating strings", in Mechanics of Musical Instruments, Springer
+// 1995; Woodhouse, Acta Acustica 90, 2004, the form woodhouseLossFactor
+// uses for the guitar). Anchored at 6 f0, every course got the same
+// damping per harmonic number, so the C string (6 f0 = 392 Hz) lost its
+// partials near 2.6 kHz (harmonic 40, T60 about 10 ms) eleven times faster
+// than the A string at the same frequency (harmonic 12, about 110 ms): the
+// low notes were dark (LTAS of C2-B2 3-12 dB under the Commons PD
+// Sarabande at 2.5-8 kHz; centroid / f0 2.09 against 2.52).
 inline constexpr double kCelloT60LowSeconds = 3.0;    // TUNED
 inline constexpr double kCelloT60HighSeconds = 0.4;   // TUNED
+// 6 x A3: the A string keeps the loss the two TUNED values were fitted with.
+inline constexpr double kCelloT60HighHz = 6.0 * 220.0;  // TUNED anchor (see above)
 [[nodiscard]] inline Result<LossModel, QuantityError> celloStringLoss(const StringCourse& c) {
   using R = Result<LossModel, QuantityError>;
   const double f = c.tuning.frequency.value();
   auto ideal = courseString(c);
   if (!ideal.ok()) return R::failure(ideal.error());
   return lossFromT60(ideal.value().speed, FrequencyHz{f}, DurationSeconds{kCelloT60LowSeconds},
-                     FrequencyHz{6.0 * f}, DurationSeconds{kCelloT60HighSeconds});
+                     FrequencyHz{kCelloT60HighHz}, DurationSeconds{kCelloT60HighSeconds});
 }
 
 // Vibrato measured on the Commons PD Sarabande (Bach BWV 1007/IV, PD
@@ -166,8 +181,11 @@ inline constexpr double kCelloBowForceFraction = 0.4;  // TUNED
 // engine's bowed pitch sits above the loop tuning by these amounts per
 // string (measured on this voice at force 0.4, beta 0.11, vibrato
 // averaged, parabolic FFT peak over H1-H4): the stop is lowered by them.
-// TUNED (measured on the model, not a property of real strings).
-inline constexpr std::array<double, 4> kCelloIntonationCents = {10.5, 7.8, 4.9, 4.4};  // TUNED
+// TUNED (measured on the model, not a property of real strings). Step 10
+// re-measured after the loss anchor moved to kCelloT60HighHz (less loss on
+// C, G and D left those strings 7.0, 4.5 and 2.4 c flatter, the A string
+// unchanged): was {10.5, 7.8, 4.9, 4.4}.
+inline constexpr std::array<double, 4> kCelloIntonationCents = {3.5, 3.4, 2.5, 4.4};  // TUNED
 inline constexpr double kCelloReleaseSeconds = 0.12;  // UNSOURCED
 
 // A cellist's bowing and vibrato habits (player_profile.h,

@@ -12,6 +12,7 @@
 #include <mmathen/instruments/double_bass_pizz.h>
 #include <mmathen/instruments/piano_voice.h>
 #include <mmathen/instruments/cello_voice.h>
+#include <mmathen/instruments/bowed_note.h>
 #include <mmathen/instruments/wind_presets.h>
 #include <mmathen/instruments/snare_drum.h>
 #include <mmathen/instruments/guitar_pluck.h>
@@ -235,6 +236,34 @@ TEST_CASE("cello voice bows its string at pitch and radiates through the body", 
   CHECK(std::fabs(1200.0 * std::log2(heard / f)) < 12.0);
   // Bowed (sustained) while the bow is on, decaying after it lifts.
   CHECK(bandAmplitude(p, 24000, 19200, f) > 1.5 * bandAmplitude(p, 86400, 9600, f));
+}
+
+TEST_CASE("cello string loss follows absolute frequency; open strings bow at pitch (step 10)", "[band][cello]") {
+  auto vc = cello();
+  REQUIRE(vc.ok());
+  // Loss rate at 2.6 kHz: the same on the C and the A string (before step
+  // 10 the 6 f0 anchor made the C string's about 11 times the A string's).
+  auto rate = [](const StringCourse& c, double hz) {
+    const LossModel l = celloStringLoss(c).value();
+    const double k = 2.0 * constants::pi * hz / courseString(c).value().speed.value();
+    return l.sigma0 + l.sigma1 * k * k;
+  };
+  const double cRate = rate(vc.value().courses[0], 2600.0), aRate = rate(vc.value().courses[3], 2600.0);
+  CHECK(std::fabs(cRate / aRate - 1.0) < 0.05);
+  CHECK(celloBowedVoicing().t60HighHz == kCelloT60HighHz);
+  CHECK(violinBowedVoicing().t60HighHz == 0.0);
+  CHECK(doubleBassBowedVoicing().t60HighHz == 0.0);
+  // Re-measured intonation: each open string's bowed H2 / 2 within 4 cents
+  // of the written pitch (beta 0.11, level 0.25, no vibrato).
+  for (double f : {65.41, 98.0, 146.83, 220.0}) {
+    auto note = makeCelloNote(vc.value(), f, 1.6, 0.25, SampleRateHz{kBandFs}, false);
+    REQUIRE(note.ok());
+    auto v = std::move(note).value();
+    std::vector<double> x(67200);
+    REQUIRE(v.renderBlock(x.data(), FrameCount{x.size()}).ok());
+    const double heard = 0.5 * bandPeak(x, 24000, 43200, 2.0 * f * 0.99, 2.0 * f * 1.01);
+    CHECK(std::fabs(1200.0 * std::log2(heard / f)) < 4.0);
+  }
 }
 
 TEST_CASE("soft flute voicing centres the jet and lowers the pressure", "[band][flute]") {
