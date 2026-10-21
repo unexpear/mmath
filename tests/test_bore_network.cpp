@@ -325,3 +325,21 @@ TEST_CASE("a long plain-bore note keeps the bore pitch", "[bore]") {
   CHECK(std::fabs(late - early) < 0.5);
   CHECK(std::fabs(late - pipe) / pipe < 0.005);
 }
+
+TEST_CASE("cone mean flow relaxes through the bore's Poiseuille resistance", "[bore]") {
+  // tau = 3 rho r0^2 / (8 mu (1 - (x0 / (x0 + l))^3)): throat 1.2e-4 m^2,
+  // apex 0.2 m, length 0.45 m, mu 1.81e-5 Pa s -> about 0.98 s at 1.2 kg/m^3.
+  const double lipMass = 2.0e-5;
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  const double lipOmega = 2.0 * constants::pi * (speed / (4.0 * 0.45));
+  const auto trumpet = unwrap(makeTrumpet(TrumpetSpec{0.45, 1.2e-4, kAir, kTemp, 0.0, 8.0e-6,
+                                                     4.0e-5, 8.0e-3, lipMass,
+                                                     lipOmega * lipOmega * lipMass, 1.5e-5, 0.002}));
+  const ValveBlow lip{2500.0, 8000, 1.0, 0.0};
+  auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.2, lip, kRate));
+  const double tau = voice.boreDcTauSeconds();
+  CHECK(tau > 0.85);
+  CHECK(tau < 1.10);
+  CHECK(voice.boreDcLeak(1.0 / 48000.0) < 1.0);
+  CHECK(voice.boreDcLeak(1.0 / 48000.0) > 0.9999);
+}

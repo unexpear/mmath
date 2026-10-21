@@ -122,6 +122,7 @@ class ConeValveVoice final : public IVoice {
     if (out == nullptr) return R::failure(QuantityError::InvalidArgument);
     const double dt = 1.0 / rate_.value();
     const double beta = 0.5 * alpha_ * dt;
+    const double dcLeak = boreDcLeak(dt);
     for (std::uint64_t i = 0; i < count; ++i) {
       // The delay output is the wave that has traveled the bore. Wall loss
       // and the Nyquist zero are on that trip. The reflection cutoff shapes
@@ -252,7 +253,7 @@ class ConeValveVoice final : public IVoice {
       }
       if (!std::isfinite(pressure) || !std::isfinite(outgoing))
         return R::failure(QuantityError::RangeError);
-      integrator_ += beta * (pressure + previousPressure_);
+      integrator_ = dcLeak * integrator_ + beta * (pressure + previousPressure_);
       previousPressure_ = pressure;
       cupPressure_ = pressure;
       if (open && mouth > 0.0 && !tongued) {
@@ -728,6 +729,31 @@ class ConeValveVoice final : public IVoice {
     return true;
   }
   [[nodiscard]] bool measuredBoreOn() const noexcept { return rfOn_; }
+  // Steady flow through the cone. integrator_ is the apex term of the
+  // spherical-wave admittance, (c / x0) times the integral of the cup
+  // pressure: the inertance L = rho x0 / S0 that carries the mean flow
+  // (U = S0 integrator / (rho c)). Alone it has no restoring force, so the
+  // mean flow was free to take any value and kept the history of every
+  // attack (JB trumpet: the same note 20% apart in mean flow and 1-3 dB in
+  // level after different attacks). The bore's steady (Poiseuille) flow
+  // resistance in series, R = 8 mu / pi * integral dx / r^4 along the
+  // cone r = r0 x / x0 (Hagen-Poiseuille; mu of air 1.81e-5 Pa s, CRC
+  // Handbook, 20 C), relaxes it with tau = L / R
+  //   = 3 rho r0^2 / (8 mu (1 - (x0 / (x0 + l))^3)).
+  // Off with the measured bore (its reflection kernel carries its own
+  // low-frequency behaviour) or when the geometry is unset.
+  [[nodiscard]] double boreDcTauSeconds() const {
+    if (rfOn_ || !(apex_ > 0.0) || !(impedance_ > 0.0) || !(density_ > 0.0) || !(speed_ > 0.0)) return 0.0;
+    constexpr double kAirViscosityPaS = 1.81e-5;
+    const double r0sq = density_ * speed_ / (constants::pi * impedance_);
+    const double q = apex_ / (apex_ + std::max(0.0, soundingLength_));
+    const double tau = 3.0 * density_ * r0sq / (8.0 * kAirViscosityPaS * (1.0 - q * q * q));
+    return std::isfinite(tau) && tau > 0.0 ? tau : 0.0;
+  }
+  [[nodiscard]] double boreDcLeak(double dt) const {
+    const double tau = boreDcTauSeconds();
+    return tau > 0.0 ? std::exp(-dt / tau) : 1.0;
+  }
   // Bell load of the measured bore (brass_bore::BellRadiation). Default
   // LevineSchwinger; HelieRodet is the opt-in spherical-cap load. Call
   // before useMeasuredTrumpetBore (cached fingerings are dropped).

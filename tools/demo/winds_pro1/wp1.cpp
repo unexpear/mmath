@@ -108,6 +108,7 @@ int main(int argc, char** argv) {
     auto voice = U(ConeValveVoice::fromSaxophone(sax, blow, kRate));
     double start = 0, held = longest;
     for (auto& s : song) { const double L = s.hertz > 0 ? saxophoneSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4200.0 * env("WP_P", 1.0), 0); if (s.hertz > 0) held = L; start += s.seconds; }
+    std::printf("bore steady-flow tau %.3f s\n", voice.boreDcTauSeconds());
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs, prof);
   } else if (which == "flute") {
     const auto song = songFor(excerpts::kProFlute); T = total(song);
@@ -147,6 +148,7 @@ int main(int argc, char** argv) {
       push(notes, s, start, r.length, lipHz, (std::fabs(s.hertz - env("WP_ROWHZ", -1.0)) < 0.05 && env("WP_ROWP", 0.0) > 0.0 ? env("WP_ROWP", 0.0) : (s.hertz > 0 ? trumpetMouthPressurePa(r) : 0.0)) * env("WP_P", 1.0), 0); notes.back().peakHz = impedancePeakHz(r.length, 0.26, r.mode, r.hertz);
       if (s.hertz > 0) held = r; start += s.seconds;
     }
+    std::printf("bore steady-flow tau %.3f s\n", voice.boreDcTauSeconds());
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs, prof);
   } else if (which == "trombone") {
     const auto song = songFor(excerpts::kProTrombone); T = total(song);
@@ -196,6 +198,7 @@ int main(int argc, char** argv) {
       notes.back().peakHz = impedancePeakHz(r.length, 0.60, r.mode, r.hertz);
       if (s.hertz > 0) held = r; start += s.seconds;
     }
+    std::printf("bore steady-flow tau %.3f s\n", voice.boreDcTauSeconds());
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kFs, prof);
   } else return 1;
   std::printf("%s %.3f s, %zu samples, lead-in %.3f s\n", which.c_str(), T, out.size(), notes.empty() ? 0.0 : notes[1].startSec);
