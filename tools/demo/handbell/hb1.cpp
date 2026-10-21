@@ -1,6 +1,7 @@
 // hb1: handbells F3, C6, G6, C7 (= Freesound 557142 F3 and radwoc c1, g1, c2; CC0).
-//   hb1 out.f64 [speed] [sec]; env HK clapper stiffness
+//   hb1 out.f64 [speed] [sec]; env HK/HM clapper stiffness/mass (0 = engine defaults), HKB/HMB size exponents
 #include <mmathen/instruments/handbell.h>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -12,7 +13,9 @@ int main(int argc, char** argv) {
   const double hzs[] = {174.61, 1046.5, 1568.0, 2093.0};
   std::vector<double> all;
   for (double hz : hzs) {
-    auto v = HandbellVoice::create(hz, speed, SampleRateHz{fs}, 1.0, E("HK", kHandbellClapperStiffness));
+    const double sc = hz / 174.61;
+    auto v = HandbellVoice::create(hz, speed, SampleRateHz{fs}, 1.0, E("HK", 0.0) * std::pow(sc, E("HKB", 0.0)), 4,
+                                   E("HM", 0.0) * std::pow(sc, -E("HMB", 0.0)));
     if (!v.ok()) { std::fprintf(stderr, "create %d\n", (int)v.error()); return 2; }
     auto voice = std::move(v).value();
     std::vector<double> y((size_t)(sec * fs));

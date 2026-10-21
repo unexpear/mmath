@@ -142,3 +142,23 @@ TEST_CASE("handbell: English (3,0) at three times (2,0), one stroke, decays", "[
   CHECK(amp(72000, f1) < amp(2400, f1));
   CHECK_FALSE(HandbellVoice::create(f1, 0.0, SampleRateHz{fs}).ok());
 }
+
+TEST_CASE("handbell: size-scaled clapper keeps a small bell's (3,0) audible", "[handbell]") {
+  CHECK(handbellClapperMassKg(174.61) == kHandbellClapperMassKg);
+  CHECK(handbellClapperMassKg(1568.0) < 0.1 * kHandbellClapperMassKg);
+  const double fs = 48000.0, f1 = 1568.0;
+  auto v = HandbellVoice::create(f1, 1.0, SampleRateHz{fs});
+  REQUIRE(v.ok());
+  auto voice = std::move(v).value();
+  std::vector<double> y(48000);
+  REQUIRE(voice.renderBlock(y.data(), FrameCount{y.size()}).ok());
+  CHECK(voice.contactSeconds() < 1e-3);
+  auto amp = [&](double f) {
+    std::complex<double> s{};
+    for (int i = 2400; i < 26400; ++i) s += y[i] * std::polar(1.0, -2.0 * constants::pi * f * i / fs);
+    return std::abs(s);
+  };
+  const double r = 20.0 * std::log10(amp(3.0 * f1) / amp(f1));
+  CHECK(r > -16.0);  // radwoc G6 (English-tuned, CC0): -7 dB
+  CHECK(r < 0.0);
+}

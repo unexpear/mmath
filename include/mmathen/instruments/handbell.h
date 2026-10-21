@@ -73,29 +73,42 @@ inline constexpr double kHandbellC5MassKg = 0.45;      // VERIFY
 inline constexpr double kHandbellModalMassFraction = 0.25;  // VERIFY
 inline constexpr double kHandbellRimHeightFraction = 0.25;  // h_e / a, VERIFY
 inline constexpr double kHandbellSigmaAtF3 = 0.37;     // 1/s, TUNED (measured)
-// Clapper: 25 g head (VERIFY) on a felt pad, K TUNED to the (3,0)/(2,0)
-// balance of the F3 recording (-6 dB) at 1 m/s.
-inline constexpr double kHandbellClapperMassKg = 0.025;  // VERIFY
+// Clapper: 25 g head at F3 (VERIFY) on a felt pad, K TUNED to the
+// (3,0)/(2,0) balance of the F3 recording (-6 dB; model -4) at 1 m/s.
+// Smaller bells carry smaller, harder clappers: the head mass is scaled
+// with the bell mass, (f1/F3)^-1.5 (UNSOURCED), and K as (f1/F3)^1.5
+// (TUNED: the radwoc G6 bell, English-tuned, (3,0) at -7 dB; model -10).
+inline constexpr double kHandbellClapperMassKg = 0.025;  // at F3, VERIFY
 inline constexpr double kHandbellClapperExponent = 2.5;  // Chaigne-Askenfelt felt
-inline constexpr double kHandbellClapperStiffness = 2.0e9;  // N/m^2.5, TUNED
+inline constexpr double kHandbellClapperStiffness = 1.0e9;  // N/m^2.5 at F3, TUNED
+inline constexpr double kHandbellClapperRefHz = 174.61;
+inline double handbellClapperMassKg(double f1) {
+  return kHandbellClapperMassKg * std::pow(f1 / kHandbellClapperRefHz, -1.5);
+}
+inline double handbellClapperStiffness(double f1) {
+  return kHandbellClapperStiffness * std::pow(f1 / kHandbellClapperRefHz, 1.5);  // TUNED exponent
+}
 
 class HandbellVoice final : public IVoice {
  public:
   // f1 the (2,0) frequency (the note); clapper speed in m/s; listener 1 m
-  // off the bell's side (UNSOURCED).
+  // off the bell's side (UNSOURCED). Clapper stiffness and mass of zero
+  // take the size-scaled defaults above.
   [[nodiscard]] static Result<HandbellVoice, QuantityError> create(
       double f1, double speedMps, SampleRateHz rate, double distanceM = 1.0,
-      double clapperStiffness = kHandbellClapperStiffness, int oversample = 4) {
+      double clapperStiffness = 0.0, int oversample = 4,
+      double clapperMassKg = 0.0) {
     using R = Result<HandbellVoice, QuantityError>;
     if (!(f1 > 20.0) || !(speedMps > 0.0) || !(rate.value() > 0.0) || !(distanceM > 0.0) ||
-        !(clapperStiffness > 0.0) || oversample < 1)
+        !(clapperStiffness >= 0.0) || oversample < 1 || !(clapperMassKg >= 0.0))
       return R::failure(QuantityError::InvalidArgument);
     HandbellVoice v;
     v.rate_ = rate;
     v.factor_ = oversample;
     v.dt_ = 1.0 / (rate.value() * oversample);
     v.speed_ = speedMps;
-    v.K_ = clapperStiffness;
+    v.K_ = clapperStiffness > 0.0 ? clapperStiffness : handbellClapperStiffness(f1);
+    v.clapperMass_ = clapperMassKg > 0.0 ? clapperMassKg : handbellClapperMassKg(f1);
     const double rho0 = 1.204, c = 343.2;
     const double d = kHandbellC5DiameterM * std::sqrt(523.25 / f1), a = 0.5 * d;
     const double mass = kHandbellC5MassKg * std::pow(d / kHandbellC5DiameterM, 3.0);
@@ -113,11 +126,15 @@ class HandbellVoice final : public IVoice {
       const double ka = o.omega / c * a;
       double fact = 1.0;
       for (int j = 2; j < hm.m; ++j) fact *= j;
-      // Low-ka multipole growth, saturating at ka ~ 1 (a radiation
-      // efficiency (ka)^2(m-1) / (1 + (ka)^2(m-1)) in power, VERIFY).
-      const double g = std::pow(ka, hm.m - 1);
-      o.radiate = rho0 * a * a * g / std::sqrt(1.0 + g * g) /
-                  (4.0 * constants::pi * distanceM * std::pow(2.0, hm.m - 1) * fact);
+      // Low-ka multipole growth h = (ka)^(m-1) / (2^(m-1) (m-1)!),
+      // saturating as h / sqrt(1 + h^2): above the coincidence every
+      // order radiates with the same efficiency (a sphere's modal
+      // radiation resistance tends to rho c for every order once ka
+      // exceeds the order, Morse and Ingard sec. 7.2), so the order
+      // prefactor saturates with the ka growth (VERIFY).
+      const double h = std::pow(ka, hm.m - 1) / (std::pow(2.0, hm.m - 1) * fact);
+      o.radiate = rho0 * a * a * h / std::sqrt(1.0 + h * h) /
+                  (4.0 * constants::pi * distanceM);
       if (hm.n > 0) o.radiate *= 0.5;  // a nodal circle splits the rim region (VERIFY)
       v.modes_.push_back(o);
     }
@@ -159,7 +176,7 @@ class HandbellVoice final : public IVoice {
           breath += constants::pi * he_ * (m.s.velocity * m.s.velocity + m.s.displacement * acc);
         }
         p += monopole_ * breath;
-        vy_ += -F / kHandbellClapperMassKg * dt_;
+        vy_ += -F / clapperMass_ * dt_;
         y_ += vy_ * dt_;
         if (!std::isfinite(p)) return R::failure(QuantityError::RangeError);
         sum += p;
@@ -186,7 +203,7 @@ class HandbellVoice final : public IVoice {
   std::vector<Mode> modes_;
   SampleRateHz rate_{48000.0};
   int factor_ = 1;
-  double dt_ = 0.0, speed_ = 0.0, K_ = 0.0, he_ = 0.0, monopole_ = 0.0;
+  double dt_ = 0.0, speed_ = 0.0, K_ = 0.0, clapperMass_ = kHandbellClapperMassKg, he_ = 0.0, monopole_ = 0.0;
   double y_ = 0.0, vy_ = 0.0, contact_ = 0.0;
   bool armed_ = true;
 };
