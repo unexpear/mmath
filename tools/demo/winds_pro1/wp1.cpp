@@ -139,7 +139,7 @@ int main(int argc, char** argv) {
     ValveBlow lip = sustained(tpP, 10000.0, kTrumpetAttack); lip.frames = (std::uint64_t)std::llround(T * kFs);
     lip.reflectionMagnitude = 0.999; lip.initialDisplacementMeters = 0.0; lip.tongueReleaseFrames = 0;
     lip.brassiness = env("WP_BRASS", 1.0); lip.reedTurbulence = kTrumpetReedTurbulence; applyBach37Bell(lip); lip.bellTransmission = env("WP_BT", 1.0) > 0.5; lip.radiationHz = env("WP_RAD", kTrumpetRadiationHz);
-    auto voice = U(ConeValveVoice::fromTrumpet(tp, 0.26, lip, kRate)); if (env("WP_THR", 0.0) > 0.0 && !voice.setLipThresholdPa(env("WP_THR", 0.0))) return 8; if (env("WP_LIPQ", 0.0) > 0.0 && !voice.setLipQualityFactor(env("WP_LIPQ", 0.0))) return 4; if (env("WP_BURG", 0.0) > 0.0 && !voice.setBoreBurgers(true, env("WP_BURG", 0.0), (int)env("WP_BURGM", 32))) return 6; if (env("WP_LUMPS", 0.0) > 0.0 && !voice.setBurgersLossLumps((int)env("WP_LUMPS", 1.0))) return 7; if (env("WP_LIPC", 0.0) > 0.5) { if (!voice.setLipCollision(true, env("WP_LIPK", 3.0), env("WP_LIPZ", 1.1))) return 5; }
+    auto voice = U(ConeValveVoice::fromTrumpet(tp, 0.26, lip, kRate)); if (env("WP_THR", 0.0) > 0.0 && !voice.setLipThresholdPa(env("WP_THR", 0.0))) return 8; if (env("WP_LIPQ", 0.0) > 0.0 && !voice.setLipQualityFactor(env("WP_LIPQ", 0.0))) return 4; if (env("WP_INR", 0.0) > 0.0 && !voice.setInwardLipMode(env("WP_INR", 0.0), env("WP_INQ", 1.8), env("WP_ING", 0.3))) return 9; if (env("WP_BURG", 0.0) > 0.0 && !voice.setBoreBurgers(true, env("WP_BURG", 0.0), (int)env("WP_BURGM", 32))) return 6; if (env("WP_LUMPS", 0.0) > 0.0 && !voice.setBurgersLossLumps((int)env("WP_LUMPS", 1.0))) return 7; if (env("WP_LIPC", 0.0) > 0.5) { if (!voice.setLipCollision(true, env("WP_LIPK", 3.0), env("WP_LIPZ", 1.1))) return 5; }
     double start = 0; BrassFinger held = kTrumpetFingers[0];
     for (auto& s : song) {
       BrassFinger r = s.hertz > 0 ? trumpetFinger(s.hertz) : held; if (const char* rf = std::getenv("WP_ROWFILE"); rf && s.hertz > 0) { std::ifstream in(rf); double h, l; while (in >> h >> l) if (std::fabs(h - s.hertz) < 0.05) r.length = l; }
@@ -161,7 +161,7 @@ int main(int argc, char** argv) {
     bone.brassiness = 1.0; bone.reedTurbulence = kTromboneReedTurbulence; applyScottBell(bone); bone.bellTransmission = env("WP_TBT", 0.0) > 0.5; if (env("WP_TRAD", 0.0) > 0.0) bone.radiationHz = env("WP_TRAD", 0.0);
     bone.wallRadiusMeters = kBach42BoreRadiusMeters;
     if (measured) { bone.brassiness = 0.0; bone.reedTurbulence = 0.0; }
-    auto voice = U(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate)); if (env("WP_LIPQ", 0.0) > 0.0 && !voice.setLipQualityFactor(env("WP_LIPQ", 0.0))) return 4;
+    auto voice = U(ConeValveVoice::fromTrombone(horn, 0.60, bone, kRate)); if (env("WP_LIPQ", 0.0) > 0.0 && !voice.setLipQualityFactor(env("WP_LIPQ", 0.0))) return 4; if (env("WP_INR", 0.0) > 0.0 && !voice.setInwardLipMode(env("WP_INR", 0.0), env("WP_INQ", 1.8), env("WP_ING", 0.3))) return 9;
     // Measured path, as the suite's bolero-measured: bbTromboneProfile bore,
     // Myers steepening, Adachi-Sato lip tuned per note; the slide position
     // is the real one, the Bb harmonic n (2..8 of 58.27 Hz) that needs 0-6

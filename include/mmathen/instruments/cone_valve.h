@@ -160,6 +160,8 @@ class ConeValveVoice final : public IVoice {
         if (lip_) {
           displacement_ = lipPreload() - restOpening_ / slitWidth_;
           velocity_ = 0.0;
+          inX_ = 0.0;
+          inV_ = 0.0;
         } else {
           displacement_ = closing_;
           velocity_ = 0.0;
@@ -176,7 +178,7 @@ class ConeValveVoice final : public IVoice {
       double pressure = 0.0;
       double opening = 0.0;
       if (lip_) {
-        opening = restOpening_ + slitWidth_ * (displacement_ - lipPreload());
+        opening = restOpening_ + slitWidth_ * (displacement_ + inX_ - lipPreload());
         if (opening < 0.0) opening = 0.0;
         if (opening > maximumOpening_) opening = maximumOpening_;
         if (as_.on) opening = std::max(2.0 * as_.b * as_.y, 0.0);
@@ -306,6 +308,20 @@ class ConeValveVoice final : public IVoice {
           if (!std::isfinite(velocity_) || !std::isfinite(displacement_))
             return R::failure(QuantityError::RangeError);
           stopLip();
+          if (in_.on) {
+            // Inward-striking second mode (see setInwardLipMode): the
+            // same mass on its own spring, driven by minus gain times
+            // the pressure force, so the gap pressure closes it. Same
+            // semi-implicit step as the outward mode.
+            const double m = trumpet_.lipMassKg;
+            const double w2 = in_.ratio * std::sqrt(trumpet_.lipStiffnessNewtonsPerMeter / m);
+            const double a2 = (-in_.gain * trumpet_.lipPressureAreaM2 * delta -
+                               m * w2 * w2 * inX_ - m * w2 / in_.q * inV_) / m;
+            inV_ += a2 * dt;
+            inX_ += inV_ * dt;
+            if (!std::isfinite(inV_) || !std::isfinite(inX_))
+              return R::failure(QuantityError::RangeError);
+          }
         }
       }
       if (rfOn_) {
@@ -431,6 +447,8 @@ class ConeValveVoice final : public IVoice {
     flowMean_ = 0.0;
     apertureFlow_ = 0.0;
     lipLocked_ = false;
+    inX_ = 0.0;
+    inV_ = 0.0;
     prevOutgoing_ = 0.0;
     std::fill(steepHist_, steepHist_ + 16, 0.0);
     burgers_.reset();
@@ -688,6 +706,29 @@ class ConeValveVoice final : public IVoice {
     if (trumpet_.lipCollisionStiffness > 0.0) enableLipCollision(trumpet_);
     return true;
   }
+
+  // Second, inward-striking lip resonance. Newton, Campbell and Gilbert,
+  // JASA 123, EL14 (2008), measured human trombone embouchures (high-
+  // speed video): one dominant outward-striking (-90 deg) resonance
+  // below the played note, Q 1.2-1.8, and a weaker inward-striking
+  // (+90 deg) one above it, the played note between the two (Bb1 pedal:
+  // 32 Hz and 74 Hz, played 58 Hz; artificial lips 136/184 Hz, played
+  // 174 Hz). They suggest at least two mechanical degrees of freedom.
+  // Here the gap opening is set by the outward mode (the one-mass lip,
+  // unchanged) plus a second oscillator of the same mass at ratio times
+  // the outward resonance, quality q, driven by minus gain times the
+  // pressure force. Newton prints no amplitude for the weaker peak nor
+  // its Q; gain and q are the caller's. Off (bit-identical) by default;
+  // ratio <= 0 turns it off.
+  bool setInwardLipMode(double ratio, double q, double gain) {
+    if (!lip_ || as_.on || !std::isfinite(ratio) || !std::isfinite(q) || !std::isfinite(gain))
+      return false;
+    if (!(ratio > 0.0)) { in_ = {}; inX_ = 0.0; inV_ = 0.0; return true; }
+    if (!(q > 0.0) || gain < 0.0) return false;
+    in_.on = true; in_.ratio = ratio; in_.q = q; in_.gain = gain;
+    return true;
+  }
+  [[nodiscard]] bool inwardLipModeOn() const noexcept { return in_.on; }
 
   // Two-lip contact on or off (Ishizaka-Flanagan, see enableLipCollision).
   // Opt-in measured Bb trumpet bore (brass_bore.h): the delay line, wall
@@ -1490,6 +1531,8 @@ class ConeValveVoice final : public IVoice {
   double bellScale_ = 1.0;
   double lipThresholdPa_ = 0.0;
   double lipQ_ = 0.0;
+  struct InwardLip { bool on = false; double ratio = 0.0, q = 0.0, gain = 0.0; } in_;
+  double inX_ = 0.0, inV_ = 0.0;
   double lipSide_ = 1.0;  // gap-to-mouth pressure fraction at the lips (series tongue)
   double lastOpening_ = 0.0;
   PlayerAirway* airway_ = nullptr;

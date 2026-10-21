@@ -343,3 +343,42 @@ TEST_CASE("cone mean flow relaxes through the bore's Poiseuille resistance", "[b
   CHECK(voice.boreDcLeak(1.0 / 48000.0) < 1.0);
   CHECK(voice.boreDcLeak(1.0 / 48000.0) > 0.9999);
 }
+
+TEST_CASE("inward-striking second lip mode is opt-in and changes only when on", "[bore]") {
+  // Newton, Campbell and Gilbert, JASA 123, EL14 (2008): a weaker inward-
+  // striking lip resonance above the played note. Off is bit-identical;
+  // ratio 0 turns it back off; on changes the buzz and stays finite.
+  const double lipMass = 2.0e-5;
+  const double speed = unwrap(speedOfSound(Air{TemperatureKelvin{kTemp}})).value();
+  const double lipOmega = 2.0 * constants::pi * (speed / (4.0 * 0.45));
+  const auto trumpet = unwrap(makeTrumpet(TrumpetSpec{0.45, 1.2e-4, kAir, kTemp, 0.0, 8.0e-6,
+                                                     4.0e-5, 8.0e-3, lipMass,
+                                                     lipOmega * lipOmega * lipMass, 1.5e-5, 0.002}));
+  const ValveBlow lip{2500.0, 8000, 1.0, 0.0};
+  const std::size_t frames = 8000;
+  auto render = [&](double ratio, double q, double gain) {
+    auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.2, lip, kRate));
+    if (ratio != 0.0) REQUIRE(voice.setInwardLipMode(ratio, q, gain));
+    std::vector<double> out(frames, 0.0);
+    REQUIRE(voice.renderBlock(out.data(), FrameCount{frames}).ok());
+    return out;
+  };
+  const auto base = render(0.0, 0.0, 0.0);
+  const auto offAgain = render(-1.0, 0.0, 0.0);
+  CHECK(base == offAgain);
+  const auto on = render(2.31, 1.8, 0.5);
+  bool differs = false, finite = true;
+  for (std::size_t i = 0; i < frames; ++i) {
+    if (on[i] != base[i]) differs = true;
+    if (!std::isfinite(on[i])) finite = false;
+  }
+  CHECK(differs);
+  CHECK(finite);
+  auto voice = unwrap(ConeValveVoice::fromTrumpet(trumpet, 0.2, lip, kRate));
+  CHECK_FALSE(voice.setInwardLipMode(2.0, 0.0, 0.5));
+  CHECK_FALSE(voice.setInwardLipMode(2.0, 1.8, -0.1));
+  CHECK(voice.setInwardLipMode(2.0, 1.8, 0.5));
+  CHECK(voice.inwardLipModeOn());
+  CHECK(voice.setInwardLipMode(0.0, 0.0, 0.0));
+  CHECK_FALSE(voice.inwardLipModeOn());
+}
