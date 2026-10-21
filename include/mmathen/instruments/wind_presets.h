@@ -125,10 +125,30 @@ inline constexpr double kFluteLockedBreathFraction = 0.047;
 //   aim 1.20, 3000 Hz:         -7.5/-15.1/-23.4,  -6.6, -29.3
 //   aim 1.00, 2500 / 3500 Hz:  -7.5/-16.3/-24.6 / -6.5/-17.2/-23.3
 // Aim 1.00 with 3000 Hz has the smallest summed error; pitch median 2.5 c
-// on every run. The Kirchhoff wall fit (wallFitFundamental) on the flute
-// moved H3 by +-5 dB between neighbouring corners and is left off.
+// on every run. (Winds pro4 also saw the Kirchhoff wall fit move H3 by
+// +-5 dB between neighbouring corners; it was then left off. Step 17
+// switched it on, below.)
 inline constexpr double kFluteJetAimFraction = 1.00;
 inline constexpr double kFluteReflectionCutoffHz = 3000.0;
+// Flute bore wall loss (step 17): the Kirchhoff wall fitted at the sounding
+// fundamental (ValveBlow::wallFitFundamental), as the clarinet's. N. H.
+// Fletcher, "Acoustical correlates of flute performance technique", JASA
+// 57, 233 (1975), sec. V: the flute vibrato is set by "the nonlinear jet
+// excitation and the stabilizing effect of the narrow fundamental pipe
+// resonance"; his measured C4 tube resonance half-widths +-4 / 6 / 7 / 8 Hz
+// for the first four modes are Q 33 / 44 / 56 / 66. The lone one-pole wall
+// (matched near 4 kHz) left the soft flute's bore at Q 99 / 80 / 63 / 53,
+// a fundamental three times too narrow that held the pitch against the
+// 10 % breath swing (+-0.73 c in Silent Night vs +-9.6 c Iowa MIS flute
+// vib pp). With the fit: Q 33 / 44 / 45 / 43 and +-5.6 c. Costs measured
+// at step 17 (Iowa pp scoreboard): long-term spectrum 8.14 -> 8.80 dB,
+// attack 97.5 -> 57.5 ms (Iowa 325), level slope 4.0 -> 9.4 dB/oct (5.3);
+// accepted by Mike. Breath (locked breath, jet turbulence) unchanged.
+inline constexpr bool kFluteWallFitFundamental = true;
+inline ValveBlow fluteBoreLosses(ValveBlow blow) {
+  blow.wallFitFundamental = kFluteWallFitFundamental;
+  return blow;
+}
 // Soft flute voicing by score dynamic. Fletcher and Douglas (JASA 68,
 // 1980): the jet offset sets the even harmonics; Fletcher (JASA 57, 233,
 // 1975): soft playing lowers the blowing pressure (about a factor 2 from

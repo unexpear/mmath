@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
     ValveBlow jet = sustained(pressureFor(lowest) * 0.5, kFluteReflectionCutoffHz, kFluteAttack); jet.frames = (std::uint64_t)std::llround(T * kFs);
     // WP_SONGFILE dynamics: soft voicing (wind_presets.h fluteVoicingFor) from the first note.
     const FluteVoicing voicing = fluteVoicingFor(std::getenv("WP_SONGFILE") ? song.back().dynamic : "");
-    jet.reflectionMagnitude = env("WP_RMAG", 0.985); jet.wallFitFundamental = env("WP_FWFIT", 0.0) > 0.5; jet.initialDisplacementMeters = 0.0; jet.jetAimMeters = env("WP_AIM", voicing.aimFraction) * thickness; jet.reflectionCutoffHz = env("WP_CUT", voicing.reflectionCutoffHz);
+    jet.reflectionMagnitude = env("WP_RMAG", 0.985); jet = fluteBoreLosses(jet); jet.wallFitFundamental = env("WP_FWFIT", kFluteWallFitFundamental ? 1.0 : 0.0) > 0.5; jet.initialDisplacementMeters = 0.0; jet.jetAimMeters = env("WP_AIM", voicing.aimFraction) * thickness; jet.reflectionCutoffHz = env("WP_CUT", voicing.reflectionCutoffHz);
     jet.jetNoiseMeters = env("WP_JN", 0.035) * thickness; jet.reedTurbulence = env("WP_TURB", kFluteJetTurbulence);
     jet.lockedBreathFraction = env("WP_LBF", voicing.lockedBreathFraction); jet.endCorrectionMeters = end;
     auto voice = U(BoreValveVoice::fromFlute(fl, jet, kRate));

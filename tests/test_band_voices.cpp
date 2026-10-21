@@ -594,6 +594,22 @@ TEST_CASE("wind player profiles carry the measured values", "[band][player]") {
   CHECK(d.breathMaxNoteFraction == 0.5);
 }
 
+TEST_CASE("flute bore: Kirchhoff wall fit on, breath as set (step 17)", "[band][player][flute]") {
+  // Fletcher 1975 bore resonance widths: the flute's wall is fitted at the
+  // fundamental (wind_presets.h); the player's habits and the soft breath stay.
+  CHECK(kFluteWallFitFundamental);
+  CHECK(fluteBoreLosses(ValveBlow{}).wallFitFundamental);
+  CHECK_FALSE(ValveBlow{}.wallFitFundamental);  // other bores keep their own choice
+  CHECK(fluteVoicingFor("p").lockedBreathFraction == 0.10);
+  CHECK(fluteVoicingFor("pp").lockedBreathFraction == 0.14);
+  CHECK(fluteVoicingFor("ff").lockedBreathFraction == kFluteLockedBreathFraction);
+  CHECK(kFluteJetTurbulence == 0.56);
+  const WindPlayerProfile fl = flutePlayerProfile();
+  CHECK(fl.vibratoHz == 5.0);
+  CHECK(fl.vibratoPressureFraction == 0.10);
+  CHECK(fl.vibratoCents == 0.0);
+}
+
 TEST_CASE("a stolen breath takes at most half a note", "[band][player]") {
   // Lungs start near residual so every join wants a breath; 0.3 s notes.
   PlayerAirwaySpec spec{}; spec.initialLungVolumeM3 = spec.residualVolumeM3 + 0.4e-3;

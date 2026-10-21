@@ -113,6 +113,13 @@ struct WindPlayerProfile {
 // the jet (pressure -> jet speed -> convection delay) makes whatever
 // pitch and timbre swing follows. Fletcher, Acoustics Australia 28, 55
 // (2000): 5-6 Hz. Tongue, release and breath plan stay at the defaults.
+// Step 17: the pitch swing this breath vibrato makes depends on the bore
+// resonance width (same paper, sec. V). With the flute's Kirchhoff wall
+// fit on (wind_presets.h kFluteWallFitFundamental, bore Q 33 at C4 as
+// Fletcher measured) the same 10 % swing gives +-5.6 c in Silent Night
+// (Iowa MIS flute vib pp +-9.6 c; +-0.73 c before). The habits stay as
+// cited: 5 Hz, 10 % pressure, vibratoCents 0; the breathiness is the
+// voicing's (fluteVoicingFor), unchanged.
 [[nodiscard]] inline WindPlayerProfile flutePlayerProfile() {
   WindPlayerProfile p;
   p.name = "flute (Fletcher 1975)";
