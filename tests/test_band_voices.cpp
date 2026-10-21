@@ -321,6 +321,74 @@ TEST_CASE("snare wires brighten the drum and the hit decays", "[band][snare]") {
   CHECK(tail < 0.01 * first);
 }
 
+namespace {
+// snm.py metrics: onset at the first sample above 5 % of the peak, minus 1 ms.
+std::size_t snareOnset(const std::vector<double>& x) {
+  double pk = 0;
+  for (double v : x) pk = std::max(pk, std::fabs(v));
+  std::size_t i = 0;
+  while (i < x.size() && std::fabs(x[i]) <= 0.05 * pk) ++i;
+  return i > 48 ? i - 48 : 0;
+}
+// Peak-to-RMS (dB) over the first 10 ms after the onset.
+double snareCrest10(const std::vector<double>& x) {
+  const std::size_t o = snareOnset(x);
+  double pk = 0, e = 0;
+  for (std::size_t i = o; i < o + 480; ++i) { pk = std::max(pk, std::fabs(x[i])); e += x[i] * x[i]; }
+  return 20.0 * std::log10(pk / std::sqrt(e / 480.0));
+}
+// 2 ms RMS at `ms` after the onset relative to the largest 2 ms RMS (dB).
+double snareLevelAt(const std::vector<double>& x, double ms) {
+  const std::size_t o = snareOnset(x);
+  auto rms = [&](std::size_t a) { double e = 0; for (std::size_t i = a; i < a + 96; ++i) e += x[i] * x[i]; return std::sqrt(e / 96.0); };
+  double mx = 0;
+  for (std::size_t a = o; a < o + 2400; a += 8) mx = std::max(mx, rms(a));
+  return 20.0 * std::log10(rms(o + static_cast<std::size_t>(ms * 48.0)) / mx);
+}
+}  // namespace
+
+TEST_CASE("distributed snare strands: smooth onset and a buzz that lasts (step 9)", "[band][snare]") {
+  // VSCO 2 CE Snare2 HitSN: crest over the first 10 ms 5.7-6.4 dB, t(-20 dB)
+  // 63-100 ms. The lumped strands gave 8.7 dB / 32 ms at 3 m/s and
+  // 11.6 dB / 31 ms at 6 m/s (each return of the wire set hit the head in phase).
+  const SnareWires w = snareWireSet();
+  CHECK(w.stringModes > 0);
+  CHECK(w.contactsPerStrand >= w.stringModes);
+  for (double speed : {3.0, 6.0}) {
+    auto hit = snareDrumHit(speed, true, SampleRateHz{kBandFs});
+    REQUIRE(hit.ok());
+    auto v = std::move(hit).value();
+    std::vector<double> x(9600);
+    REQUIRE(v.renderBlock(x.data(), FrameCount{x.size()}).ok());
+    for (double s : x) REQUIRE(std::isfinite(s));
+    CHECK(snareCrest10(x) < 7.5);
+    CHECK(snareLevelAt(x, 60.0) > -20.0);
+  }
+  // The lumped strand path (stringModes = 0) still attaches and renders.
+  SnareWires lumped;
+  lumped.count = 20;
+  lumped.strandMassKg = 0.3e-3;
+  lumped.lowestHz = 120.0;
+  lumped.highestHz = 2400.0;
+  lumped.strandQ = 8.0;
+  lumped.contactStiffness = 2.0e7;
+  lumped.contactDampingPerMeterPerSecond = 0.5;
+  lumped.preloadMeters = 5.0e-7;
+  auto lh = snareDrumHit(3.0, true, SampleRateHz{kBandFs}, 1.0, &lumped);
+  REQUIRE(lh.ok());
+  auto lv = std::move(lh).value();
+  std::vector<double> y(4800);
+  REQUIRE(lv.renderBlock(y.data(), FrameCount{y.size()}).ok());
+  for (double s : y) REQUIRE(std::isfinite(s));
+  // A distributed set needs at least one contact point and a positive tension.
+  SnareWires bad = snareWireSet();
+  bad.contactsPerStrand = 0;
+  CHECK_FALSE(snareDrumHit(3.0, true, SampleRateHz{kBandFs}, 1.0, &bad).ok());
+  bad = snareWireSet();
+  bad.stringTensionN = 0.0;
+  CHECK_FALSE(snareDrumHit(3.0, true, SampleRateHz{kBandFs}, 1.0, &bad).ok());
+}
+
 TEST_CASE("piano board: every mode radiates, so no key falls between radiating modes", "[band][piano]") {
   // jb10: with volume areas alone, even modes were silent and the radiated
   // response at f0 spread 40 dB over G2-C5 (D3, D#3 about 15 dB under C3).

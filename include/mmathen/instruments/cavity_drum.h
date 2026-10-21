@@ -31,6 +31,14 @@
 // snare model (S. Bilbao, "Time domain simulation and sound synthesis for
 // the snare drum", JASA 131(1), 914-925, 2012: wires as separate
 // vibrating objects in one-sided collision with the snare head).
+// Distributed strands (SnareWires::stringModes > 0): each strand is, as in
+// Bilbao's model, an ideal string pinned at its ends (modal: sin(k pi s /
+// L), mode k decaying at sigma0 + sigma1 (k pi / L)^2), lying across the
+// head along its own chord and touching it at contactsPerStrand points
+// (the contact stiffness is shared between them). A lumped strand meets
+// the head with its whole moving mass at one point, so all strands slap
+// the head together and a heavily damped resonator stands in for the
+// string's own loss; a string meets it piece by piece.
 // Local radiation (with wires, or enableLocalRadiation): above ka = 1 a
 // head is not compact and a point force radiates as on an infinite
 // membrane, volume acceleration F / sigma (areal density sigma): the mass
@@ -79,6 +87,17 @@ struct SnareWires {
   // a fixed golden-ratio sequence in [-1, 1]. Real strands are not
   // identical (strand tension and bed contact vary across a set).
   double preloadSpread = 0.0;
+  // Distributed strands (see the header comment). stringModes > 0 replaces
+  // the lumped strand (strandMassKg, lowestHz, highestHz, strandQ are then
+  // unused): each strand is an ideal string of this tension and linear
+  // density, pinned at the ends of its chord inside spanFraction a, with
+  // contactsPerStrand contact points spaced evenly along it.
+  int stringModes = 0;
+  int contactsPerStrand = 0;
+  double stringTensionN = 0.0;
+  double stringLinearDensityKgPerM = 0.0;
+  double stringLoss0PerSecond = 0.0;     // sigma0
+  double stringLoss1M2PerSecond = 0.0;   // sigma1
 };
 
 class CavityDrumVoice final : public IVoice {
@@ -191,6 +210,48 @@ class CavityDrumVoice final : public IVoice {
       if (!wires_.empty()) {
         axisForce.assign(nAxis, 0.0);
         for (Strand& st : wires_) {
+          if (!st.modes.empty()) {
+            // Distributed strand: Hunt-Crossley contact at each point,
+            // string-mode forces from the points, head forces as for a
+            // lumped strand.
+            const std::size_t points = st.pointPhi.size(), nString = st.modes.size();
+            std::vector<double> modal(nString, 0.0);
+            for (std::size_t p = 0; p < points; ++p) {
+              const std::vector<double>& shape = st.pointPhi[p];
+              const std::vector<double>& sine = st.pointSine[p];
+              double w = 0.0, wv = 0.0, u = 0.0, uv = 0.0;
+              for (std::size_t i = 0; i < nAxis; ++i) {
+                if (shape[i] == 0.0) continue;
+                w += q[i] * shape[i];
+                wv += vq[i] * shape[i];
+              }
+              for (std::size_t k = 0; k < nString; ++k) {
+                u += st.modes[k].displacement * sine[k];
+                uv += st.modes[k].velocity * sine[k];
+              }
+              const double pen = st.preload - w - u;
+              const double penRate = -wv - uv;
+              double f = 0.0;
+              if (pen > 0.0) {
+                const double factor = std::max(0.0, 1.0 + wire_.contactDampingPerMeterPerSecond * penRate);
+                f = wire_.contactStiffness / static_cast<double>(points) *
+                    std::pow(pen, wire_.contactExponent) * factor;
+              }
+              if (!std::isfinite(f)) return R::failure(QuantityError::RangeError);
+              const double net = f - st.pointPreloadForce;
+              for (std::size_t k = 0; k < nString; ++k) modal[k] += net * sine[k];
+              for (std::size_t i = 0; i < nAxis; ++i)
+                if (shape[i] != 0.0) axisForce[i] += net * shape[i];
+              strandSum += net;
+            }
+            for (std::size_t k = 0; k < nString; ++k) {
+              auto moved = stepConstantForceOscillator(st.modes[k], st.modeOmega[k], st.modeSigma[k],
+                                                       modal[k] / st.modalMass, dt);
+              if (!moved.ok()) return R::failure(moved.error());
+              st.modes[k] = moved.value();
+            }
+            continue;
+          }
           double w = 0.0, wv = 0.0;
           for (std::size_t i = 0; i < nAxis; ++i) {
             if (st.phi[i] == 0.0) continue;
@@ -278,7 +339,10 @@ class CavityDrumVoice final : public IVoice {
     malletV_ = strike_.speedMetersPerSecond;
     std::fill(radiation_.begin(), radiation_.end(), 0.0);
     radiationPos_ = 0;
-    for (Strand& st : wires_) st.s = {};
+    for (Strand& st : wires_) {
+      st.s = {};
+      for (OscillatorState& m : st.modes) m = {};
+    }
     hpX_ = hpY_ = 0.0;
     std::fill(localLine_.begin(), localLine_.end(), 0.0);
     localPos_ = 0;
@@ -287,8 +351,16 @@ class CavityDrumVoice final : public IVoice {
   // Snare strands on the resonant head (false without a resonant head or
   // on bad values). Also switches on local radiation.
   [[nodiscard]] bool attachSnareWires(const SnareWires& w) {
-    if (!(resonantDensity_ > 0.0) || w.count < 1 || !(w.strandMassKg > 0.0) ||
-        !(w.lowestHz > 0.0) || !(w.highestHz >= w.lowestHz) || !(w.strandQ > 0.5) ||
+    const bool distributed = w.stringModes > 0;
+    if (distributed && (w.contactsPerStrand < 1 || !(w.stringTensionN > 0.0) ||
+                        !(w.stringLinearDensityKgPerM > 0.0) || w.stringLoss0PerSecond < 0.0 ||
+                        w.stringLoss1M2PerSecond < 0.0 || !std::isfinite(w.stringTensionN) ||
+                        !std::isfinite(w.stringLinearDensityKgPerM)))
+      return false;
+    if (!distributed && (!(w.strandMassKg > 0.0) || !(w.lowestHz > 0.0) ||
+                         !(w.highestHz >= w.lowestHz) || !(w.strandQ > 0.5)))
+      return false;
+    if (!(resonantDensity_ > 0.0) || w.count < 1 || w.stringModes < 0 ||
         !(w.contactStiffness > 0.0) || !(w.contactExponent >= 1.0) ||
         w.contactDampingPerMeterPerSecond < 0.0 || w.preloadMeters < 0.0 ||
         w.preloadSpread < 0.0 || w.preloadSpread >= 1.0 ||
@@ -317,6 +389,37 @@ class CavityDrumVoice final : public IVoice {
       const double u = 2.0 * (golden - std::floor(golden)) - 1.0;
       st.preload = w.preloadMeters * (1.0 + w.preloadSpread * u);
       st.preloadForce = w.contactStiffness * std::pow(st.preload, w.contactExponent);
+      if (distributed) {
+        // The strand's chord at height y, inside spanFraction a.
+        const int points = w.contactsPerStrand;
+        const double half = std::sqrt(std::max(0.0, w.spanFraction * w.spanFraction - y * y));
+        const double length = 2.0 * half * radius_;
+        if (!(length > 0.0)) return false;
+        const double wave = std::sqrt(w.stringTensionN / w.stringLinearDensityKgPerM);
+        st.modalMass = 0.5 * w.stringLinearDensityKgPerM * length;
+        st.pointPreloadForce = st.preloadForce / points;
+        for (int k = 1; k <= w.stringModes; ++k) {
+          const double beta = k * constants::pi / length;
+          st.modeOmega.push_back(wave * beta);
+          st.modeSigma.push_back(w.stringLoss0PerSecond + w.stringLoss1M2PerSecond * beta * beta);
+          if (!(st.modeSigma.back() < st.modeOmega.back())) return false;
+        }
+        st.modes.assign(static_cast<std::size_t>(w.stringModes), OscillatorState{});
+        for (int p = 0; p < points; ++p) {
+          const double along = (p + 0.5) / points;  // 0..1 along the string
+          const double xp = (2.0 * along - 1.0) * half;
+          const double rp = std::hypot(xp, y), tp = std::atan2(y, xp);
+          std::vector<double> shape(axes_.size(), 0.0);
+          for (std::size_t i = 0; i < axes_.size(); ++i)
+            if (!axes_[i].batter)
+              shape[i] = std::cyl_bessel_j(static_cast<double>(axes_[i].m), axes_[i].alpha * rp) *
+                         std::cos(axes_[i].m * tp);
+          st.pointPhi.push_back(std::move(shape));
+          std::vector<double> sine;
+          for (int k = 1; k <= w.stringModes; ++k) sine.push_back(std::sin(k * constants::pi * along));
+          st.pointSine.push_back(std::move(sine));
+        }
+      }
       wires_.push_back(std::move(st));
     }
     wire_ = w;
@@ -355,6 +458,13 @@ class CavityDrumVoice final : public IVoice {
     OscillatorState s;
     double lastPen = 0.0;
     double preload = 0.0, preloadForce = 0.0;
+    // Distributed strand: head-axis shapes and string-mode shapes at each
+    // contact point, the string's modes, and each point's share of the preload force.
+    std::vector<std::vector<double>> pointPhi;
+    std::vector<std::vector<double>> pointSine;
+    std::vector<OscillatorState> modes;
+    std::vector<double> modeOmega, modeSigma;
+    double modalMass = 0.0, pointPreloadForce = 0.0;
   };
 
   struct Normal {

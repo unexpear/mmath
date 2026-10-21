@@ -36,22 +36,45 @@ inline constexpr double kSnareStickExponent = 1.5;       // Hertz contact
 inline constexpr double kSnareStrikeRadialFraction = 0.3;  // off-centre stroke, UNSOURCED
 
 // Strands: a standard set has 20 strands (Puresound / Remo 20-strand
-// 14 in sets). Moving mass per strand contact, strand resonance spread,
-// contact stiffness and preload are TUNED to the VSCO Snare2 "HitSN"
-// (snares on) samples; Bilbao (JASA 131, 2012) models the strands as
-// stiff strings in one-sided contact and does not print one set of these
-// lumped values.
+// 14 in sets). Each strand is a distributed string in one-sided contact
+// with the snare head (S. Bilbao, JASA 131, 914, 2012; A. Torin & M.
+// Newton, "Collisions in drum membranes: a preliminary study on a
+// simplified system", ISMA 2014, 401-406). String values from Torin &
+// Newton Table 1: steel 7800 kg/m^3, cross-section radius 0.18-0.29 mm
+// (0.235 mm taken), tension 0.2-2 N (1.1 N taken), loss sigma0 2 1/s and
+// sigma1 0.001 m^2/s (read as mode decay sigma0 + sigma1 beta^2, VERIFY
+// the paper's factor convention). Until step 9 each strand was a lumped
+// 0.3 g mass on a Q 8 resonator (TUNED): all strands slapped the head at
+// once (crest over the first 10 ms 8.7 dB at 3 m/s, 11.6 at 6, against
+// 5.7-6.4 in the VSCO Snare2 HitSN samples) and the Q 8 resonators drained
+// the head (t(-20 dB) 25-32 ms, reference 63-100 ms). Contact stiffness
+// and preload remain lumped-fit values (Torin & Newton do not give one
+// set for a full snare); contactStiffness is the whole strand's, shared
+// over its contact points.
+inline constexpr double kSnareStrandRadiusM = 0.235e-3;     // Torin & Newton 2014 Table 1 (0.18-0.29 mm), middle
+inline constexpr double kSnareStrandTensionN = 1.1;         // Torin & Newton 2014 Table 1 (0.2-2 N), middle
+inline constexpr double kSnareStrandDensityKgPerM3 = 7800.0;  // steel, Torin & Newton 2014 Table 1
+inline constexpr double kSnareStrandLoss0 = 2.0;            // 1/s, Torin & Newton 2014 Table 1
+inline constexpr double kSnareStrandLoss1 = 0.001;          // m^2/s, Torin & Newton 2014 Table 1
+// String modes and contact points per strand: numerical. 16 / 16 agrees
+// with 24 / 24 and 32 / 32 within the run-to-run scatter of the buzz
+// (3 m/s: t(-20 dB) 99-108 ms, crest 10 ms 6.0-6.1 dB, late >2 kHz
+// -11.3..-12.8 dB); 32 modes on 16 points under-resolved the strings.
+inline constexpr int kSnareStrandModes = 16;
+inline constexpr int kSnareStrandContacts = 16;
 [[nodiscard]] inline SnareWires snareWireSet() {
   SnareWires w;
   w.count = 20;
-  w.strandMassKg = 0.3e-3;         // TUNED (0.6 g drained the head: t(-40 dB) 56 ms)
-  w.lowestHz = 120.0;              // TUNED
-  w.highestHz = 2400.0;            // TUNED
-  w.strandQ = 8.0;                 // TUNED (Q 3 with the head at Q 42 drained the buzz: late >2 kHz -21 dB; the Q 8 "chatter" seen before was the 8x step, see kSnareOversample)
-  w.contactStiffness = 2.0e7;      // TUNED
+  w.stringModes = kSnareStrandModes;
+  w.contactsPerStrand = kSnareStrandContacts;
+  w.stringTensionN = kSnareStrandTensionN;
+  w.stringLinearDensityKgPerM = kSnareStrandDensityKgPerM3 * constants::pi * kSnareStrandRadiusM * kSnareStrandRadiusM;
+  w.stringLoss0PerSecond = kSnareStrandLoss0;
+  w.stringLoss1M2PerSecond = kSnareStrandLoss1;
+  w.contactStiffness = 3.0e6;      // TUNED on the distributed strands (2e6: late >2 kHz -12.6 dB; 5e6: crest 10 ms 7.7 dB; 2e7, the lumped value: 11.8 dB)
   w.contactExponent = 1.5;         // Hertz
-  w.contactDampingPerMeterPerSecond = 0.5;  // TUNED
-  w.preloadMeters = 5.0e-7;        // TUNED (2e-5 kept the strands stuck: no buzz)
+  w.contactDampingPerMeterPerSecond = 0.5;  // TUNED (lumped fit, kept)
+  w.preloadMeters = 5.0e-7;        // TUNED (lumped fit, kept; 2e-5 kept the strands stuck: no buzz)
   w.spanFraction = 0.6;
   return w;
 }
@@ -63,6 +86,8 @@ inline constexpr double kSnareStrikeRadialFraction = 0.3;  // off-centre stroke,
 // OversampledBowedStringVoice). Convergence (3 m/s, snares on): 8x left
 // late >2 kHz buzz 2-20 dB above 16x / 24x / 48x (numerical chatter);
 // 16x agrees with 48x within 1 dB on every band and 5 ms on t(-20 dB).
+// With the distributed strands (step 9) 8x, 16x and 32x agree within
+// 0.2 dB and 10 ms.
 inline constexpr int kSnareOversample = 16;  // convergence, see above
 class SnareDrumVoice final : public IVoice {
  public:
