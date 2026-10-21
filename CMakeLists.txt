@@ -176,6 +176,7 @@ if(BUILD_TESTING)
     tests/test_guitar_pluck.cpp
     tests/test_sleigh_bell.cpp
     tests/test_player_profile.cpp
+    tests/test_player_profile_more.cpp
     tests/headers/th_result.cpp
     tests/headers/th_scalar.cpp
     tests/headers/th_constants.cpp
@@ -261,6 +262,7 @@ if(BUILD_TESTING)
     tests/headers/th_instruments_drum.cpp
     tests/headers/th_instruments_cymbal.cpp
     tests/headers/th_instruments_player_profile.cpp
+    tests/headers/th_instruments_bowed_note.cpp
     tests/headers/th_hearing_loudness.cpp
     tests/headers/th_hearing_scales.cpp
     tests/headers/th_hearing_masking.cpp

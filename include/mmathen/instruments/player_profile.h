@@ -4,10 +4,15 @@
 // player's habits per family, the counterpart of WindPlayerProfile
 // (wind_player_profile.h) and the violin's BowingGestureParams
 // (bowing_gesture.h). Families:
-//   bowed   (cello)                     BowedPlayerProfile
-//   plucked (guitar, double bass pizz)  PluckedPlayerProfile
+//   bowed   (cello, violin, viola,
+//            double bass arco)          BowedPlayerProfile
+//   plucked (guitar, double bass pizz,
+//            harp, harpsichord,
+//            electric guitar)           PluckedPlayerProfile
 //   struck  (piano, snare, glockenspiel, celesta, tubular bells,
 //            handbells)                 StruckPlayerProfile
+//   drum kit (kick, snare, toms,
+//            hi-hat, cymbals)           DrumKitPlayerProfile
 //   shaken  (sleigh bells)              ShakenPlayerProfile
 // Every family shares PlayerFeel: how a player's onsets and loudness
 // scatter around the written part. A default-constructed profile changes
@@ -25,6 +30,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "bowed_note.h"
 #include "cello_voice.h"
 #include "double_bass_pizz.h"
 #include "guitar_pluck.h"
@@ -134,11 +140,14 @@ inline constexpr double kChordToleranceSec = 1.0e-3;
 // Demoucron, JASA 126, 2695, 2009): bow force, bow speed, bow-bridge
 // distance (contact point) and the left-hand vibrato. The habits are
 // CelloPlayerHabits (cello_voice.h); the default is the voice's own
-// constants.
+// constants. The violin, viola and arco bass take BowedPlayerHabits
+// (bowed_note.h, makeBowedNote) on their BowedVoicing; the default is the
+// voicing's own values.
 struct BowedPlayerProfile {
   const char* name = "default";
   PlayerFeel feel;
   CelloPlayerHabits cello;
+  BowedPlayerHabits strings;
 };
 
 // A cellist from the string-vibrato literature. Vibrato: J. M. Geringer &
@@ -166,6 +175,59 @@ struct BowedPlayerProfile {
   return p;
 }
 
+// Violinists and violists: R. B. MacLeod, "Influences of dynamic level and
+// pitch register on the vibrato rates and widths of violin and viola
+// players", JRME 56 (2008), doi:10.1177/0022429408323070, 48 high-school and university players:
+// mean rate 5.71 Hz violin, 5.49 Hz viola; mean width 51 c and 41 c peak to
+// peak (measured highest to lowest pitch of a cycle), so +/-25.5 c and
+// +/-20.5 c. The voice's 6.5 Hz +/-20 c violin default came from one
+// recording (bowed_string.h, VERIFY there). Bow force, speed and contact
+// point stay at the voicing's (the violin's bow-gesture habits are
+// BowingGestureParams, bowing_gesture.h, Askenfelt 1988; leg25 uses them).
+// Timing and loudness scatter: as the cellist (Goebl & Palmer, VERIFY for
+// bowed strings).
+[[nodiscard]] inline BowedPlayerProfile violinistPlayerProfile() {
+  BowedPlayerProfile p;
+  p.name = "violinist (MacLeod 2008 vibrato)";
+  p.strings.vibratoHz = 5.71;
+  p.strings.vibratoCents = 25.5;
+  p.feel.timingCv = 0.03;   // VERIFY for violin (pianists' figure)
+  p.feel.timingSdMaxSec = player_detail::kEnsembleTimingSdMaxSec;
+  p.feel.velocityCv = 0.05; // VERIFY
+  p.feel.seed = 0x7A1;
+  return p;
+}
+[[nodiscard]] inline BowedPlayerProfile violistPlayerProfile() {
+  BowedPlayerProfile p;
+  p.name = "violist (MacLeod 2008 vibrato)";
+  p.strings.vibratoHz = 5.49;
+  p.strings.vibratoCents = 20.5;
+  p.feel.timingCv = 0.03;   // VERIFY for viola
+  p.feel.timingSdMaxSec = player_detail::kEnsembleTimingSdMaxSec;
+  p.feel.velocityCv = 0.05; // VERIFY
+  p.feel.seed = 0x7A2;
+  return p;
+}
+// A double bassist playing arco. Vibrato: "An analysis of double bass
+// vibrato", String Research Journal (2024), doi:10.1177/19484992241238989
+// (FSU dissertation of the same title), 40 university bassists: mean rate
+// 5.17 Hz, width 19 c (MacLeod's peak-to-peak method), so +/-9.5 c.
+// Professionals on record are faster, 5-7 Hz, mostly 6.5-7 (M. D.
+// Thibeault, American String Teacher 47, 1997); the students' mean is
+// kept so all three bowed profiles come from like players. Timing: as the
+// pizzicato bassist (Goebl & Palmer lower bound, VERIFY).
+[[nodiscard]] inline BowedPlayerProfile arcoBassistPlayerProfile() {
+  BowedPlayerProfile p;
+  p.name = "arco bassist (2024 double bass vibrato study)";
+  p.strings.vibratoHz = 5.17;
+  p.strings.vibratoCents = 9.5;
+  p.feel.timingCv = 0.03;   // VERIFY for arco bass
+  p.feel.timingSdMaxSec = player_detail::kEnsembleTimingSdMaxSec;
+  p.feel.velocityCv = 0.05; // VERIFY
+  p.feel.seed = 0xBA55A;
+  return p;
+}
+
 // --- Plucked -------------------------------------------------------------------
 struct PluckedPlayerProfile {
   const char* name = "default";
@@ -177,6 +239,10 @@ struct PluckedPlayerProfile {
   // (guitar kClassicalGuitarRoundPluckFromBridgeM, bass
   // kDoubleBassPizzFromBridgeM).
   double pluckFromBridgeM = 0.0;
+  // Pluck point as a fraction of the string length (harp: from the
+  // soundboard). <= 0: the harness default. Used where the habit is
+  // measured as a fraction (harp); pluckFromBridgeM wins when both are set.
+  double pluckFraction = 0.0;
   // Finger damping of a ringing string at a re-pluck or the note's end,
   // seconds of fade. <= 0: the harness default (guitar 10 ms, bass
   // kDoubleBassPizzDampSec).
@@ -217,6 +283,54 @@ struct PluckedPlayerProfile {
   p.feel.timingSdMaxSec = player_detail::kEnsembleTimingSdMaxSec;
   p.feel.velocityCv = 0.05; // VERIFY
   p.feel.seed = 0xBA55;
+  return p;
+}
+
+// A harpist. J. Chadefaux, J.-L. Le Carrou, B. Fabre, L. Daudet,
+// "Experimentally based description of harp plucking", JASA 131, 844
+// (2012), Fig. 7, nine harpists, 290 plucks: the string is plucked
+// between about 1/3 and 2/5 of its length from the soundboard; 0.37, the
+// middle of that band (rising slightly with octave, not modelled). The
+// same paper finds each player highly reproducible (professionals more
+// so), so the loudness scatter is the struck-family 0.05 (VERIFY).
+[[nodiscard]] inline PluckedPlayerProfile harpistPlayerProfile() {
+  PluckedPlayerProfile p;
+  p.name = "harpist (Chadefaux 2012 pluck point)";
+  p.pluckFraction = 0.37;
+  p.feel.timingCv = 0.03;   // VERIFY for harp (pianists' figure)
+  p.feel.timingSdMaxSec = player_detail::kEnsembleTimingSdMaxSec;
+  p.feel.velocityCv = 0.05; // VERIFY
+  p.feel.seed = 0x4A2;
+  return p;
+}
+// A harpsichordist. The jack's plectrum sets the pluck point and, almost
+// entirely, the loudness: key speed hardly changes the release (N. H.
+// Fletcher & T. D. Rossing, The Physics of Musical Instruments, 2nd ed.,
+// sec. 11.10, VERIFY the section number), so the player's habits are
+// timing only: no loudness scatter and the pluck point stays the
+// catalogue's. Timing scatter: Goebl & Palmer 2008 lower bound (VERIFY for
+// harpsichord, whose players use timing for accent).
+[[nodiscard]] inline PluckedPlayerProfile harpsichordistPlayerProfile() {
+  PluckedPlayerProfile p;
+  p.name = "harpsichordist (timing only)";
+  p.feel.timingCv = 0.03;   // VERIFY
+  p.feel.timingSdMaxSec = player_detail::kEnsembleTimingSdMaxSec;
+  p.feel.seed = 0x4C0;
+  return p;
+}
+// An electric guitarist with a pick. M. Zollner, Physik der Elektrogitarre
+// (GITEC), ch. 1.5 (English ed. "Physics of the Electric Guitar", "Basics
+// of the vibration of strings", sec. 1.5.1): "usually, the location of
+// picking is about 6-10 cm from the bridge"; 0.08 m, the middle. Timing
+// and loudness scatter as the classical guitarist (VERIFY).
+[[nodiscard]] inline PluckedPlayerProfile electricGuitaristPlayerProfile() {
+  PluckedPlayerProfile p;
+  p.name = "electric guitarist (Zollner pick point)";
+  p.pluckFromBridgeM = 0.08;
+  p.feel.timingCv = 0.03;   // VERIFY
+  p.feel.timingSdMaxSec = player_detail::kEnsembleTimingSdMaxSec;
+  p.feel.velocityCv = 0.05; // VERIFY
+  p.feel.seed = 0xE1E;
   return p;
 }
 
@@ -352,6 +466,60 @@ inline constexpr double kPianoActionSecAt5Mps = 0.025 + 0.003;
   p.feel.timingSdMaxSec = player_detail::kEnsembleTimingSdMaxSec;
   p.feel.velocityCv = 0.05;  // VERIFY
   p.feel.seed = 0x4B;
+  return p;
+}
+
+// --- Drum kit ------------------------------------------------------------------
+// Which limb plays a kit note: the right hand rides the hi-hat or cymbal,
+// the left hand plays the snare, the right foot the bass drum (Fujii et
+// al. 2011's pattern). Toms are played by the hands.
+enum class DrumLimb { RightHand = 0, LeftHand = 1, RightFoot = 2 };
+struct KitNote {
+  PartNote note;
+  DrumLimb limb = DrumLimb::RightHand;
+};
+struct DrumKitPlayerProfile {
+  const char* name = "default";
+  PlayerFeel feel;
+  // Each limb's constant lead (-) or lag (+), seconds, added after the feel.
+  std::array<double, 3> limbOffsetSec{0.0, 0.0, 0.0};
+};
+// A kit part as played. The limbs are timed together: S. Fujii et al.
+// (Music Perception 28, 491, 2011) found the limbs' synchronization errors
+// significantly correlated ("each limb synchronized in relation to the
+// other limbs"), so the feel runs on the whole kit at once and notes
+// struck together share one deviation; then each limb's own lead is
+// added. Default: unchanged.
+[[nodiscard]] inline std::vector<KitNote> performDrumKit(const std::vector<KitNote>& written,
+                                                         const DrumKitPlayerProfile& p) {
+  std::vector<KitNote> out = written;
+  const bool noOffset = p.limbOffsetSec[0] == 0.0 && p.limbOffsetSec[1] == 0.0 && p.limbOffsetSec[2] == 0.0;
+  if (out.empty() || (p.feel.isDefault() && noOffset)) return out;
+  std::vector<PartNote> notes;
+  for (const KitNote& k : written) notes.push_back(k.note);
+  const std::vector<PartNote> played = performNotes(notes, p.feel);
+  for (std::size_t i = 0; i < out.size(); ++i) {
+    out[i].note = played[i];
+    out[i].note.startSec = std::max(0.0, played[i].startSec + p.limbOffsetSec[static_cast<std::size_t>(out[i].limb)]);
+  }
+  return out;
+}
+// A kit drummer. Fujii et al. 2011, fifteen professionals with a
+// metronome at 60 and 120 bpm: right hand (hi-hat) mean error about 2 ms
+// (taken as 0; the sign is not given in the abstract, VERIFY), left hand
+// (snare) and right foot (bass drum) about 10 ms ahead. At 200 bpm the
+// pattern changes (right hand 10 ms late, the others about 1 ms): not
+// modelled, VERIFY above 120 bpm. Toms take the left hand's lead (VERIFY:
+// not measured). Timing scatter 0.03 and loudness 0.05 as the snare
+// drummer (VERIFY).
+[[nodiscard]] inline DrumKitPlayerProfile drumKitPlayerProfile() {
+  DrumKitPlayerProfile p;
+  p.name = "kit drummer (Fujii 2011 limb leads)";
+  p.limbOffsetSec = {0.0, -0.010, -0.010};
+  p.feel.timingCv = 0.03;
+  p.feel.timingSdMaxSec = player_detail::kEnsembleTimingSdMaxSec;
+  p.feel.velocityCv = 0.05;  // VERIFY
+  p.feel.seed = 0xD2;
   return p;
 }
 
