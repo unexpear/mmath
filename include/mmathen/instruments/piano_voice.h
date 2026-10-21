@@ -81,8 +81,8 @@ inline constexpr double kPianoSoundboardQ = 30.0;
 inline constexpr double kPianoRibStiffnessRatio = 0.5;
 inline constexpr double kPianoBoardA = 1.40, kPianoBoardB = 1.00, kPianoBoardH = 0.008;
 inline constexpr double kSpruceEL = 11.6e9, kSpruceRho = 420.0;
-inline constexpr double kPianoBoardMaxHz = 3000.0;
-inline constexpr int kPianoBoardMaxModes = 120;
+inline constexpr double kPianoBoardMaxHz = 10000.0;  // jb10: was 3000 (no board above 3 kHz)
+inline constexpr int kPianoBoardMaxModes = 3000;
 // Chaigne & Askenfelt's K is a grand's C2/C4/C7 hammer. Scaled down,
 // TUNED to the VSCO upright (dyn2) spectral centroid, at bridge mobility
 // 5e-4: x1.0 +0.86 oct, x0.1 +0.34, x0.03 +0.02, x0.01 -0.45 oct (median
@@ -156,6 +156,46 @@ struct PianoHammer { double massKg, stiffness, exponent, strikeFraction; };
 [[nodiscard]] inline double pianoT60AtF0(int /*midi*/) { return 12.0; }
 inline constexpr double kPianoT60Ratio6F0 = 0.35;  // TUNED
 
+// Radiating area of one board mode. The volume (monopole) area
+// integral/phi alone makes every mode with an even index silent and lets
+// only about one mode per 90 Hz radiate, so a key whose f0 falls between
+// them came out up to 20 dB quieter than its neighbours (jb10 audit:
+// D3 -46, D#3 -48 dB next to C3 -32, F3 -32). A finite board radiates
+// from its edges and corners below coincidence and fully above it.
+// Band-averaged radiation efficiency of a simply supported plate:
+// G. Maidanik, JASA 34, 809 (1962), as corrected by M. J. Crocker & A. J.
+// Price, JSV 9, 469 (1969) (also Beranek & Ver, Noise and Vibration
+// Control Engineering, ch. 9): below fc, sigma = (lc^2/S) g1 + (P lc/S)
+// g2, g1 = 4/pi^4 (1-2a^2)/(a sqrt(1-a^2)) for f < fc/2 else 0, g2 =
+// [(1-a^2) ln((1+a)/(1-a)) + 2a] / (4 pi^2 (1-a^2)^1.5), a = sqrt(f/fc),
+// lc = c/fc; above fc, sigma = 1/sqrt(1-fc/f) (capped at 3). fc = c^2/(2
+// pi) sqrt(rho h / H) from the plate's own stiffness (about 1.8 kHz).
+// A mode of bridge-point velocity v has mean-square plate velocity
+// v^2/(4 phi^2); the monopole of the same power, rho c sigma S <v^2> =
+// rho c k^2 U^2/(4 pi), has area A = sqrt(pi sigma S)/(k |phi|). The
+// larger of the two areas is used, with the volume area's sign (VERIFY:
+// a band average used per mode). Above 3 kHz the board had no modes,
+// so nothing above 2 kHz radiated: 2-4 kHz sat 15-25 dB and 4-8 kHz
+// 25-40 dB under the VSCO upright; the plate's modes are kept to 10 kHz.
+[[nodiscard]] inline double pianoModeArea(double f, double phi, double volumeArea, double rhoh, double H) {
+  const double c0 = 343.0, pi = constants::pi;
+  const double a = kPianoBoardA, b = kPianoBoardB, S = a * b, P = 2.0 * (a + b);
+  const double fc = c0 * c0 / (2.0 * pi) * std::sqrt(rhoh / H), lc = c0 / fc;
+  double sigma;
+  if (f > fc) {
+    sigma = std::min(1.0 / std::sqrt(1.0 - fc / f), 3.0);
+  } else {
+    const double al = std::min(std::sqrt(f / fc), 0.999), al2 = al * al;
+    const double g1 = f < fc / 2.0 ? 4.0 / std::pow(pi, 4) * (1.0 - 2.0 * al2) / (al * std::sqrt(1.0 - al2)) : 0.0;
+    const double g2 = ((1.0 - al2) * std::log((1.0 + al) / (1.0 - al)) + 2.0 * al) / (4.0 * pi * pi * std::pow(1.0 - al2, 1.5));
+    sigma = lc * lc / S * g1 + P * lc / S * g2;
+  }
+  const double k = 2.0 * pi * f / c0;
+  const double aeq = std::sqrt(pi * sigma * S) / (k * std::fabs(phi));
+  if (!(aeq > std::fabs(volumeArea))) return volumeArea;
+  return volumeArea < 0.0 ? -aeq : aeq;
+}
+
 struct PianoBoard { std::vector<BodyModeSpec> modes; std::vector<double> areas; };
 [[nodiscard]] inline PianoBoard pianoBoardAtKey(int midi) {
   const double a = kPianoBoardA, b = kPianoBoardB, h = kPianoBoardH;
@@ -173,7 +213,7 @@ struct PianoBoard { std::vector<BodyModeSpec> modes; std::vector<double> areas; 
       const double phi = std::sin(m * constants::pi * xb / a) * std::sin(n * constants::pi * yb / b);
       if (std::fabs(phi) < 0.15) continue;
       const double integral = ((m % 2) && (n % 2)) ? 4.0 * a * b / (m * n * constants::pi * constants::pi) : 0.0;
-      all.push_back(M{f, rhoh * a * b / 4.0 / (phi * phi), integral / phi});
+      all.push_back(M{f, rhoh * a * b / 4.0 / (phi * phi), pianoModeArea(f, phi, integral / phi, rhoh, H)});
     }
   std::sort(all.begin(), all.end(), [](const M& x, const M& y) { return x.f < y.f; });
   if (all.size() > static_cast<std::size_t>(kPianoBoardMaxModes)) all.resize(kPianoBoardMaxModes);

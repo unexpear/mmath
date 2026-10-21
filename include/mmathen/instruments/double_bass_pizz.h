@@ -11,7 +11,7 @@
 // plate resonances from 150 to 400 Hz and, above 400 Hz, two wide bridge
 // humps. A. W. Brown, ISMA 2003 / ISMA 2004 (Institut fuer Wiener
 // Klangstil): A0 65-67 Hz, T1/A1 115 Hz, suspected A2/C3 150-158 Hz.
-// Frequencies here: A0 65, T1 115 (Brown), C3 155 (cited); 200, 250, 300, 350 Hz
+// Frequencies here: A0 67, T1 115 (Brown), C3 155 (cited); 200, 250, 300, 350 Hz
 // as the evenly spaced 150-400 Hz plate set (VERIFY: positions are a
 // reading of that sentence, not a table); bridge humps 450 and 900 Hz
 // (VERIFY: Askenfelt's figure, not a table). Q, effective mass and area of
@@ -50,8 +50,23 @@ inline constexpr std::array<DoubleBassBodyMode, 9> kDoubleBassBodyModes{{
     // A0) +35 c sharp over 80-270 ms (VSCO G1 +2 / +10 c; 15: +16, 10: +14)
     // and left C2, on A0, 6.5 dB over D2 (VSCO 0.7 dB; 15: 4.9). Centroid
     // and H2-H6 re VSCO unchanged (+0.05 oct, -5.7 dB) at 30, 15 and 10.
-    {65.0, 15.0, 1.2, -0.30},   // A0 Helmholtz (Askenfelt 1982), Q/M/A TUNED
-    {115.0, 25.0, 0.8, 0.25},   // T1/A1 115 Hz (Brown 2003/2004; Askenfelt 110). At 110 Hz the mode sat on A2 and drained it to T60 0.8-0.9 s (ref 3.4) at 0.8 and 2.0 kg
+    // A0 65 -> 67 Hz (jb9, Brown's 65-67 Hz upper end): at 65 C2 (65.41)
+    // sat just above A0, its radiated H1 pulled +36 c and its level 6.0 dB
+    // over D2 relative to VSCO. VSCO 2 CE C2 pulls flat (H1 -16 / -36 c, H2
+    // +15 / 0, 0.3-1.3 s FFT peak), as a string just under A0 does. At 67:
+    // C2 H1 -30 c, H2 +3 c, C2 over D2 4.2 dB; 68 (outside Brown) 2.9 dB.
+    {67.0, 15.0, 1.2, -0.30},   // A0 Helmholtz (Askenfelt 1982 65 Hz; Brown 65-67), Q/M/A TUNED
+    // T1 Q 25 -> 12 (TUNED, jb9): the plate's free ring after the pluck,
+    // above the note, read as a sharp start in the first 60 ms (onset YIN,
+    // 40-60 ms frames): G1 +188, A1 +49, G2 +72, A2 +40 c at 25; +73, +42,
+    // +42, +30 at 12. VSCO 2 CE C2-A2 read -83 to +24 (median -17), G1
+    // +101 / +137. Centroid and H2-H6 re VSCO unchanged (+0.06 oct, -5.7 dB).
+    // The model string is linear, so there is no tension-modulation glide
+    // (initial pitch raised by the pluck's stretch, falling as it decays:
+    // Tolonen, Valimaki and Karjalainen, IEEE Trans. Speech Audio Process.
+    // 8(3), 300-310, 2000; Legge and Fletcher, JASA 76, 5-12, 1984, VERIFY
+    // volume); the remaining sharp start is coupling, not that glide.
+    {115.0, 12.0, 0.8, 0.25},   // T1/A1 115 Hz (Brown 2003/2004; Askenfelt 110). At 110 Hz the mode sat on A2 and drained it to T60 0.8-0.9 s (ref 3.4) at 0.8 and 2.0 kg
     {155.0, 25.0, 1.5, 0.12},   // C3/A2 (Brown 2003/2004)
     {200.0, 25.0, 2.0, 0.08},   // plate set, VERIFY
     {250.0, 25.0, 2.2, 0.07},

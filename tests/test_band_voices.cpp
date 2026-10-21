@@ -191,7 +191,7 @@ TEST_CASE("double bass pizzicato picks the string and rings its pitch", "[band][
   CHECK(b2.value().stopped);
   CHECK(!doubleBassNote(bass.value(), 30.0).ok());
   auto modes = doubleBassBodyModes();
-  CHECK(std::fabs(modes[0].resonanceHz - 65.0) < 1e-12);
+  CHECK(std::fabs(modes[0].resonanceHz - 67.0) < 1e-12);  // A0, Brown 65-67 Hz
   CHECK(std::fabs(modes[1].resonanceHz - 115.0) < 1e-12);
   for (const auto& note : {e1.value(), b2.value()}) {
     auto voice = doubleBassPizzVoice(note, 2e-3, SampleRateHz{kBandFs});
@@ -318,4 +318,31 @@ TEST_CASE("snare wires brighten the drum and the hit decays", "[band][snare]") {
   for (std::size_t i = 0; i < 2400; ++i) first = std::max(first, std::fabs(c[i]));
   for (std::size_t i = 24000; i < c.size(); ++i) tail = std::max(tail, std::fabs(c[i]));
   CHECK(tail < 0.01 * first);
+}
+
+TEST_CASE("piano board: every mode radiates, so no key falls between radiating modes", "[band][piano]") {
+  // jb10: with volume areas alone, even modes were silent and the radiated
+  // response at f0 spread 40 dB over G2-C5 (D3, D#3 about 15 dB under C3).
+  double lo = 1e300, hi = -1e300;
+  for (int midi = 43; midi <= 72; ++midi) {
+    const PianoBoard board = pianoBoardAtKey(midi);
+    for (double a : board.areas) CHECK(std::fabs(a) > 0.0);
+    const double f0 = 440.0 * std::pow(2.0, (midi - 69) / 12.0), w = 2.0 * constants::pi * f0;
+    std::complex<double> p{};
+    for (std::size_t i = 0; i < board.modes.size(); ++i) {
+      const BodyModeSpec& m = board.modes[i];
+      const double w0 = 2.0 * constants::pi * m.resonanceHz;
+      p += board.areas[i] * std::complex<double>(0.0, w) /
+           (m.modalMassKg * std::complex<double>(w0 * w0 - w * w, w * w0 / m.qualityFactor));
+    }
+    const double db = 20.0 * std::log10(std::abs(p) * f0);
+    lo = std::min(lo, db); hi = std::max(hi, db);
+  }
+  CHECK(hi - lo < 30.0);
+  // Above coincidence (about 1.8 kHz) a mode radiates at least as a
+  // sigma = 1 baffled piston of its own mean-square velocity.
+  const double rhoh = kSpruceRho * kPianoBoardH;
+  const double Dx = kSpruceEL * std::pow(kPianoBoardH, 3) / 12.0, H = std::sqrt(Dx * kPianoRibStiffnessRatio * Dx);
+  const double k = 2.0 * constants::pi * 4000.0 / 343.0;
+  CHECK(pianoModeArea(4000.0, 0.5, 0.0, rhoh, H) >= std::sqrt(constants::pi * kPianoBoardA * kPianoBoardB) / (k * 0.5) - 1e-12);
 }
