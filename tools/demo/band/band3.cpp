@@ -21,8 +21,9 @@
 //   kit     GM drum map: 36 kick, 38 snare, 42 closed hi-hat, 49 crash,
 //           43 floor tom, 45 tom 12 in, 48 tom 10 in. Snare: snare_drum.h;
 //           kick and toms: CavityDrumVoice on the Yamaha kit's shells;
-//           hi-hat and crash: PlateMalletVoice on the XSR plates. Stick
-//           speed 6 (vel/127)^2 m/s (band1's snare mapping, UNSOURCED).
+//           hi-hat: PlateMalletVoice on the XSR plate; crash: the von Karman plate (cymbal_vk.h). Stick
+//           speed 6 (vel/127)^2 m/s (band1's snare mapping, UNSOURCED); with
+//           BP_PROFILE=1 a crash takes the kit profile's stroke (kitCrashStickSpeed).
 // Harness numbers that are not physics data are marked in place.
 #include <mmathen/instruments/player_profile.h>
 #include <mmathen/instruments/bowed_note.h>
@@ -37,6 +38,7 @@
 #include <mmathen/instruments/cavity_drum.h>
 #include <mmathen/instruments/drum.h>
 #include <mmathen/instruments/cymbal.h>
+#include <mmathen/instruments/cymbal_vk.h>
 #include <mmathen/instruments/mallet_voice.h>
 #include <algorithm>
 #include <cmath>
@@ -49,6 +51,10 @@ using namespace mmathen;
 static const double FS = 48000.0;
 static double midiHz(int m) { return 440.0 * std::pow(2.0, (m - 69) / 12.0); }
 static bool PROFILE = false;
+// Von Karman crash mix gain (its output is an acceleration, m/s^2): TUNED so a velocity-110 crash
+// (profile stroke 8.25 m/s) has the 0-2 s RMS of the old linear crash at its 2e4 gain (8.3 vs
+// 5454, docs/49-cymbal-von-karman.md), keeping the kit balance. Not physics.
+static constexpr double kVkCrashMixGain = 1.52e-3;
 static std::vector<PartNote> readPart(const char* path) {
   std::vector<PartNote> v; FILE* f = std::fopen(path, "r"); if (!f) return v;
   double s, d; int m, vel; while (std::fscanf(f, "%lf,%lf,%d,%d", &s, &d, &m, &vel) == 4) v.push_back({s, d, m, double(vel)});
@@ -218,6 +224,17 @@ static int renderKit(const std::vector<PartNote>& w, double total, const char* o
                                            : MalletStrike{0.3, 0.0, kSnareStickMassKg, speed, kSnareStickStiffness, kSnareStickExponent, 0.0, 40.0};
       auto v = CavityDrumVoice::create(head, &head, sh, st, 0, 1, SampleRateHz{FS}, 101325.0, 293.15, 1.0);
       if (v.ok()) { auto vv = std::move(v).value(); ok = run(vv, e.midi == 36 ? 0.8 : 1.2); }
+    } else if (e.midi == 49) {
+      // Crash: the von Karman plate (cymbal_vk.h, step 19), XSR 16" radius, B20, struck by the stick at
+      // 0.85 a. Stroke speed from the kit profile (kitCrashStickSpeed) or the snare map. 6 s of ring.
+      static const auto crashPlate = [&] { VonKarmanPlateSpec sp; sp.radiusM = cym.crash16.radius.value(); return buildVonKarmanPlate(sp); }();
+      const double cs = kitCrashStickSpeed(prof, e.velocity);
+      const MalletStrike st{0.85, 0.0, kSnareStickMassKg, cs > 0.0 ? cs : speed, kSnareStickStiffness, kSnareStickExponent, 0.0, 600.0};
+      if (crashPlate.ok()) {
+        auto v = VonKarmanCymbalVoice::create(crashPlate.value(), st, SampleRateHz{FS});
+        if (v.ok()) { auto vv = std::move(v).value(); ok = run(vv, 6.0); }
+      }
+      g = kVkCrashMixGain;
     } else if (e.midi == 42 || e.midi == 49) {
       const bool hat = e.midi == 42;
       // Q 30 closed hat / 600 crash and a 0.12 s closed-hat choke: UNSOURCED harness choices.

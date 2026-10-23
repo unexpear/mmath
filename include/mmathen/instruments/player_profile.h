@@ -505,13 +505,25 @@ struct DrumKitPlayerProfile {
   PlayerFeel feel;
   // Each limb's constant lead (-) or lag (+), seconds, added after the feel.
   std::array<double, 3> limbOffsetSec{0.0, 0.0, 0.0};
+  // Stick speed of a crash-cymbal stroke (GM 49) at velocity 127, m/s;
+  // the speed goes as (velocity / 127)^2 below it. 0 = the renderer's own
+  // stroke map. See kitCrashStickSpeed.
+  double crashStickSpeedAt127 = 0.0;
 };
+// Stick speed for a crash stroke at a MIDI velocity, or 0 when the profile
+// leaves it to the renderer.
+[[nodiscard]] inline double kitCrashStickSpeed(const DrumKitPlayerProfile& p, double velocity) {
+  if (!(p.crashStickSpeedAt127 > 0.0) || !(velocity > 0.0)) return 0.0;
+  const double v = std::min(velocity, 127.0) / 127.0;
+  return p.crashStickSpeedAt127 * v * v;
+}
 // A kit part as played. The limbs are timed together: S. Fujii et al.
 // (Music Perception 28, 491, 2011) found the limbs' synchronization errors
 // significantly correlated ("each limb synchronized in relation to the
 // other limbs"), so the feel runs on the whole kit at once and notes
 // struck together share one deviation; then each limb's own lead is
-// added. Default: unchanged.
+// added. Default: unchanged. Timing and velocity only: a crash's stroke
+// speed is read from the played velocity by kitCrashStickSpeed (step 19).
 [[nodiscard]] inline std::vector<KitNote> performDrumKit(const std::vector<KitNote>& written,
                                                          const DrumKitPlayerProfile& p) {
   std::vector<KitNote> out = written;
@@ -534,6 +546,14 @@ struct DrumKitPlayerProfile {
 // modelled, VERIFY above 120 bpm. Toms take the left hand's lead (VERIFY:
 // not measured). Timing scatter 0.03 and loudness 0.05 as the snare
 // drummer (VERIFY).
+// Crash strokes (step 19, the von Karman crash in cymbal_vk.h): a crash is
+// struck with a full stroke, 11 m/s at velocity 127. S. Dahl, M. Grossbach
+// & E. Altenmueller (Forum Acusticum 2011, Fig. 3; professional drummers,
+// motion capture) measured p strokes at about 1-2 m/s and f strokes up to
+// about 9-12.5 m/s; 11 m/s sits in that f cluster, and the square law puts
+// velocity 30 at 0.6 m/s and 40 at 1.1 m/s, the p range. The endpoints are
+// cited; the square law is the renderer's snare map shape (TUNED). VERIFY:
+// those strokes were on a drum, not a cymbal.
 [[nodiscard]] inline DrumKitPlayerProfile drumKitPlayerProfile() {
   DrumKitPlayerProfile p;
   p.name = "kit drummer (Fujii 2011 limb leads)";
@@ -542,6 +562,7 @@ struct DrumKitPlayerProfile {
   p.feel.timingSdMaxSec = player_detail::kEnsembleTimingSdMaxSec;
   p.feel.velocityCv = 0.05;  // VERIFY
   p.feel.seed = 0xD2;
+  p.crashStickSpeedAt127 = 11.0;
   return p;
 }
 

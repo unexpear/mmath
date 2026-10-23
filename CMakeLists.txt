@@ -110,6 +110,7 @@ if(BUILD_TESTING)
     tests/test_plucked_string.cpp
     tests/test_contact_voice.cpp
     tests/test_band_voices.cpp
+    tests/test_cymbal_vk.cpp
     tests/test_struck_bar.cpp
     tests/test_wind_tone.cpp
     tests/test_soundboard.cpp
@@ -261,6 +262,7 @@ if(BUILD_TESTING)
     tests/headers/th_instruments_harpsichord.cpp
     tests/headers/th_instruments_drum.cpp
     tests/headers/th_instruments_cymbal.cpp
+    tests/headers/th_instruments_cymbal_vk.cpp
     tests/headers/th_instruments_player_profile.cpp
     tests/headers/th_instruments_bowed_note.cpp
     tests/headers/th_hearing_loudness.cpp
