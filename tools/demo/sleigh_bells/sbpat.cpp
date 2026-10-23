@@ -1,6 +1,7 @@
 // Render a sleigh-bell strap from a gesture timeline file (see
 // parseSleighBellTimeline in sleigh_bell.h) to raw float64 mono.
-// usage: sbpat <timeline.txt> <out.f64> [seconds] [bells] [seed] [sinusoid 0/1]
+// usage: sbpat <timeline.txt> <out.f64> [seconds] [bells (kSleighBellCount)] [seed] [sinusoid 0/1]
+// SB_PRO4=1 renders the pro4 bell (no dense shell modes, x2.5 partial damping).
 // SB_PROFILE=1 plays the timeline through sleighBellPlayerProfile()
 // (player_profile.h); without it the timeline is rendered as written.
 #include <cstdio>
@@ -24,7 +25,7 @@ int main(int argc, char** argv) {
     tl = played;
   }
   const double secs = argc > 3 ? std::atof(argv[3]) : 9.8125;
-  const int bells = argc > 4 ? std::atoi(argv[4]) : 12;
+  const int bells = argc > 4 ? std::atoi(argv[4]) : mmathen::kSleighBellCount;
   const unsigned long long seed = argc > 5 ? std::strtoull(argv[5], nullptr, 10) : 7;
   const double fs = 44100.0;
   mmathen::SleighBellDesign d;
@@ -36,6 +37,13 @@ int main(int argc, char** argv) {
   if (const char* v = std::getenv("SB_GAP")) d.bellGapM = std::atof(v);
   if (const char* v = std::getenv("SB_DAMP")) d.dampingFactor = std::atof(v);
   if (const char* v = std::getenv("SB_FULL")) d.fullRing = std::atoi(v) != 0;
+  if (const char* v = std::getenv("SB_PRO4"); v && std::atoi(v) == 1) { d.shellModes = false; d.partialExtraDecayDbPerS = -1.0; }
+  if (const char* v = std::getenv("SB_SHELL")) d.shellModes = std::atoi(v) != 0;
+  if (const char* v = std::getenv("SB_SHELL_DB")) d.shellModeLevelDb = std::atof(v);
+  if (const char* v = std::getenv("SB_SHELL_LOSS")) d.shellModeLoss = std::atof(v);
+  if (const char* v = std::getenv("SB_SHELL_T60")) d.shellModeT60S = std::atof(v);
+  if (const char* v = std::getenv("SB_SHELL_HI")) d.shellModeHiHz = std::atof(v);
+  if (const char* v = std::getenv("SB_XDECAY")) d.partialExtraDecayDbPerS = std::atof(v);
   mmathen::SleighBellStrap strap(bells, seed, fs, d);
   std::vector<double> y(std::size_t(secs * fs));
   mmathen::ShakeGesture shape;

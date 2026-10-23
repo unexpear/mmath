@@ -123,3 +123,47 @@ TEST_CASE("strap flex: bells knock when the gap closes; full ring has 38 measure
   REQUIRE(s.knocks() > 0);
   REQUIRE(rigid.knocks() == 0);
 }
+
+TEST_CASE("sphere mode radiation efficiency matches 1 / ((ka)^2 |h_n'(ka)|^2)") {
+  // reference values from scipy.special.spherical_jn / spherical_yn (derivative=True)
+  REQUIRE_THAT(sphereModeRadiationEfficiency(0, 0.5), WithinRel(0.2, 1e-9));  // (ka)^2 / (1 + (ka)^2)
+  REQUIRE_THAT(sphereModeRadiationEfficiency(2, 0.55), WithinRel(3.312382e-4, 1e-5));
+  REQUIRE_THAT(sphereModeRadiationEfficiency(4, 2.2), WithinRel(6.506543e-3, 1e-5));
+  REQUIRE_THAT(sphereModeRadiationEfficiency(6, 4.4), WithinRel(5.739817e-2, 1e-5));
+  REQUIRE(sphereModeRadiationEfficiency(3, 50.0) > 0.9);  // large ka: radiates fully
+}
+TEST_CASE("dense shell modes: count follows the plate modal density on the slotted hemisphere") {
+  SleighBellDesign d;
+  SleighBellDesign pro4 = d; pro4.shellModes = false; pro4.partialExtraDecayDbPerS = -1.0;
+  SleighBellStrap a(4, 5, 44100.0, d), b(4, 5, 44100.0, pro4);
+  REQUIRE(b.modeCount() == 4 * kSleighBellMeasuredPartialsFull.size());
+  const double cL = std::sqrt(d.shellE / (d.shellRho * (1.0 - d.shellNu * d.shellNu)));
+  const double perHz = 1.7320508075688772 * 6.283185307179586 * d.outerRadiusM * d.outerRadiusM / (d.wallM * cL);
+  const double expected = 4.0 * perHz * (d.shellModeHiHz - 2514.0);
+  const double extra = double(a.modeCount() - b.modeCount());
+  REQUIRE(extra > 0.6 * expected); REQUIRE(extra < 1.4 * expected);
+}
+TEST_CASE("dense shell modes fill the gaps between partials; seeded; the pro4 bell is unchanged by them") {
+  const auto tl = parseSleighBellTimeline("strike 0.2 1.2 -0.3\n");
+  SleighBellDesign pro4; pro4.shellModes = false; pro4.partialExtraDecayDbPerS = -1.0;
+  SleighBellStrap n1(6, 11, 44100.0), n2(6, 11, 44100.0), o(6, 11, 44100.0, pro4);
+  std::vector<double> x(22050), y(22050), z(22050);
+  n1.render(x.data(), x.size(), tl); n2.render(y.data(), y.size(), tl); o.render(z.data(), z.size(), tl);
+  REQUIRE(x == y);
+  REQUIRE(n1.impacts() == o.impacts());  // same pellets: only the shell response differs
+  // 3-5 kHz (between the 2.5 and 5.9 kHz partials) re 6.4-7.0 kHz: Goertzel-free band energy by DFT bins
+  auto band = [](const std::vector<double>& v, double lo, double hi) {
+    const std::size_t a = 9261, n = 8192;  // 0.21 s .. 0.40 s
+    double e = 0.0;
+    for (double f = lo; f < hi; f += 44100.0 / n) {
+      double re = 0, im = 0;
+      for (std::size_t i = 0; i < n; ++i) { const double w = 6.283185307179586 * f * i / 44100.0; re += v[a + i] * std::cos(w); im += v[a + i] * std::sin(w); }
+      e += re * re + im * im;
+    }
+    return e;
+  };
+  const double gapNew = band(x, 3000, 5000) / band(x, 2000, 16000), gapOld = band(z, 3000, 5000) / band(z, 2000, 16000);
+  CAPTURE(gapNew, gapOld);
+  REQUIRE(gapNew > 1.25 * gapOld);  // about +2 dB, as on the real-hit scoreboard (3-5k gap -43.5 -> -41.4 dB)
+  for (double v : x) REQUIRE(std::isfinite(v));
+}

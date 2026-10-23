@@ -604,7 +604,11 @@ struct ShakenPlayerProfile {
 // A sleigh-bell player. The shake rate is already the measured 3.36 Hz of
 // the reference (kSleighBellShakeHz); the strikes take the struck-family
 // timing scatter (Goebl & Palmer 2008, VERIFY for hand-held percussion)
-// and a 0.05 hand-speed scatter (VERIFY).
+// and a 0.05 hand-speed scatter (VERIFY). The bell sound it plays is the
+// default SleighBellDesign: the step 21a ring (dense shell modes,
+// kSleighBellCount = 25 bells), approved by Mike's ear on 2026-10-23 with
+// 4 of 5 tone criteria accepted as failing (sleigh_bell.h). The step 21a
+// rhythm and level work (song part, timing) is not in this profile yet.
 [[nodiscard]] inline ShakenPlayerProfile sleighBellPlayerProfile() {
   ShakenPlayerProfile p;
   p.name = "sleigh bells (struck feel on the strikes)";

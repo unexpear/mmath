@@ -100,6 +100,30 @@ inline constexpr std::array<double, 2> kCantileverBetaL{1.8751040687, 4.69409113
   return std::fabs(std::cos(omega * tau / 2.0) / (1.0 - x * x));
 }
 
+// --- radiation of a sphere's surface mode -----------------------------------
+// Radiation efficiency of the order-n surface velocity pattern P_n(cos t) on
+// a rigid-baffle-free sphere of radius a in air: sigma_n = 1 / ((ka)^2
+// |h_n'(ka)|^2), h_n the spherical Hankel function (M. C. Junger and
+// D. Feit, "Sound, Structures, and Their Interaction", 2nd ed., MIT Press
+// 1986, ch. 6; n = 0 gives (ka)^2 / (1 + (ka)^2)). Small bells (ka ~ 1 at
+// 3.6 kHz for a 15 mm radius) radiate their higher-order modes weakly.
+[[nodiscard]] inline double sphereModeRadiationEfficiency(int n, double ka) {
+  if (!(ka > 0.0)) return 0.0;
+  // j_k, y_k by upward recurrence (y is stable upward; j adequate for the
+  // small orders used here), derivative h_n' = h_{n-1} - (n + 1) / x h_n
+  const double x = ka;
+  double j0 = std::sin(x) / x, y0 = -std::cos(x) / x;
+  double j1 = std::sin(x) / (x * x) - std::cos(x) / x, y1 = -std::cos(x) / (x * x) - std::sin(x) / x;
+  if (n == 0) { const double hr = -j1, hi = -y1; return 1.0 / (x * x * (hr * hr + hi * hi)); }
+  double jp = j0, yp = y0, jc = j1, yc = y1;
+  for (int k = 1; k < n; ++k) {
+    const double jn = (2.0 * k + 1.0) / x * jc - jp, yn = (2.0 * k + 1.0) / x * yc - yp;
+    jp = jc; yp = yc; jc = jn; yc = yn;
+  }
+  const double dr = jp - (n + 1.0) / x * jc, di = yp - (n + 1.0) / x * yc;
+  return std::min(1.0, 1.0 / (x * x * (dr * dr + di * di)));
+}
+
 // --- bell, pellet, strap ----------------------------------------------------
 struct SleighBellDesign {
   double outerRadiusM = 0.015;    // 30 mm bell (#1-#2 size, classicbells.com sizing table), VERIFY
@@ -141,6 +165,53 @@ struct SleighBellDesign {
   double bellRestitution = 0.5;
   double dampingFactor = -1.0;  // <0: kSleighBellStrapDampingFactor
   bool fullRing = true;  // 38 measured partials (false: the 9 strongest, pro1-pro3)
+  // Dense shell modes (step 21 B): besides its few prominent partials each
+  // bell carries the many other bending modes of the slotted shell. Their
+  // count follows the asymptotic plate modal density n(f) = sqrt(3) S /
+  // (h c_L) (L. Cremer, M. Heckl, B. A. T. Petersson, "Structure-Borne
+  // Sound", 3rd ed., Springer 2005, asymptotic plate modal density, page VERIFY; h the wall,
+  // c_L = sqrt(E / (rho (1 - nu^2)))), counted on the slotted upper
+  // hemisphere only (S = 2 pi R^2): about one mode per 900 Hz per 30 mm
+  // bell, from the ear's first bending mode up. Treating the slotted shell as plate-like below its ring frequency
+  // is VERIFY. Spacings: Wigner surmise of an irregular plate (R. L.
+  // Weaver, JASA 85, 1005-1013, 1989, GOE statistics; VERIFY for a crotal),
+  // random sign and Rayleigh-distributed amplitude for a random impact
+  // point, radiated amplitude sqrt(sigma_n) of the sphere mode whose order
+  // matches the bending wavenumber (sphereModeRadiationEfficiency).
+  // Pellet bells sound noisier and less tonal than open bells, with more
+  // but less pronounced partials (B. M. Pomberger et al., "Pellet bells and
+  // bells from the Avar period in the Hungarian National Museum",
+  // Archeometriai Muhely XIX/1, 57-90, 2022: tonality TNR about 4-8 dB for
+  // most pellet bells vs 14-20 dB for bells; spectra 1-20 kHz). These modes
+  // are strongly damped by the strap, the rivet and the resting pellet:
+  // loss factor shellModeLoss and level re the partials shellModeLevelDb
+  // are TUNED on single hits of the reference (sb21/NOTES.md). false gives
+  // the pro4 bell.
+  // Step 21a ring (dense shell modes, 25 bells) APPROVED by Mike's ear on
+  // 2026-10-23 ("good enough"), accepting that 4 of its 5 tone criteria
+  // still fail: roll-off 13.2 kHz (target >= 15k), accent fall 255 ms
+  // (160-200), HF kurtosis 3.52 (>= 4.0), some pro4 scoreboard rows worse.
+  // Only the 12-22 kHz share passes (-8.14 vs -7.65 dB real).
+  bool shellModes = true;
+  // Hand and strap damping of the measured partials as an added decay rate
+  // (dB/s), the same for every partial: the point-dashpot argument below
+  // (shellModeT60S) gives a frequency-independent added T60. Replaces the
+  // pro4 multiplicative dampingFactor when >= 0. TUNED on the reference
+  // hits' band decays (sb21/NOTES.md).
+  double partialExtraDecayDbPerS = 35.0;
+  double shellModeLevelDb = 10.0;  // TUNED (search_3.json, then ring floors, sb21/NOTES.md)
+  double shellModeLoss = 0.01;     // TUNED (adds eta f / 2.2 to the decay rate 1 / T60)
+  // A point dashpot c at the rivet adds loss eta_n = c phi_n^2 / (m_n w_n)
+  // to mode n, so its T60 = 2.2 / (eta_n f_n) = 4.4 pi m_n / (c phi_n^2) does
+  // not depend on frequency (mass-normalised modes, phi^2 averaged over the
+  // point): the strap damps every dense mode with about one decay time.
+  // Value TUNED on the reference hits.
+  double shellModeT60S = 0.052;  // TUNED
+  // Range: Pomberger et al. 2022 report pellet-bell spectra from 1 kHz up
+  // to 20 kHz; above 14 kHz the reference ring floor (20-300 ms after a
+  // hit) is 10-20 dB below what dense modes up to 20 kHz give, so they stop
+  // at 14 kHz (TUNED; the measured 16-18.5 kHz partials stay).
+  double shellModeLoHz = 1000.0, shellModeHiHz = 14000.0;
 };
 struct SleighBellPartial { double hz; double levelDb; double decayDbPerS; int earMode = 0; };
 // MEASURED from the CC0 reference (see header). Levels: dB re the strongest.
@@ -182,6 +253,17 @@ inline constexpr double kSleighBellStrokeAmplitudeM = 0.015;
 // measure reads -43..-48 dB/s at 2.5 vs real -29..-40 (x2: -30..-38). 2.5 is
 // the compromise: TUNED.
 inline constexpr double kSleighBellStrapDampingFactor = 2.5;
+// Step 21: with the dense shell modes the multiplicative factor is replaced
+// by SleighBellDesign::partialExtraDecayDbPerS (set it < 0 for the pro4 bell).
+// Bells on one instrument: the Grinnell College collection's handle sleigh
+// bells carry 25 pellet bells about 1.25 in (32 mm) across, six per face
+// of a square block plus one at the end (Grinnell College Musical
+// Instrument Collection, "sleigh bells", omeka-s.grinnell.edu item 2695).
+inline constexpr int kSleighBellCount = 25;
+// Pellet speed at a typical rattle impact, for the level correction of the
+// measured partials (SleighBellStrap). UNSOURCED (the pellet falls ~10 mm
+// in a shake stroke: sqrt(2 g h) = 0.44 m/s; restitution 0.6 halves it).
+inline constexpr double kSleighBellTypicalImpactSpeed = 0.3;
 // Bell-to-bell scatter of mode frequency, MEASURED from -3 dB peak widths
 // of the reference (32768-pt mean spectrum): ear mode 2514 Hz 2.9 % wide
 // -> sd 1.25 %; cap/shell partial 6659 Hz 0.87 % -> sd 0.37 % (FWHM /
@@ -340,6 +422,7 @@ class SleighBellStrap {
     for (int b = 0; b < bells; ++b) {
       Bell bell;
       const double earScale = 1.0 + kSleighBellEarScatter * gauss(), shellScale = 1.0 + kSleighBellShellScatter * gauss();
+      const double extraDecay = d_.partialExtraDecayDbPerS;
       const SleighBellPartial* table = d_.fullRing ? kSleighBellMeasuredPartialsFull.data() : kSleighBellMeasuredPartials.data();
       const std::size_t count = d_.fullRing ? kSleighBellMeasuredPartialsFull.size() : kSleighBellMeasuredPartials.size();
       for (std::size_t k = 0; k < count; ++k) {
@@ -349,12 +432,29 @@ class SleighBellStrap {
         f /= p.earMode ? earScale : shellScale;
         Mode m;
         m.w = 6.283185307179586 * f;
-        const double t60 = 60.0 / (p.decayDbPerS * (d_.dampingFactor > 0.0 ? d_.dampingFactor : kSleighBellStrapDampingFactor));
+        const double rate = d_.partialExtraDecayDbPerS >= 0.0
+                                ? p.decayDbPerS + extraDecay
+                                : p.decayDbPerS * (d_.dampingFactor > 0.0 ? d_.dampingFactor : kSleighBellStrapDampingFactor);
+        const double t60 = 60.0 / rate;
         m.r = std::exp(-6.907755278982137 / (t60 * fs_));
         m.c = 2.0 * m.r * std::cos(m.w / fs_);
         m.gain = std::pow(10.0, p.levelDb / 20.0);
+        if (d_.shellModes) {
+          // The measured levels are peaks of the reference's long-term mean
+          // spectrum: radiated energy, i.e. amplitude^2 x T60 x the
+          // pellet's force spectrum. Turn them into modal amplitudes re the
+          // strongest partial (6659 Hz): divide out the energy's T60 factor
+          // (sqrt of the measured decay rate ratio) and the Hertz pulse weight
+          // at a typical rattle impact (kSleighBellTypicalImpactSpeed), which
+          // kick() applies again.
+          const double wRef = 6.283185307179586 * 6659.0, decRef = 31.9;
+          const double tauRef = hertzContactSeconds(mStar_, rStar_, eStar_, kSleighBellTypicalImpactSpeed);
+          m.gain *= std::sqrt(p.decayDbPerS / decRef) * halfSinePulseWeight(wRef, tauRef) /
+                    std::max(1e-3, halfSinePulseWeight(6.283185307179586 * p.hz, tauRef));
+        }
         bell.modes.push_back(m);
       }
+      if (d_.shellModes) addShellModes(bell, std::uint64_t(seed) * 0x9E3779B97F4A7C15ull + std::uint64_t(b) + 1);
       const double phi = 6.283185307179586 * uniform();
       bell.p = {0.3 * rIn * std::cos(phi), 0.3 * rIn * std::sin(phi), -0.5 * rIn};
       bell.lag = d_.strapLagS * gauss();  // strap: small timing offsets between bells
@@ -365,6 +465,11 @@ class SleighBellStrap {
   [[nodiscard]] double earLengthM() const noexcept { return earLengthM_; }
   [[nodiscard]] std::uint64_t impacts() const noexcept { return impacts_; }
   [[nodiscard]] std::uint64_t knocks() const noexcept { return knocks_; }
+  [[nodiscard]] std::size_t modeCount() const noexcept {
+    std::size_t n = 0;
+    for (const Bell& b : bells_) n += b.modes.size();
+    return n;
+  }
 
   // Render `n` samples of a steady shake, starting at the current time.
   void render(double* out, std::size_t n, const ShakeGesture& g) {
@@ -397,6 +502,44 @@ class SleighBellStrap {
     double lag = 0, strapW = 0, az = 0, ax = 0;
     std::array<double, 2> u{}, du{};  // strap displacement (z, x) re the hand
   };
+  // Dense shell modes on their own random stream (the pro4 draws are kept).
+  void addShellModes(Bell& bell, std::uint64_t z) {
+    auto next = [&z]() {
+      z ^= z << 13; z ^= z >> 7; z ^= z << 17;
+      return (double(z >> 11) + 0.5) * (1.0 / 9007199254740992.0);
+    };
+    const double cL = std::sqrt(d_.shellE / (d_.shellRho * (1.0 - d_.shellNu * d_.shellNu)));
+    // the closed lower half has no audible mode (closed-sphere check above);
+    // only the slotted upper hemisphere counts: S = 2 pi R^2 (VERIFY)
+    const double area = 6.283185307179586 * d_.outerRadiusM * d_.outerRadiusM;
+    const double spacing = d_.wallM * cL / (1.7320508075688772 * area);  // Hz per mode
+    const double level = std::pow(10.0, d_.shellModeLevelDb / 20.0);
+    for (int i = 0; i < 4; ++i) next();
+    // nothing below the structure's lowest mode, the ear's first bending mode
+    const double lo = std::max(d_.shellModeLoHz, cantileverStripHz(0, d_.shellE, d_.shellRho, d_.wallM, earLengthM_));
+    double f = lo + spacing * next();
+    while (f < std::min(d_.shellModeHiHz, 0.45 * fs_)) {
+      Mode m;
+      m.w = 6.283185307179586 * f;
+      // decay rates add: the rivet's point dashpot (frequency-independent
+      // T60) plus a loss factor (material, radiation, pellet contact)
+      const double t60 = 1.0 / ((d_.shellModeT60S > 0.0 ? 1.0 / d_.shellModeT60S : 0.0) +
+                                std::max(0.0, d_.shellModeLoss) * f / 2.2);
+      m.r = std::exp(-6.907755278982137 / (t60 * fs_));
+      m.c = 2.0 * m.r * std::cos(m.w / fs_);
+      const double ray = std::sqrt(-2.0 * std::log(next()));
+      // order n from the bending wavenumber on the sphere, n (n + 1) = (k_b R)^2
+      const double kb = std::sqrt(m.w) * std::pow(12.0 * d_.shellRho * (1.0 - d_.shellNu * d_.shellNu) /
+                                                   (d_.shellE * d_.wallM * d_.wallM), 0.25);
+      const double kr = kb * d_.outerRadiusM;
+      const int order = std::max(1, int(std::lround(0.5 * (std::sqrt(1.0 + 4.0 * kr * kr) - 1.0))));
+      const double sigma = sphereModeRadiationEfficiency(order, m.w / 343.0 * d_.outerRadiusM);
+      m.gain = level * ray * (next() < 0.5 ? -1.0 : 1.0) * std::sqrt(sigma);
+      bell.modes.push_back(m);
+      // Wigner surmise: P(s) = (pi s / 2) exp(-pi s^2 / 4), mean 1
+      f += spacing * std::sqrt(-4.0 / 3.141592653589793 * std::log(next()));
+    }
+  }
   void kick(Bell& b, double J, double tau, double& click) {
     click += J / shellMass_;
     for (Mode& md : b.modes) md.y1 += md.gain * J * halfSinePulseWeight(md.w, tau) * std::sin(md.w / fs_);
