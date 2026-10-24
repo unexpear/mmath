@@ -3,7 +3,10 @@
 // player plays it with plain-English sliders (grouped; each with a tooltip,
 // where its default comes from, and a Reset), listen to a short phrase
 // rendered in the background, and keep named players in
-// %APPDATA%\mmathEn\players.txt (player_builder.h).
+// %APPDATA%\mmathEn\players.txt (player_builder.h). Step 24.1: a file that
+// exists but can't be read blocks Save and Delete (nothing is overwritten),
+// each save re-reads the file and keeps players.txt.bak, and lines the app
+// can't use are kept and listed with their line numbers.
 //
 // The panel owns its render thread. The app takes finished audio from
 // takeAudio() and plays it through its normal transport; wantStop() asks it
@@ -61,17 +64,18 @@ class Panel {
   [[nodiscard]] bool wantStop() { return std::exchange(stopPlayback_, false); }
   // Starts a render as the Play button does (for --builder captures).
   void play(bool compare = false) { start(compare); }
-  // Loads a saved player by name (for --builder-load captures).
-  bool loadByName(const std::string& name) {
+  // Loads a saved player by "instrument:name", or by name alone when only
+  // one player has it (for --builder-load captures). On failure the reason
+  // is in loadError().
+  bool loadByName(const std::string& spec) {
     if (!loaded_) loadList();
-    for (int k = 0; k < static_cast<int>(saved_.size()); ++k)
-      if (saved_[static_cast<std::size_t>(k)].name == name) {
-        savedSel_ = k;
-        loadPlayer(k);
-        return true;
-      }
-    return false;
+    const int k = mmathen::findPlayer(saved_, spec, loadError_);
+    if (k < 0) return false;
+    savedSel_ = k;
+    loadPlayer(k);
+    return true;
   }
+  [[nodiscard]] const std::string& loadError() const { return loadError_; }
 
   void draw() {
     poll();
@@ -136,8 +140,12 @@ class Panel {
   std::vector<CustomPlayer> saved_;
   bool loaded_ = false;
   int savedSel_ = -1;
-  char name_[64] = "My player";
+  char name_[256] = "My player";  // kPlayerNameMaxChars UTF-8 characters fit
   std::string pendingDelete_;
+  mmathen::PlayersFileState fileState_ = mmathen::PlayersFileState::Missing;
+  std::string fileError_;
+  std::vector<mmathen::PlayersFileWarning> warnings_;
+  std::string loadError_;
 
   PlayerValues& values() { return values_[instrument_]; }
   void ensureValues() {
@@ -361,12 +369,15 @@ class Panel {
     ImGui::InputTextWithHint("##name", "Name this player", name_, sizeof name_);
     ImGui::SameLine();
     const std::string clean = mmathen::cleanPlayerName(name_);
-    ImGui::BeginDisabled(clean.empty());
+    const bool canSave = fileState_ == mmathen::PlayersFileState::Missing || fileState_ == mmathen::PlayersFileState::Ok;
+    ImGui::BeginDisabled(clean.empty() || !canSave);
     if (ImGui::Button("Save", ImVec2(-1, 0))) savePlayer(clean);
     ImGui::EndDisabled();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-      ImGui::SetTooltip("Keep these settings under this name (the same name replaces it).");
-    const float listH = std::max(60.0f * u, ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * 2.2f);
+      ImGui::SetTooltip("%s", canSave ? "Keep these settings under this name (the same name replaces it)."
+                                      : "Saving is off until the players file can be read (see the note below the list).");
+    const bool notice = !canSave || !warnings_.empty();
+    const float listH = std::max(60.0f * u, ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * (notice ? 3.3f : 2.2f));
     ImGui::BeginChild("pb-list", ImVec2(0, listH), ImGuiChildFlags_FrameStyle);
     if (saved_.empty()) ui::caption("No saved players yet.");
     for (int k = 0; k < static_cast<int>(saved_.size()); ++k) {
@@ -383,11 +394,14 @@ class Panel {
     ImGui::BeginDisabled(!has);
     if (ImGui::Button("Load", ImVec2(bw, 0))) loadPlayer(savedSel_);
     ImGui::SameLine();
+    ImGui::BeginDisabled(!canSave);
     if (ImGui::Button("Delete", ImVec2(bw, 0))) {
       pendingDelete_ = saved_[static_cast<std::size_t>(savedSel_)].name;
       ImGui::OpenPopup("Delete player?");
     }
     ImGui::EndDisabled();
+    ImGui::EndDisabled();
+    drawFileNotice();
     if (ImGui::BeginPopupModal("Delete player?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
       ImGui::Text("Delete \"%s\"? This cannot be undone.", pendingDelete_.c_str());
       if (ImGui::Button("Delete", ImVec2(100.0f * u, 0))) {
@@ -402,25 +416,73 @@ class Panel {
     ui::caption(where.c_str());
   }
 
+  // The players file's state: a red note when it can't be read (Save and
+  // Delete are off, with Try again), an orange one listing the lines the
+  // app kept but could not use.
+  void drawFileNotice() {
+    const float u = ui::unit();
+    using S = mmathen::PlayersFileState;
+    if (fileState_ == S::Unreadable) {
+      ImGui::TextColored(ImVec4(1, .45f, .40f, 1), "Can't read the players file, so saving is off.");
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s (%s).\nNothing has been changed in it.", playersPath.string().c_str(), fileError_.c_str());
+      ImGui::SameLine();
+      if (ImGui::SmallButton("Try again")) reloadList();
+    } else if (fileState_ == S::Newer) {
+      ImGui::TextColored(ImVec4(1, .68f, .38f, 1), "Saved by a newer version: read-only here.");
+    }
+    if (!warnings_.empty()) {
+      char line[96];
+      std::snprintf(line, sizeof line, "%d line%s in the file need%s a look (kept unchanged).", static_cast<int>(warnings_.size()),
+                    warnings_.size() == 1 ? "" : "s", warnings_.size() == 1 ? "s" : "");
+      ImGui::TextColored(ImVec4(1, .68f, .38f, 1), "%s", line);
+      ImGui::SameLine();
+      if (ImGui::SmallButton("Show")) ImGui::OpenPopup("Players file problems");
+    }
+    if (ImGui::BeginPopupModal("Players file problems", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+      ImGui::TextUnformatted(playersPath.string().c_str());
+      ui::caption("Lines the app could not use. They stay in the file exactly as written; fix them in a text editor, then press Reload.");
+      ImGui::BeginChild("pb-warn", ImVec2(560.0f * u, 220.0f * u), ImGuiChildFlags_FrameStyle);
+      for (const auto& w : warnings_) ImGui::Text("line %d: %s", w.line, w.message.c_str());
+      ImGui::EndChild();
+      if (ImGui::Button("Reload", ImVec2(100.0f * u, 0))) reloadList();
+      ImGui::SameLine();
+      if (ImGui::Button("Close", ImVec2(100.0f * u, 0))) ImGui::CloseCurrentPopup();
+      ImGui::EndPopup();
+    }
+  }
+  void applyLoad(mmathen::PlayersLoad r) {
+    saved_ = std::move(r.file.players);
+    fileState_ = r.state;
+    fileError_ = std::move(r.error);
+    warnings_ = std::move(r.file.warnings);
+    if (savedSel_ >= static_cast<int>(saved_.size())) savedSel_ = -1;
+  }
   void loadList() {
     loaded_ = true;
-    saved_ = mmathen::loadPlayers(playersPath);
+    applyLoad(mmathen::loadPlayersFile(playersPath));
+    if (fileState_ == mmathen::PlayersFileState::Unreadable)
+      setStatus("Can't read " + playersPath.string() + " (" + fileError_ + "). Saving is off so nothing in it is lost.", true);
+  }
+  void reloadList() {
+    savedSel_ = -1;
+    loadList();
+    if (fileState_ != mmathen::PlayersFileState::Unreadable) setStatus("Players file read again.", false);
   }
   void savePlayer(const std::string& name) {
     CustomPlayer p;
     p.name = name;
     p.instrument = instrument_;
     p.values = values();
-    std::vector<CustomPlayer> next = saved_;
-    mmathen::upsertPlayer(next, p);
-    if (!mmathen::savePlayers(playersPath, next)) {
-      setStatus("Could not save to " + playersPath.string(), true);
+    auto r = mmathen::editPlayersFile(playersPath, [&](std::vector<CustomPlayer>& list) { mmathen::upsertPlayer(list, p); });
+    const std::string cleanName = mmathen::cleanPlayerName(p.name);
+    applyLoad(std::move(r.after));
+    if (!r.ok) {
+      setStatus(r.error, true);
       return;
     }
-    saved_ = std::move(next);
     for (int k = 0; k < static_cast<int>(saved_.size()); ++k)
-      if (saved_[static_cast<std::size_t>(k)].name == p.name && saved_[static_cast<std::size_t>(k)].instrument == p.instrument) savedSel_ = k;
-    setStatus("Saved \"" + p.name + "\".", false);
+      if (saved_[static_cast<std::size_t>(k)].name == cleanName && saved_[static_cast<std::size_t>(k)].instrument == p.instrument) savedSel_ = k;
+    setStatus("Saved \"" + cleanName + "\".", false);
   }
   void loadPlayer(int k) {
     if (k < 0 || k >= static_cast<int>(saved_.size())) return;
@@ -432,15 +494,14 @@ class Panel {
   }
   void deletePlayer(int k) {
     if (k < 0 || k >= static_cast<int>(saved_.size())) return;
-    std::vector<CustomPlayer> next = saved_;
-    const CustomPlayer gone = next[static_cast<std::size_t>(k)];
-    (void)mmathen::removePlayer(next, gone.instrument, gone.name);
-    if (!mmathen::savePlayers(playersPath, next)) {
-      setStatus("Could not update " + playersPath.string(), true);
+    const CustomPlayer gone = saved_[static_cast<std::size_t>(k)];
+    auto r = mmathen::editPlayersFile(playersPath, [&](std::vector<CustomPlayer>& list) { (void)mmathen::removePlayer(list, gone.instrument, gone.name); });
+    applyLoad(std::move(r.after));
+    savedSel_ = -1;
+    if (!r.ok) {
+      setStatus(r.error, true);
       return;
     }
-    saved_ = std::move(next);
-    savedSel_ = -1;
     setStatus("Deleted \"" + gone.name + "\".", false);
   }
   void setStatus(std::string s, bool warn) {

@@ -12,9 +12,11 @@
 //                             unit and the default's source tag
 //   makePlayer(i, values)     a profile from slider values, each clamped
 //                             to its field's safe range
-//   savePlayers / loadPlayers named custom players in a plain text file
-//                             (defaultPlayersPath(): the user's app-data
-//                             folder, %APPDATA%\mmathEn\players.txt)
+//   loadPlayersFile /         named custom players in a plain text file
+//   editPlayersFile           (defaultPlayersPath(): the user's app-data
+//                             folder, %APPDATA%\mmathEn\players.txt);
+//                             format 2 keeps what it can't read and reports
+//                             problems by line (step 24.1)
 //
 // Defaults are read from the built-in profile at run time, so they always
 // match it; makePlayer(i, defaultValues(i)) plays exactly as builtInPlayer(i)
@@ -668,22 +670,76 @@ using PlayerValues = std::map<std::string, double>;
 }
 
 // --- Named custom players: save and load ----------------------------------
+// Step 24.1: the players file, version 2. Nothing in a file is ever lost:
+// lines and whole player blocks the app can't use (a hand-edit typo, an
+// instrument or setting from a newer version) are kept verbatim and
+// written back; every problem is reported with its line number; a file
+// that exists but can't be read is never treated as empty, so no save or
+// delete runs until it reads; each save re-reads the file and applies just
+// that change (two app windows don't overwrite each other) and keeps the
+// previous file as players.txt.bak.
 struct CustomPlayer {
   std::string name;
   PlayerInstrument instrument = PlayerInstrument::Violin;
   PlayerValues values;
+  // Lines of this player's block the app could not use (an unknown setting,
+  // a value that isn't a number, a comment), verbatim, written back after
+  // the values.
+  std::vector<std::string> keptLines;
   bool operator==(const CustomPlayer&) const = default;
 };
 
-// A name safe for the one-line file format: no line breaks or control
-// characters, trimmed, at most 60 characters.
+// The longest player name, in characters (UTF-8 code points). A display
+// limit from step 23 (then 60 bytes), not a physical value.
+inline constexpr std::size_t kPlayerNameMaxChars = 60;
+
+namespace player_builder_detail {
+// Byte length of the valid UTF-8 sequence starting at s[i], or 0 when the
+// bytes there are not valid UTF-8 (overlong forms, surrogates and values
+// above U+10FFFF are invalid, RFC 3629).
+inline std::size_t utf8SequenceLength(const std::string& s, std::size_t i) {
+  const auto byte = [&](std::size_t k) { return static_cast<unsigned>(static_cast<unsigned char>(s[k])); };
+  const unsigned c = byte(i);
+  if (c < 0x80u) return 1;
+  std::size_t n = 0;
+  unsigned cp = 0;
+  if (c >= 0xC2u && c <= 0xDFu) { n = 2; cp = c & 0x1Fu; }
+  else if (c >= 0xE0u && c <= 0xEFu) { n = 3; cp = c & 0x0Fu; }
+  else if (c >= 0xF0u && c <= 0xF4u) { n = 4; cp = c & 0x07u; }
+  else return 0;
+  if (i + n > s.size()) return 0;
+  for (std::size_t k = 1; k < n; ++k) {
+    if ((byte(i + k) & 0xC0u) != 0x80u) return 0;
+    cp = (cp << 6) | (byte(i + k) & 0x3Fu);
+  }
+  if ((n == 3 && cp < 0x800u) || (n == 4 && (cp < 0x10000u || cp > 0x10FFFFu)) || (cp >= 0xD800u && cp <= 0xDFFFu)) return 0;
+  return n;
+}
+}  // namespace player_builder_detail
+
+// A name safe for the one-line file format and for display: control
+// characters become spaces, bytes that are not valid UTF-8 become U+FFFD,
+// trimmed, and cut to kPlayerNameMaxChars characters without splitting one.
 [[nodiscard]] inline std::string cleanPlayerName(const std::string& in) {
+  std::vector<std::string> chars;
+  for (std::size_t i = 0; i < in.size();) {
+    const std::size_t n = player_builder_detail::utf8SequenceLength(in, i);
+    if (n == 0) {
+      chars.emplace_back("\xEF\xBF\xBD");
+      ++i;
+      continue;
+    }
+    const unsigned char c = static_cast<unsigned char>(in[i]);
+    chars.emplace_back(n == 1 && (c < 32 || c == 127) ? std::string(" ") : in.substr(i, n));
+    i += n;
+  }
+  std::size_t a = 0, b = chars.size();
+  while (a < b && chars[a] == " ") ++a;
+  while (b > a && chars[b - 1] == " ") --b;
+  b = std::min(b, a + kPlayerNameMaxChars);
+  while (b > a && chars[b - 1] == " ") --b;
   std::string s;
-  for (char c : in) s += (static_cast<unsigned char>(c) < 32) ? ' ' : c;
-  const auto a = s.find_first_not_of(' ');
-  if (a == std::string::npos) return {};
-  s = s.substr(a, s.find_last_not_of(' ') - a + 1);
-  if (s.size() > 60) s.resize(60);
+  for (std::size_t k = a; k < b; ++k) s += chars[k];
   return s;
 }
 
@@ -710,67 +766,202 @@ inline std::string envValue(const char* name) {
   return value ? std::string(value) : std::string();
 #endif
 }
+inline const PlayerField* findField(const std::vector<PlayerField>& fields, const std::string& key) {
+  for (const PlayerField& f : fields)
+    if (key == f.key) return &f;
+  return nullptr;
+}
 }  // namespace player_builder_detail
 
-// Text form (UTF-8), one player per block:
-//   # mmathEn custom players v1
+// The file format version this build writes and fully understands.
+// Version 1 (step 23) had no "format" line; its settings are the same, so
+// it reads with every value unchanged.
+inline constexpr int kPlayersFormatVersion = 2;
+inline constexpr const char* kPlayersFormatTag = "mmathEn-players";
+
+struct PlayersFileWarning {
+  int line = 0;  // 1-based line in the file
+  std::string message;
+  bool operator==(const PlayersFileWarning&) const = default;
+};
+struct PlayersFile {
+  int version = kPlayersFormatVersion;  // as read; 1 = a step-23 file
+  std::vector<CustomPlayer> players;
+  // Blocks and loose lines the app could not use, verbatim (one string per
+  // line), in file order; written back after the players.
+  std::vector<std::string> keptText;
+  std::vector<PlayersFileWarning> warnings;
+};
+
+// Text form (UTF-8):
+//   # comment line(s)
+//   format mmathEn-players 2
 //   player <instrument key> <name to end of line>
 //   <field key> <value>
+//   [kept lines]
 //   end
+//   [kept blocks / lines]
 // Values are written in the shortest form that reads back to the same
 // double, so a save and load round-trips exactly.
-[[nodiscard]] inline std::string playersToText(const std::vector<CustomPlayer>& players) {
-  std::string out = "# mmathEn custom players v1\n";
-  for (const CustomPlayer& p : players) {
+[[nodiscard]] inline std::string playersToText(const PlayersFile& file) {
+  std::string out = "# mmathEn custom players (Player builder). Hand edits are fine: lines the app can't use are kept.\n";
+  out += std::string("format ") + kPlayersFormatTag + " " + std::to_string(kPlayersFormatVersion) + "\n";
+  for (const CustomPlayer& p : file.players) {
     out += "player ";
     out += playerInstrumentInfo(p.instrument).key;
     out += ' ';
     out += cleanPlayerName(p.name);
     out += '\n';
     for (const auto& [k, x] : p.values) out += k + " " + player_builder_detail::formatExact(x) + "\n";
+    for (const std::string& line : p.keptLines) out += line + "\n";
     out += "end\n";
+  }
+  for (const std::string& line : file.keptText) out += line + "\n";
+  return out;
+}
+[[nodiscard]] inline std::string playersToText(const std::vector<CustomPlayer>& players) {
+  PlayersFile f;
+  f.players = players;
+  return playersToText(f);
+}
+
+// Reads every player it can; see PlayersFile. Never throws.
+[[nodiscard]] inline PlayersFile playersFileFromText(std::string text) {
+  using player_builder_detail::findField;
+  using player_builder_detail::formatExact;
+  PlayersFile out;
+  out.version = 1;  // until a format line says otherwise
+  if (text.rfind("\xEF\xBB\xBF", 0) == 0) text.erase(0, 3);  // UTF-8 byte-order mark (Notepad)
+  std::vector<std::string> lines;
+  {
+    std::istringstream in(text);
+    std::string line;
+    while (std::getline(in, line)) {
+      if (!line.empty() && line.back() == '\r') line.pop_back();
+      lines.push_back(line);
+    }
+  }
+  auto warn = [&](std::size_t idx, std::string msg) { out.warnings.push_back({static_cast<int>(idx + 1), std::move(msg)}); };
+  enum class Mode { None, Player, Kept };
+  Mode mode = Mode::None;
+  bool sawPlayer = false;
+  CustomPlayer cur;
+  PlayerValues raw;
+  std::vector<PlayerField> fields;
+  std::map<std::string, std::size_t> seenKey;
+  std::size_t blockStart = 0;
+  auto finishPlayer = [&] {
+    if (mode != Mode::Player) return;
+    cur.values = clampValues(cur.instrument, raw);
+    out.players.push_back(cur);
+    mode = Mode::None;
+  };
+  auto openBlock = [&](std::size_t idx) {
+    sawPlayer = true;
+    blockStart = idx;
+    const std::string rest = lines[idx].substr(7);
+    const auto sp = rest.find(' ');
+    const std::string key = rest.substr(0, sp);
+    PlayerInstrument inst{};
+    const std::string name = sp == std::string::npos ? std::string() : cleanPlayerName(rest.substr(sp + 1));
+    std::string problem;
+    if (!playerInstrumentFromKey(key, inst)) problem = "unknown instrument \"" + key + "\"";
+    else if (name.empty()) problem = "this player has no name";
+    else
+      for (const CustomPlayer& q : out.players)
+        if (q.instrument == inst && q.name == name) problem = "a second player with the same instrument and name";
+    if (!problem.empty()) {
+      warn(idx, problem + ": the block is kept unchanged but not shown");
+      out.keptText.push_back(lines[idx]);
+      mode = Mode::Kept;
+      return;
+    }
+    cur = CustomPlayer{};
+    cur.instrument = inst;
+    cur.name = name;
+    raw.clear();
+    seenKey.clear();
+    fields = playerFields(inst);
+    mode = Mode::Player;
+  };
+  for (std::size_t idx = 0; idx < lines.size(); ++idx) {
+    const std::string& line = lines[idx];
+    const bool isPlayer = line.rfind("player ", 0) == 0;
+    if (mode == Mode::Kept) {
+      if (isPlayer) {
+        warn(blockStart, "no \"end\" before the next player (kept as written)");
+        mode = Mode::None;
+      } else {
+        out.keptText.push_back(line);
+        if (line == "end") mode = Mode::None;
+        continue;
+      }
+    }
+    if (mode == Mode::Player) {
+      if (isPlayer) {
+        warn(blockStart, "no \"end\" before the next player (read as if it had one)");
+        finishPlayer();
+      } else if (line == "end") {
+        finishPlayer();
+        continue;
+      } else {
+        if (line.empty()) continue;
+        if (line[0] == '#') { cur.keptLines.push_back(line); continue; }
+        const auto sp = line.find(' ');
+        const std::string key = line.substr(0, sp);
+        const PlayerField* f = findField(fields, key);
+        double x = 0.0;
+        if (f == nullptr) {
+          warn(idx, "\"" + key + "\" is not a " + std::string(playerInstrumentInfo(cur.instrument).label) +
+                        " setting in this version (kept unchanged)");
+          cur.keptLines.push_back(line);
+        } else if (sp == std::string::npos || !player_builder_detail::parseExact(line.substr(sp + 1), x) || !std::isfinite(x)) {
+          warn(idx, "\"" + key + "\" has no readable number (kept unchanged; the built-in value is used)");
+          cur.keptLines.push_back(line);
+        } else {
+          if (seenKey.count(key)) warn(idx, "\"" + key + "\" is set twice (line " + std::to_string(seenKey[key] + 1) + "); this later value is used");
+          seenKey[key] = idx;
+          const double c = clampFieldValue(*f, x);
+          if (c != x)
+            warn(idx, "\"" + key + "\" " + formatExact(x) + " is outside the safe range; " + formatExact(c) + " is used");
+          raw[key] = x;
+        }
+        continue;
+      }
+    }
+    // Between blocks.
+    if (isPlayer) { openBlock(idx); continue; }
+    if (line.empty()) continue;
+    if (line.rfind("# mmathEn custom players", 0) == 0) continue;  // the header comment the app writes
+    if (line.rfind("format ", 0) == 0) {
+      std::istringstream in(line.substr(7));
+      std::string tag, extra;
+      int v = 0;
+      if (!sawPlayer && (in >> tag >> v) && tag == kPlayersFormatTag && v >= 1 && !(in >> extra)) {
+        out.version = v;
+        if (v > kPlayersFormatVersion)
+          warn(idx, "this file was saved by a newer version of the app (format " + std::to_string(v) +
+                        "); it is shown read-only so nothing in it is lost");
+        continue;
+      }
+      warn(idx, "unrecognised format line (kept unchanged)");
+      out.keptText.push_back(line);
+      continue;
+    }
+    if (line[0] != '#') warn(idx, "line outside any player (kept unchanged)");
+    out.keptText.push_back(line);
+  }
+  if (mode == Mode::Player) {
+    warn(blockStart, "the file ends before this player's \"end\" (read as if it had one)");
+    finishPlayer();
+  } else if (mode == Mode::Kept) {
+    warn(blockStart, "the file ends before this kept block's \"end\"");
   }
   return out;
 }
-// Unknown instruments and fields are skipped; values are clamped to the
-// field's safe range and missing fields take the default.
+// The players only (see playersFileFromText).
 [[nodiscard]] inline std::vector<CustomPlayer> playersFromText(const std::string& text) {
-  std::vector<CustomPlayer> out;
-  std::istringstream lines(text);
-  std::string line;
-  bool open = false, valid = false;
-  CustomPlayer cur;
-  PlayerValues raw;
-  auto finish = [&] {
-    if (open && valid && !cur.name.empty()) {
-      cur.values = clampValues(cur.instrument, raw);
-      out.push_back(cur);
-    }
-    open = valid = false;
-    raw.clear();
-  };
-  while (std::getline(lines, line)) {
-    if (!line.empty() && line.back() == '\r') line.pop_back();
-    if (line.empty() || line[0] == '#') continue;
-    if (line.rfind("player ", 0) == 0) {
-      finish();
-      open = true;
-      const std::string rest = line.substr(7);
-      const auto sp = rest.find(' ');
-      const std::string key = rest.substr(0, sp);
-      valid = playerInstrumentFromKey(key, cur.instrument);
-      cur.name = sp == std::string::npos ? std::string() : cleanPlayerName(rest.substr(sp + 1));
-      continue;
-    }
-    if (line == "end") { finish(); continue; }
-    if (!open) continue;
-    const auto sp = line.find(' ');
-    if (sp == std::string::npos) continue;
-    double x = 0.0;
-    if (player_builder_detail::parseExact(line.substr(sp + 1), x)) raw[line.substr(0, sp)] = x;
-  }
-  finish();
-  return out;
+  return playersFileFromText(text).players;
 }
 
 // %APPDATA%\mmathEn\players.txt on Windows; $XDG_CONFIG_HOME/mmathEn or
@@ -793,40 +984,110 @@ inline std::string envValue(const char* name) {
   return dir / "players.txt";
 }
 
-// Writes the whole list (via a temporary file, then a rename, so a failed
-// write never leaves a half file). Returns false on any I/O error.
-[[nodiscard]] inline bool savePlayers(const std::filesystem::path& path, const std::vector<CustomPlayer>& players) {
+namespace player_builder_detail {
+// Writes text via a temporary file and a rename, so a failed write never
+// leaves a half file.
+inline bool writeFileAtomic(const std::filesystem::path& path, const std::string& text, std::string* error = nullptr) {
   std::error_code ec;
   if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), ec);
-  const std::filesystem::path tmp = path.string() + ".tmp";
+  std::filesystem::path tmp = path;
+  tmp += ".tmp";
   {
     std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-    if (!f) return false;
-    f << playersToText(players);
-    if (!f.flush()) return false;
+    if (!f) {
+      if (error) *error = "could not create " + tmp.string();
+      return false;
+    }
+    f << text;
+    if (!f.flush()) {
+      if (error) *error = "could not write " + tmp.string();
+      return false;
+    }
   }
   std::filesystem::rename(tmp, path, ec);
   if (ec) {
-    std::filesystem::remove(path, ec);
-    ec.clear();
-    std::filesystem::rename(tmp, path, ec);
+    if (error) *error = ec.message();
+    std::error_code ec2;
+    std::filesystem::remove(tmp, ec2);
+    return false;
   }
-  return !ec;
+  return true;
 }
-// An empty list when the file does not exist yet.
-[[nodiscard]] inline std::vector<CustomPlayer> loadPlayers(const std::filesystem::path& path) {
+}  // namespace player_builder_detail
+
+// Writes the whole list as a new version-2 file. Returns false on any I/O
+// error. (The app saves through editPlayersFile, which keeps what it can't
+// read and the previous file.)
+[[nodiscard]] inline bool savePlayers(const std::filesystem::path& path, const std::vector<CustomPlayer>& players) {
+  return player_builder_detail::writeFileAtomic(path, playersToText(players));
+}
+
+enum class PlayersFileState {
+  Missing,     // no file yet: an empty list, saving creates it
+  Ok,          // read
+  Unreadable,  // exists but could not be read: nothing may be saved over it
+  Newer,       // written by a newer version: shown read-only
+};
+struct PlayersLoad {
+  PlayersFileState state = PlayersFileState::Missing;
+  PlayersFile file;
+  std::string error;  // why it could not be read (Unreadable)
+  [[nodiscard]] bool canSave() const { return state == PlayersFileState::Missing || state == PlayersFileState::Ok; }
+};
+
+[[nodiscard]] inline PlayersLoad loadPlayersFile(const std::filesystem::path& path) {
+  PlayersLoad r;
+  std::error_code ec;
+  const std::filesystem::file_status st = std::filesystem::status(path, ec);
+  if (st.type() == std::filesystem::file_type::not_found) return r;
+  r.state = PlayersFileState::Unreadable;
+  if (ec) {
+    r.error = ec.message();
+    return r;
+  }
+  if (!std::filesystem::is_regular_file(st)) {
+    r.error = "it is not a file";
+    return r;
+  }
   std::ifstream f(path, std::ios::binary);
-  if (!f) return {};
+  if (!f) {
+    r.error = "it could not be opened (another program may be using it, or there is no permission)";
+    return r;
+  }
   std::stringstream ss;
   ss << f.rdbuf();
-  return playersFromText(ss.str());
+  if (f.bad()) {
+    r.error = "reading it failed part-way";
+    return r;
+  }
+  r.file = playersFileFromText(ss.str());
+  r.state = r.file.version > kPlayersFormatVersion ? PlayersFileState::Newer : PlayersFileState::Ok;
+  return r;
 }
-// Adds the player, replacing one with the same instrument and name.
+// The players in the file; an empty list when it does not exist or cannot
+// be read (use loadPlayersFile to tell those apart).
+[[nodiscard]] inline std::vector<CustomPlayer> loadPlayers(const std::filesystem::path& path) {
+  return loadPlayersFile(path).file.players;
+}
+
+// Adds the player, replacing one with the same instrument and name (whose
+// kept lines for settings this version does not know are carried over).
 inline void upsertPlayer(std::vector<CustomPlayer>& list, CustomPlayer p) {
   p.name = cleanPlayerName(p.name);
   p.values = clampValues(p.instrument, p.values);
   for (CustomPlayer& q : list)
-    if (q.instrument == p.instrument && q.name == p.name) { q = p; return; }
+    if (q.instrument == p.instrument && q.name == p.name) {
+      const auto fields = playerFields(p.instrument);
+      for (const std::string& line : q.keptLines) {
+        const std::string key = line.substr(0, line.find(' '));
+        // A kept line for a known setting held an unreadable value; the
+        // saved value replaces it.
+        if (!line.empty() && line[0] != '#' && player_builder_detail::findField(fields, key) != nullptr) continue;
+        if (std::find(p.keptLines.begin(), p.keptLines.end(), line) == p.keptLines.end()) p.keptLines.push_back(line);
+      }
+      q = std::move(p);
+      return;
+    }
   list.push_back(std::move(p));
 }
 inline bool removePlayer(std::vector<CustomPlayer>& list, PlayerInstrument i, const std::string& name) {
@@ -834,6 +1095,80 @@ inline bool removePlayer(std::vector<CustomPlayer>& list, PlayerInstrument i, co
   if (it == list.end()) return false;
   list.erase(it);
   return true;
+}
+
+struct PlayersEdit {
+  bool ok = false;
+  std::string error;  // plain English, for the status line
+  PlayersLoad after;  // the file as it now is on disk
+};
+// One change to the players file: re-reads it (so another window's
+// changes are kept), applies change(players), keeps the previous file as
+// <name>.bak and writes the result. Refused, with nothing written, when the
+// file exists but can't be read or is from a newer version.
+template <class Change>
+[[nodiscard]] PlayersEdit editPlayersFile(const std::filesystem::path& path, Change&& change) {
+  PlayersEdit r;
+  PlayersLoad cur = loadPlayersFile(path);
+  if (cur.state == PlayersFileState::Unreadable) {
+    r.error = "Not saved: " + path.string() + " can't be read (" + cur.error + "). Nothing was changed.";
+    r.after = std::move(cur);
+    return r;
+  }
+  if (cur.state == PlayersFileState::Newer) {
+    r.error = "Not saved: " + path.string() + " was saved by a newer version of the app, so it is read-only here.";
+    r.after = std::move(cur);
+    return r;
+  }
+  change(cur.file.players);
+  if (cur.state == PlayersFileState::Ok) {
+    std::filesystem::path bak = path;
+    bak += ".bak";
+    std::error_code ec;
+    std::filesystem::copy_file(path, bak, std::filesystem::copy_options::overwrite_existing, ec);
+    if (ec) {
+      r.error = "Not saved: could not keep a backup at " + bak.string() + " (" + ec.message() + ").";
+      r.after = loadPlayersFile(path);
+      return r;
+    }
+  }
+  std::string why;
+  if (!player_builder_detail::writeFileAtomic(path, playersToText(cur.file), &why)) {
+    r.error = "Not saved: could not write " + path.string() + " (" + why + ").";
+    r.after = loadPlayersFile(path);
+    return r;
+  }
+  r.ok = true;
+  r.after = loadPlayersFile(path);
+  return r;
+}
+
+// Finds a saved player by "instrument:name" (e.g. "violin:Warm") or by name
+// alone when only one player has it. Returns its index, or -1 with error set.
+[[nodiscard]] inline int findPlayer(const std::vector<CustomPlayer>& list, const std::string& spec, std::string& error) {
+  error.clear();
+  const auto colon = spec.find(':');
+  PlayerInstrument inst{};
+  if (colon != std::string::npos && playerInstrumentFromKey(spec.substr(0, colon), inst)) {
+    const std::string name = cleanPlayerName(spec.substr(colon + 1));
+    for (std::size_t k = 0; k < list.size(); ++k)
+      if (list[k].instrument == inst && list[k].name == name) return static_cast<int>(k);
+  }
+  const std::string name = cleanPlayerName(spec);
+  int found = -1, count = 0;
+  for (std::size_t k = 0; k < list.size(); ++k)
+    if (list[k].name == name) {
+      if (found < 0) found = static_cast<int>(k);
+      ++count;
+    }
+  if (count == 1) return found;
+  if (count == 0) {
+    error = "No saved player named \"" + spec + "\"";
+  } else {
+    error = "More than one saved player is named \"" + name + "\"; use instrument:name, e.g. " +
+            std::string(playerInstrumentInfo(list[static_cast<std::size_t>(found)].instrument).key) + ":" + name;
+  }
+  return -1;
 }
 
 }  // namespace mmathen

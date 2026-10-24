@@ -28,8 +28,9 @@
 //   mmathen_app --builder [instrument-key] [--builder-play]   (step 23: opens
 //               the Player builder, e.g. --builder cello; --builder-play
 //               also renders and plays the phrase)
-//               [--players file.txt] [--builder-load NAME]  (another saved-
-//               players file; load a saved player by name)
+//               [--players file.txt] [--builder-load [INSTRUMENT:]NAME]
+//               (another saved-players file; load a saved player, e.g.
+//               violin:Warm, or by name alone when only one has it)
 //   saves a PNG of the window after S seconds (after any background job has
 //   finished), plus out.png.txt with run statistics, and exits.
 
@@ -2879,7 +2880,7 @@ int main(int argc, char* argv[]) {
     mmathen::PlayerInstrument bi{};
     if (!playersArg.empty()) a.builder.playersPath = playersArg;
     if (!builderKey.empty() && mmathen::playerInstrumentFromKey(builderKey, bi)) a.builder.select(bi);
-    if (!builderLoad.empty() && !a.builder.loadByName(builderLoad)) a.status = "No saved player named " + builderLoad;
+    if (!builderLoad.empty() && !a.builder.loadByName(builderLoad)) a.status = a.builder.loadError();
     if (builderPlayArg) a.builder.play();
   }
   bool transformPending = transformArg && !a.original.empty();
