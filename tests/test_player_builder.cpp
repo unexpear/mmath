@@ -5,7 +5,10 @@
 #include <mmathen/instruments/player_builder.h>
 #include "../app/player_audition.h"
 
+#include <chrono>
 #include <cmath>
+#include <cstdlib>
+#include <iostream>
 #include <filesystem>
 #include <set>
 #include <string>
@@ -150,6 +153,7 @@ static double controlEffect(PlayerInstrument i, const PlayerField& f) {
       v[f.key] = x;
       const auto a = au::renderAudition(makePlayer(i, v), phrase);
       if (a.ok) best = std::max(best, diffRms(a.mono, ref.mono) / level);
+      if (best > 1e-3) break;  // audible: no need to render the other values
     }
   }
   return best;
@@ -230,11 +234,34 @@ TEST_CASE("player builder: named players save and load exactly", "[player_builde
 
 TEST_CASE("player builder: every control changes the sound (slow instruments)", "[.player_builder_slow]") {
   // Hidden (minutes): the snare, kit, tubular bells and piano controls.
+  // Set MMATHEN_PB_SLOW_ONLY to one instrument key (snare, drum_kit,
+  // tubular_bells, piano) to check just that one; each control's effect
+  // and time is printed as it finishes.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+  const char* only = std::getenv("MMATHEN_PB_SLOW_ONLY");
+  // MMATHEN_PB_SLOW_FIELD_INDEX=k checks only the k-th control (0-based), so
+  // the drum kit's controls (~7 min a render) can run as separate processes.
+  const char* fieldIndex = std::getenv("MMATHEN_PB_SLOW_FIELD_INDEX");
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
   for (const auto& info : playerInstruments()) {
     if (quick(info.id)) continue;
-    for (const PlayerField& f : playerFields(info.id)) {
+    if (only && *only && std::string(only) != info.key) continue;
+    const auto fields = playerFields(info.id);
+    for (std::size_t k = 0; k < fields.size(); ++k) {
+      const PlayerField& f = fields[k];
+      if (fieldIndex && *fieldIndex && std::to_string(k) != fieldIndex) continue;
       INFO(info.label << " " << f.key);
-      CHECK(controlEffect(info.id, f) > 1e-3);
+      const auto t0 = std::chrono::steady_clock::now();
+      const double e = controlEffect(info.id, f);
+      const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+      std::cout << "[pb_slow] " << info.key << " " << f.key << " effect=" << e << " time=" << sec << "s "
+                << (e > 1e-3 ? "PASS" : "FAIL") << std::endl;
+      CHECK(e > 1e-3);
     }
   }
 }
