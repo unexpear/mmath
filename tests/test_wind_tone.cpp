@@ -2393,8 +2393,8 @@ TEST_CASE("wind songs are listening passages", "[.songs]") {
   };
   SECTION("songs") {
   play_clarinet(withLeadIn(excerpts::kBumblebee, "f"), "mmath-song-clarinet-bumblebee");
-  play_trumpet(withLeadIn(excerpts::kUptownFunk, "f"), "mmath-song-trumpet-uptown-funk");
-  play_flute(excerpts::kDayInTheLife, "mmath-song-flute-day-in-the-life");
+  play_trumpet(withLeadIn(excerpts::kYankeeDoodle, "f"), "mmath-song-trumpet-yankee-doodle");
+  play_flute(excerpts::kGreensleeves, "mmath-song-flute-greensleeves");
   play_trombone(withLeadIn(excerpts::kMountain, "mf"), "mmath-song-trombone-mountain");
   play_trombone(excerpts::kTrombone, "mmath-song-trombone-bolero");
   play_trombone(excerpts::kTrombone, "mmath-song-trombone-bolero-measured", true);

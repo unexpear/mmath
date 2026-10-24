@@ -128,7 +128,7 @@ build_app_msvc/Release/mmathen_app.exe --tuner build_real_audio/reference_source
 `build_real_audio/tuner-comparison/report.json` contains all per-track scored
 points, response successes/failures, source/binary/audio hashes, and aggregate
 results. Neighboring JSON files contain raw engine outputs and timing for every
-update; `summary.json` contains the table totals. Nothing under `D:/dev/f3` needs
+update; `summary.json` contains the table totals. Nothing in the original f3 checkout needs
 to be executed, built, or changed to rerun the comparison.
 
 ## Verification

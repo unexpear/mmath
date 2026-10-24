@@ -11,7 +11,7 @@ if inst=='violin':
     cols=[(f'{n} dry',f'{k}_dry') for n,k in C]+[(f'{n} studio',f'{k}_room') for n,k in C]
     real='vreal.wav';score='/workspace/scores/caprice24v.csv';tempo='1.5';dur=15;lag=1.95;out='/workspace/violin-history45.png'
     TG={('/workspace/scores/caprice24v.csv','1.5'):['v29_dry','v38_dry','v29_room','v38_room'],('/workspace/scores/caprice24v.csv','1.61745'):['v41_dry','v42_dry','v43_dry','v44_dry','v45_dry','v41_room','v42_room','v43_room','v44_room','v45_room']}
-    title='Violin check history: ONE diag run for all metrics + trend/cycle + note-to-note, ref vt6/real.wav. Timing row: per-version tempo runs (v29/v38 x1.5, v41-v44 x1.617); v5-v21 tempo unknown -> n/a'
+    title='Violin check history: ONE diag run for all metrics + trend/cycle + note-to-note, ref vt6/real.wav (Nikolay Madoyan, Wikimedia Commons, CC BY-SA 4.0). Timing row: per-version tempo runs (v29/v38 x1.5, v41-v44 x1.617); v5-v21 tempo unknown -> n/a'
 else:
     cols=[('old solo q=90 (Oct 14)','g_old'),('solo new q=90','g_new'),('pro1 dry q=72','gp1_dry'),('pro1 studio q=72','gp1_room'),('pro2 dry q=72','gp2_dry'),('pro2 studio q=72','gp2_room'),('pro3 dry q=72','gp3_dry'),('pro3 studio q=72','gp3_room'),('pro4 dry q=72','gp4_dry'),('pro4 studio q=72','gp4_room'),('pro5 dry q=72','gp5_dry'),('pro5 studio q=72','gp5_room')]
     real='greal.wav';score='/workspace/gp/guitar72.csv';tempo='1';dur=13;lag=2.5;out='/workspace/guitar-history5.png'

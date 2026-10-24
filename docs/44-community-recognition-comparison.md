@@ -123,7 +123,7 @@ check the model input/output contract only; they do not contribute to these scor
   retain their separately labeled offline YIN measurement. No new transcription
   model or verified voice-pitch truth is implied.
 - Downloaded code and models stay in ignored build directories. The header-only
-  core acquires no runtime dependency. The original `D:\dev\f3` project is unchanged.
+  core acquires no runtime dependency. The original f3 project is unchanged.
 
 ## Provenance and reproduction
 

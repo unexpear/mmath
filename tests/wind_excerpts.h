@@ -198,74 +198,120 @@ inline const Note kBumblebee[] = {
     {"A4", 440.00, 0.900, false, false, "f"},
 };
 
-// Uptown Funk horn riff, hand-written D-minor hits on the tuned trumpet
-// pitches. An arrangement, not a transcription of the record.
-inline const Note kUptownFunk[] = {
-    {"D5", 587.33, 0.200, true, false, "f"},
-    {"rest", 0.00, 0.200, false, false, "f"},
-    {"D5", 587.33, 0.200, true, false, "f"},
-    {"F5", 698.46, 0.200, true, false, "f"},
-    {"rest", 0.00, 0.200, false, false, "f"},
-    {"D5", 587.33, 0.200, true, false, "f"},
-    {"rest", 0.00, 0.400, false, false, "f"},
-    {"C5", 523.25, 0.200, true, false, "f"},
-    {"D5", 587.33, 0.200, true, false, "f"},
-    {"rest", 0.00, 0.200, false, false, "f"},
+// Yankee Doodle (traditional, 18th-century American; public domain), first
+// strain twice, in Bb concert, quarter = 150, tongued eighths with rests on
+// the off-beats of the cadences. Same role as the old riff it replaced:
+// a forte, detached trumpet line on the tuned F4-Eb5 pitches.
+inline const Note kYankeeDoodle[] = {
+    {"Bb4", 466.16, 0.200, true, false, "f"},
     {"Bb4", 466.16, 0.200, true, false, "f"},
     {"C5", 523.25, 0.200, true, false, "f"},
-    {"D5", 587.33, 0.600, true, false, "f"},
-    {"rest", 0.00, 0.200, false, false, "f"},
     {"D5", 587.33, 0.200, true, false, "f"},
-    {"rest", 0.00, 0.200, false, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
     {"D5", 587.33, 0.200, true, false, "f"},
-    {"F5", 698.46, 0.200, true, false, "f"},
-    {"rest", 0.00, 0.200, false, false, "f"},
-    {"D5", 587.33, 0.200, true, false, "f"},
-    {"rest", 0.00, 0.400, false, false, "f"},
     {"C5", 523.25, 0.200, true, false, "f"},
-    {"D5", 587.33, 0.200, true, false, "f"},
-    {"rest", 0.00, 0.200, false, false, "f"},
+    {"F4", 349.23, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
     {"Bb4", 466.16, 0.200, true, false, "f"},
     {"C5", 523.25, 0.200, true, false, "f"},
-    {"D5", 587.33, 0.600, true, false, "f"},
+    {"D5", 587.33, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
     {"rest", 0.00, 0.200, false, false, "f"},
+    {"A4", 440.00, 0.200, true, false, "f"},
+    {"rest", 0.00, 0.200, false, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"C5", 523.25, 0.200, true, false, "f"},
+    {"D5", 587.33, 0.200, true, false, "f"},
+    {"Eb5", 622.25, 0.200, true, false, "f"},
+    {"D5", 587.33, 0.200, true, false, "f"},
+    {"C5", 523.25, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"A4", 440.00, 0.200, true, false, "f"},
     {"F4", 349.23, 0.200, true, false, "f"},
     {"G4", 392.00, 0.200, true, false, "f"},
+    {"A4", 440.00, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"rest", 0.00, 0.200, false, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"rest", 0.00, 0.200, false, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
     {"Bb4", 466.16, 0.200, true, false, "f"},
     {"C5", 523.25, 0.200, true, false, "f"},
-    {"D5", 587.33, 0.600, true, false, "f"},
+    {"D5", 587.33, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"D5", 587.33, 0.200, true, false, "f"},
+    {"C5", 523.25, 0.200, true, false, "f"},
+    {"F4", 349.23, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"C5", 523.25, 0.200, true, false, "f"},
+    {"D5", 587.33, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
     {"rest", 0.00, 0.200, false, false, "f"},
-    {"D5", 587.33, 0.150, true, false, "f"},
-    {"F5", 698.46, 0.800, true, false, "f"},
+    {"A4", 440.00, 0.200, true, false, "f"},
+    {"rest", 0.00, 0.200, false, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"C5", 523.25, 0.200, true, false, "f"},
+    {"D5", 587.33, 0.200, true, false, "f"},
+    {"Eb5", 622.25, 0.200, true, false, "f"},
+    {"D5", 587.33, 0.200, true, false, "f"},
+    {"C5", 523.25, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"A4", 440.00, 0.200, true, false, "f"},
+    {"F4", 349.23, 0.200, true, false, "f"},
+    {"G4", 392.00, 0.200, true, false, "f"},
+    {"A4", 440.00, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"rest", 0.00, 0.200, false, false, "f"},
+    {"Bb4", 466.16, 0.200, true, false, "f"},
+    {"Bb4", 466.16, 0.600, true, false, "f"},
 };
 
-// Lennon-McCartney, A Day in the Life, verse melody, hand-written in G.
-inline const Note kDayInTheLife[] = {
-    {"B4", 493.88, 0.300, true, false, "mf"},
-    {"B4", 493.88, 0.300, true, false, "mf"},
-    {"B4", 493.88, 0.300, true, false, "mf"},
-    {"A4", 440.00, 0.300, true, false, "mf"},
-    {"B4", 493.88, 0.300, true, false, "mf"},
-    {"C5", 523.25, 0.300, false, false, "mf"},
-    {"B4", 493.88, 0.300, false, false, "mf"},
-    {"A4", 440.00, 0.300, false, false, "mf"},
-    {"G4", 392.00, 0.900, false, false, "mf"},
-    {"rest", 0.00, 0.300, false, false, "mf"},
-    {"A4", 440.00, 0.300, true, false, "mf"},
-    {"B4", 493.88, 0.300, true, false, "mf"},
-    {"B4", 493.88, 0.300, true, false, "mf"},
-    {"A4", 440.00, 0.300, true, false, "mf"},
-    {"G4", 392.00, 0.300, true, false, "mf"},
-    {"A4", 440.00, 0.300, false, false, "mf"},
-    {"B4", 493.88, 0.300, false, false, "mf"},
-    {"A4", 440.00, 0.300, false, false, "mf"},
-    {"G4", 392.00, 0.300, false, false, "mf"},
-    {"E4", 329.63, 1.200, false, false, "mf"},
-    {"rest", 0.00, 0.300, false, false, "mf"},
-    {"G4", 392.00, 0.300, true, false, "mf"},
-    {"A4", 440.00, 0.300, true, false, "mf"},
-    {"B4", 493.88, 0.600, true, false, "mf"},
-    {"D5", 587.33, 1.200, false, false, "mf"},
+// Greensleeves (traditional English, registered 1580; "A Handefull of
+// Pleasant Delites", 1584; public domain), first strain, A minor, 3/4,
+// quarter = 171 (0.35 s). A lyrical mf flute line from E4 to F5; slurred
+// within each long-short figure, tongued on the bar lines.
+inline const Note kGreensleeves[] = {
+    {"A4", 440.00, 0.350, true, false, "mf"},
+    {"C5", 523.25, 0.700, true, false, "mf"},
+    {"D5", 587.33, 0.350, false, false, "mf"},
+    {"E5", 659.26, 0.525, true, false, "mf"},
+    {"F5", 698.46, 0.175, false, false, "mf"},
+    {"E5", 659.26, 0.350, false, false, "mf"},
+    {"D5", 587.33, 0.700, true, false, "mf"},
+    {"B4", 493.88, 0.350, true, false, "mf"},
+    {"G4", 392.00, 0.525, true, false, "mf"},
+    {"A4", 440.00, 0.175, false, false, "mf"},
+    {"B4", 493.88, 0.350, false, false, "mf"},
+    {"C5", 523.25, 0.700, true, false, "mf"},
+    {"A4", 440.00, 0.350, true, false, "mf"},
+    {"A4", 440.00, 0.525, true, false, "mf"},
+    {"G#4", 415.30, 0.175, false, false, "mf"},
+    {"A4", 440.00, 0.350, false, false, "mf"},
+    {"B4", 493.88, 0.700, true, false, "mf"},
+    {"G#4", 415.30, 0.350, false, false, "mf"},
+    {"E4", 329.63, 0.700, true, false, "mf"},
+    {"A4", 440.00, 0.350, true, false, "mf"},
+    {"C5", 523.25, 0.700, true, false, "mf"},
+    {"D5", 587.33, 0.350, false, false, "mf"},
+    {"E5", 659.26, 0.525, true, false, "mf"},
+    {"F5", 698.46, 0.175, false, false, "mf"},
+    {"E5", 659.26, 0.350, false, false, "mf"},
+    {"D5", 587.33, 0.700, true, false, "mf"},
+    {"B4", 493.88, 0.350, true, false, "mf"},
+    {"G4", 392.00, 0.525, true, false, "mf"},
+    {"A4", 440.00, 0.175, false, false, "mf"},
+    {"B4", 493.88, 0.350, false, false, "mf"},
+    {"C5", 523.25, 0.525, true, false, "mf"},
+    {"B4", 493.88, 0.175, false, false, "mf"},
+    {"A4", 440.00, 0.350, false, false, "mf"},
+    {"G#4", 415.30, 0.525, true, false, "mf"},
+    {"F#4", 369.99, 0.175, false, false, "mf"},
+    {"G#4", 415.30, 0.350, false, false, "mf"},
+    {"A4", 440.00, 1.050, true, false, "mf"},
+    {"rest", 0.00, 0.350, false, false, "mf"},
 };
 
 // She'll Be Coming 'Round the Mountain (traditional), in Bb.
@@ -479,23 +525,29 @@ double excerptSeconds(const NoteArray& notes) {
 // RMS dips > 6 dB before the onset or a rest precedes). Durations are the
 // recording's, not a score's. Dynamics "mf" are not read from the
 // recording (UNSOURCED).
-// clarinet: Serolillo, Jazz Clarinet.ogg, Wikimedia Commons, CC BY 2.5; 3.0-10.3 s, transcribed by pYIN (librosa), rounded to semitones;
+// Licence of the kPro* arrays: each is adapted (transcribed) from the cited
+// Wikimedia Commons recording and carries that recording's licence, not the
+// repository's MIT licence: kProClarinet/kProFlute CC BY 2.5
+// (https://creativecommons.org/licenses/by/2.5/); kProSaxophone/kProTrumpet/
+// kProTrombone CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/),
+// and adaptations of those must be shared under CC BY-SA 4.0. See SOURCES.md.
+// clarinet: Serolillo, Jazz Clarinet.ogg (https://commons.wikimedia.org/wiki/File:Jazz_Clarinet.ogg), Wikimedia Commons, CC BY 2.5; 3.0-10.3 s, transcribed by pYIN (librosa), rounded to semitones;
 inline const Note kProClarinet[] = {
    {"rest", 0.00, 0.093, false, false, "mf"}, {"C5", 523.25, 0.209, true, false, "mf"}, {"D#5", 622.25, 0.232, true, false, "mf"}, {"F5", 698.46, 0.197, true, false, "mf"}, {"G5", 783.99, 0.430, true, false, "mf"}, {"A#5", 932.33, 0.383, true, false, "mf"}, {"E5", 659.26, 0.116, true, false, "mf"}, {"F5", 698.46, 0.615, false, false, "mf"}, {"D#5", 622.25, 0.789, false, false, "mf"}, {"rest", 0.00, 0.186, false, false, "mf"}, {"G5", 783.99, 0.313, true, false, "mf"}, {"D5", 587.33, 0.163, true, false, "mf"}, {"D#5", 622.25, 0.255, false, false, "mf"}, {"B4", 493.88, 0.163, true, false, "mf"}, {"C5", 523.25, 0.232, true, false, "mf"}, {"F#4", 369.99, 0.197, true, false, "mf"}, {"G4", 392.00, 0.383, false, false, "mf"}, {"F4", 349.23, 0.348, true, false, "mf"}, {"D#4", 311.13, 0.534, false, false, "mf"}, {"C4", 261.63, 1.466, false, false, "mf"},
 };
-// flute: Serolillo, Jazz Flute Cm7.ogg, Wikimedia Commons, CC BY 2.5; 3.35-9.45 s, transcribed by pYIN (librosa), rounded to semitones;
+// flute: Serolillo, Jazz Flute Cm7.ogg (https://commons.wikimedia.org/wiki/File:Jazz_Flute_Cm7.ogg), Wikimedia Commons, CC BY 2.5; 3.35-9.45 s, transcribed by pYIN (librosa), rounded to semitones;
 inline const Note kProFlute[] = {
    {"F#4", 369.99, 0.221, true, false, "mf"}, {"F4", 349.23, 0.139, true, false, "mf"}, {"rest", 0.00, 0.093, false, false, "mf"}, {"D#5", 622.25, 0.255, true, false, "mf"}, {"C5", 523.25, 0.174, true, false, "mf"}, {"D#4", 311.13, 0.139, true, false, "mf"}, {"rest", 0.00, 0.104, false, false, "mf"}, {"F5", 698.46, 0.209, true, false, "mf"}, {"D#5", 622.25, 0.186, false, false, "mf"}, {"C5", 523.25, 0.848, true, false, "mf"}, {"rest", 0.00, 0.267, false, false, "mf"}, {"G4", 392.00, 0.267, true, false, "mf"}, {"C5", 523.25, 0.255, true, false, "mf"}, {"D#4", 311.13, 0.139, true, false, "mf"}, {"F#5", 739.99, 0.174, true, false, "mf"}, {"G5", 783.99, 0.313, false, false, "mf"}, {"F5", 698.46, 0.221, true, false, "mf"}, {"D#5", 622.25, 0.209, true, false, "mf"}, {"C5", 523.25, 0.267, true, false, "mf"}, {"G4", 392.00, 0.139, true, false, "mf"}, {"B4", 493.88, 0.279, true, false, "mf"}, {"C5", 523.25, 1.141, false, false, "mf"},
 };
-// saxophone: ChickSR, Lick Alto Sax.wav, Wikimedia Commons, CC BY-SA 4.0; 0.0-3.0 s, transcribed by pYIN (librosa), rounded to semitones;
+// saxophone: ChickSR, Lick Alto Sax.wav (https://commons.wikimedia.org/wiki/File:Lick_Alto_Sax.wav), Wikimedia Commons, CC BY-SA 4.0 (this array: CC BY-SA 4.0); 0.0-3.0 s, transcribed by pYIN (librosa), rounded to semitones;
 inline const Note kProSaxophone[] = {
    {"G4", 392.00, 0.221, true, false, "mf"}, {"A4", 440.00, 0.174, true, false, "mf"}, {"A#4", 466.16, 0.244, false, false, "mf"}, {"C5", 523.25, 0.151, true, false, "mf"}, {"A4", 440.00, 0.430, false, false, "mf"}, {"F4", 349.23, 0.221, false, false, "mf"}, {"G4", 392.00, 1.466, false, false, "mf"},
 };
-// trumpet: ChickSR, Lick Trumpet.wav, Wikimedia Commons, CC BY-SA 4.0; 0.15-3.5 s, transcribed by pYIN (librosa), rounded to semitones;
+// trumpet: ChickSR, Lick Trumpet.wav (https://commons.wikimedia.org/wiki/File:Lick_Trumpet.wav), Wikimedia Commons, CC BY-SA 4.0 (this array: CC BY-SA 4.0); 0.15-3.5 s, transcribed by pYIN (librosa), rounded to semitones;
 inline const Note kProTrumpet[] = {
    {"rest", 0.00, 0.081, false, false, "mf"}, {"G4", 392.00, 0.290, true, false, "mf"}, {"A4", 440.00, 0.163, true, false, "mf"}, {"A#4", 466.16, 0.244, false, false, "mf"}, {"C5", 523.25, 0.197, true, false, "mf"}, {"A4", 440.00, 0.372, true, false, "mf"}, {"F4", 349.23, 0.279, true, false, "mf"}, {"G4", 392.00, 1.768, true, false, "mf"},
 };
-// trombone: Mathieu Prevot, Sheherazade opening, trombone bass.wav, Wikimedia Commons, CC BY-SA 4.0; 0.0-5.5 s, transcribed by pYIN (librosa), rounded to semitones;
+// trombone: Mathieu Prevot, Sheherazade opening, trombone bass.wav (https://commons.wikimedia.org/wiki/File:Sheherazade_opening,_trombone_bass.wav), Wikimedia Commons, CC BY-SA 4.0 (this array: CC BY-SA 4.0); 0.0-5.5 s, transcribed by pYIN (librosa), rounded to semitones;
 inline const Note kProTrombone[] = {
    {"rest", 0.00, 0.116, false, false, "mf"}, {"E3", 164.81, 1.324, true, false, "mf"}, {"B2", 123.47, 1.219, false, false, "mf"}, {"D3", 146.83, 1.730, false, false, "mf"}, {"C3", 130.81, 0.395, false, false, "mf"}, {"B2", 123.47, 0.395, false, false, "mf"}, {"C3", 130.81, 0.363, false, false, "mf"},
 };
