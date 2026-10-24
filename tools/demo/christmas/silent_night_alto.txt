@@ -1,0 +1,58 @@
+# Writes the public-domain Christmas scores used by the winds harness
+# (tools/demo/winds_pro1/wp1, WP_SONGFILE). Each note line:
+#   name hertz seconds tongued vibrato dynamic   (hertz 0 = rest)
+# 
+# Silent Night: F. X. Gruber, "Stille Nacht" (1818). Source: Mutopia Project
+#   GruberFX/stille_nacht (hymntune, Voice SATB), typeset by Steve Dunlop from
+#   www.cyberhymnal.org, Mutopia-2008/02/19-1295, Public Domain
+#   (https://www.mutopiaproject.org/ftp/GruberFX/stille_nacht/stille_nacht.ly).
+#   Soprano (melody) and alto lines copied from the ABC V:1 / V:2 in that file
+#   (Bb major, 6/8, unit 1/16). Transposed up a whole tone to C so the
+#   melody's Bb3 sits on the flute's C4 floor.
+# Part: alto, clarinet. dotted quarter = 52.
+E4 329.63 0.5769 1 0 p
+F4 349.23 0.1923 1 0 p
+E4 329.63 0.3846 1 0 p
+C4 261.63 1.1538 1 1 p
+E4 329.63 0.5769 1 0 p
+F4 349.23 0.1923 1 0 p
+E4 329.63 0.3846 1 0 p
+C4 261.63 1.1538 1 1 p
+F4 349.23 0.7692 1 0 p
+F4 349.23 0.3846 1 0 p
+D4 293.66 1.1538 1 1 p
+E4 329.63 0.7692 1 0 p
+E4 329.63 0.3846 1 0 p
+E4 329.63 1.1538 1 1 p
+F4 349.23 0.7692 1 0 p
+F4 349.23 0.3846 1 0 p
+A4 440.00 0.5769 1 0 p
+G4 392.00 0.1923 1 0 p
+F4 349.23 0.3846 1 0 p
+E4 329.63 0.5769 1 0 p
+F4 349.23 0.1923 1 0 p
+E4 329.63 0.3846 1 0 p
+C4 261.63 1.1538 1 1 p
+F4 349.23 0.7692 1 0 p
+F4 349.23 0.3846 1 0 p
+A4 440.00 0.5769 1 0 p
+G4 392.00 0.1923 1 0 p
+F4 349.23 0.3846 1 0 p
+E4 329.63 0.5769 1 0 p
+F4 349.23 0.1923 1 0 p
+E4 329.63 0.3846 1 0 p
+C4 261.63 1.1538 1 1 p
+F4 349.23 0.7692 1 0 p
+F4 349.23 0.3846 1 0 p
+B4 493.88 0.5769 1 0 p
+F4 349.23 0.1923 1 0 p
+D4 293.66 0.3846 1 0 p
+E4 329.63 1.1538 1 1 p
+G4 392.00 1.1538 1 1 p
+E4 329.63 0.5769 1 0 p
+G4 392.00 0.1923 1 0 p
+C4 261.63 0.3846 1 0 p
+E4 329.63 0.5769 1 0 p
+D4 293.66 0.1923 1 0 p
+B3 246.94 0.3846 1 0 p
+C4 261.63 2.3077 1 1 p

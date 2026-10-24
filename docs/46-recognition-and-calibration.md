@@ -162,7 +162,7 @@ visually inspected. SDL's disk output verifies the application path; it does not
 prove sound came from speakers during these runs. The user's earlier audible
 playback confirmation remains separate evidence.
 
-All 38 copied tuner files and their originals in `D:\dev\f3` retain their recorded
+All 38 copied tuner files and their originals in the f3 project retain their recorded
 hashes. That project was not edited.
 
 Main artifacts in `build_real_audio/recognition-improvement`:

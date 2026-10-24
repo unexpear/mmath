@@ -3,7 +3,7 @@
 // Anchors and where each comes from:
 // - Bark/ERB/A-weighting: closed-form definitions (Traunmüller 1990,
 //   Glasberg & Moore 1990, IEC 61672); values below re-derived in
-//   C:\Users\micha\AppData\Local\Temp\opencode\audit_d18.py.
+//   <temp>/audit_d18.py (local audit script, not committed).
 // - ISO 226: table nodes are exact by construction; off-node values pin the
 //   log-frequency interpolation against the same script. The 40-phon/100 Hz
 //   point additionally agrees within 0.2 dB with an INDEPENDENT lineage

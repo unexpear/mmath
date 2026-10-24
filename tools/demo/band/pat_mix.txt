@@ -1,0 +1,1 @@
+band = 0.0189194*fl + 3.18618*vc + 25.7463*gt + 0.0327009*sd; rms targets flute 0, cello -4, guitar -7, snare -15 dB over 1.8-43.5 s, peak 0.7, 1.2 s fade

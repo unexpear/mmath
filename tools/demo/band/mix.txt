@@ -1,0 +1,1 @@
+band = 1.000000*(trumpet + sleigh + 2.236982*piano + 0.787386*bass); trumpet/sleigh as christmas-jb4

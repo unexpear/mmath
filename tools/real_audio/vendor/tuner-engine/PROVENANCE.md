@@ -1,6 +1,6 @@
 # Comparison-only snapshot
 
-Copied read-only from `D:/dev/f3/guitar-tutor/node_modules/react-native-tuner-engine`,
+Copied read-only from `guitar-tutor/node_modules/react-native-tuner-engine` (the f3 project),
 version 1.1.3, on 2026-09-19. Original files are byte-for-byte copies;
 `copy-manifest.json` records their SHA-256 hashes. The included MIT license applies.
 

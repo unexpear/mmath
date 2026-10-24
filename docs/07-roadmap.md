@@ -13,6 +13,15 @@ Status: planning · Nothing below may shape Phase 0–2 APIs
    `Analytical | ReducedOrder | Modal | Waveguide | FDTD | FEM | Measured | Hybrid`.
 4. **Objects → instruments:** String/Bar/Plate/Membrane/Tube/Cavity/Reed/Hammer/Bow;
    geometry ≠ material; coupling `H(f)` chains; excitation position → modal weights.
+   Landed: `instruments/` with violin, viola, cello, and double bass ideal strings, a
+   concert pedal harp, a French double harpsichord, a six-string classical guitar, a six-string electric guitar, a five-string Chabassier piano bank, a
+   pluck, a bridge hook, a steady Helmholtz bow, a sum of open-loop driving-point body modes, a cavity Helmholtz frequency, a mutual body-mode stiffness, a compact-monopole far field, Schelleng's minimum bow force from a caller bridge resistance, a time-stepped stick-slip capture on rigid ends, wound-string bending stiffness from a caller core, a string re-solved on a caller bridge mobility or resistance, a
+   hard narrow hammer, the hammer's first reflected images and felt compliance,
+   a quasi-static single reed, a cylindrical bore, reed inertia, a clarinet cylinder on that open bore, an open-open flute with an embouchure jet, a lip-driven trumpet with a mouthpiece cup, that lip and cup on a U-slide, a single-reed truncated cone, a fingered
+   stop, a Yamaha Tour Custom drum kit (circular membranes), and a SABIAN XSR
+   cymbal set (free plates) (`docs/48-instruments-violin-viola.md`). Clarinet tone holes, a bell correction, and a register key, a flute end correction and tone holes, a trumpet bell flare and valves, a trombone bell flare, an F attachment, and a slide-position chart, a saxophone tone-hole lattice and a separate mouthpiece volume, a stored
+   hammer or reed table, measured bridge admittance, and radiated pressure are
+   not built. A plucked course steps a lossy tuned waveguide. A bow, a felt hammer, a mallet, and a reed, lip, or jet on a bore delay also step into a WAV. Clarinet, flute, and saxophone step excitation, bore, and an unflanged open end in one voice and render audio. Harp, harpsichord, and classical guitar step a pluck, a yielding modal soundboard, and a compact monopole and render audio. The three toms step a mallet, both heads, a closed cavity, and a monopole and render audio. Trumpet and trombone step the lip, a cup compliance, the cone, and an unflanged open end and render audio. The four bowed strings step the bow, a yielding modal soundboard, and a compact monopole and render audio. The piano steps a felt hammer, a stiff waveguide, a yielding modal soundboard, and a compact monopole and renders audio. A bass-drum port, snare wires, and cymbal nonlinearity are not in those steppers. This slice does not change Phase 0–2 APIs.
 5. **Spatial + hearing:** `t=d/c`, Doppler from first principles, reverb/HRTF;
    loudness/pitch perception separate from physics.
 6. **Composition graph:** `Scale→Chords→VoiceLead→Rhythm→Humanize→Instrument→Room→Out`;

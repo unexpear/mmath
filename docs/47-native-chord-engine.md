@@ -131,7 +131,7 @@ reference recognizer and the public-domain reference demo. Playing output is
 finite, nonzero and unclipped; mute is exactly zero. SDL disk output verifies the
 application path, not physical speaker audibility. Native screenshots were
 inspected. The seven public-domain scores were independently recomputed through
-the actual desktop measurement adapter. The original `D:\dev\f3` was not edited.
+the actual desktop measurement adapter. The original f3 project was not edited.
 
 Key artifacts:
 

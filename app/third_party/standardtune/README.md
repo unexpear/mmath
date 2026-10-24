@@ -1,7 +1,7 @@
 # StandardTune adaptations
 
 The chord voicings and tuner presentation logic were adapted from the user's
-`D:/dev/f3/guitar-tutor` copy, read-only, on 2026-09-19. Its MIT license is retained
+`guitar-tutor` (f3) checkout, read-only, on 2026-09-19. Its MIT license is retained
 here. `source-manifest.json` identifies the exact original files by SHA-256.
 
 `app/chord_shapes.h` contains all authored chord shapes from that snapshot.
