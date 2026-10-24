@@ -178,6 +178,7 @@ if(BUILD_TESTING)
     tests/test_sleigh_bell.cpp
     tests/test_player_profile.cpp
     tests/test_player_profile_more.cpp
+    tests/test_player_builder.cpp
     tests/headers/th_result.cpp
     tests/headers/th_scalar.cpp
     tests/headers/th_constants.cpp
