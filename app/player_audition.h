@@ -640,9 +640,19 @@ inline void push(std::vector<PhraseNote>& notes, const ScoreNote& src, double st
   n.dynamic = src.dynamic; n.rest = !(src.hertz > 0.0); n.releaseSec = releaseSec;
   notes.push_back(n);
 }
-inline std::vector<ScoreNote> windScore(const std::vector<PartNote>& w, bool slurredScale) {
+// keepGaps (step 24.2d, long passages): a gap between written notes is
+// played as a rest (the next note tongued); otherwise notes join.
+inline std::vector<ScoreNote> windScore(const std::vector<PartNote>& w, bool slurredScale, bool keepGaps = false) {
   std::vector<ScoreNote> s;
   for (std::size_t k = 0; k < w.size(); ++k) {
+    if (keepGaps && k > 0) {
+      const double gap = w[k].startSec - (w[k - 1].startSec + w[k - 1].durSec);
+      if (gap > 1.0e-3) {
+        s.push_back(ScoreNote{"gap", 0.0, gap, false, false, "mf"});
+        s.push_back(ScoreNote{"n", midiHz(w[k].midi), w[k].durSec, true, w[k].durSec >= kBeatSec * 0.99, "mf"});
+        continue;
+      }
+    }
     // Notes are tongued, except: the scale is slurred in groups of four,
     // and in the tune the short note after a dotted one (C. D) is slurred
     // into. Notes of a beat or more take vibrato.
@@ -658,21 +668,39 @@ inline std::vector<ScoreNote> windScore(const std::vector<PartNote>& w, bool slu
 // written note, added to the player's random one (PhraseNote::onsetErrorCents).
 // scoopCents (tests, step 24.2b): a forced scoop depth per written note
 // (PhraseNote::scoopCents). fallCents (tests, step 24.2c): a forced
-// fall-off depth per written note (PhraseNote::fallCents).
+// fall-off depth per written note (PhraseNote::fallCents). keepGaps:
+// see windScore.
 inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool slurredScale, std::vector<double>& mix,
                        const std::vector<double>* onsetCents = nullptr, const std::vector<double>* scoopCents = nullptr,
-                       const std::vector<double>* fallCents = nullptr) {
+                       const std::vector<double>* fallCents = nullptr, bool keepGaps = false) {
   using I = PlayerInstrument;
   constexpr double kAir = 101325.0, kTemp = 293.15;
   const SampleRateHz rate{kRate};
   const auto sp = speedOfSound(Air{TemperatureKelvin{kTemp}}); if (!sp.ok()) return false;
   const double speed = sp.value().value();
-  const WindPlayerProfile& prof = r.wind;
+  // A tiring player's register is measured from the instrument's middle
+  // (step 24.2d; UNSOURCED middles of the written ranges, concert pitch).
+  WindPlayerProfile tiredProf = r.wind;
+  if (tiredProf.fatigueRate > 0.0 && !(tiredProf.fatigueRefHz > 0.0))
+    tiredProf.fatigueRefHz = r.instrument == I::Trumpet ? 466.0 : r.instrument == I::Clarinet ? 349.0
+                           : r.instrument == I::AltoSaxophone ? 311.0 : r.instrument == I::Flute ? 784.0 : 233.0;
+  const WindPlayerProfile& prof = tiredProf;
   PlayerAirway airway(prof.airwaySpec());
-  const std::vector<ScoreNote> song = windScore(w, slurredScale);
+  const std::vector<ScoreNote> song = windScore(w, slurredScale, keepGaps);
   double T = 0; for (const auto& n : song) T += n.seconds;
   std::vector<PhraseNote> notes; std::vector<double> out;
   auto applyErrors = [&] {
+    if (keepGaps) {  // written notes are the sounding ones, in order
+      std::size_t k = 0;
+      for (PhraseNote& n : notes) {
+        if (n.rest) continue;
+        if (onsetCents != nullptr && k < onsetCents->size()) n.onsetErrorCents = (*onsetCents)[k];
+        if (scoopCents != nullptr && k < scoopCents->size()) n.scoopCents = (*scoopCents)[k];
+        if (fallCents != nullptr && k < fallCents->size()) n.fallCents = (*fallCents)[k];
+        ++k;
+      }
+      return;
+    }
     if (notes.size() < w.size() + 1) return;
     const std::size_t off = notes.size() - w.size() - 1;  // the lead-in rest; the closing rest is last
     if (onsetCents != nullptr)
@@ -690,9 +718,11 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
   // A fall-off lengthens the column too (step 24.2c), by up to its depth.
   double fallMax = prof.fallCents > 0.0 && prof.fallSec >= 0.0 ? prof.fallCents : 0.0;
   if (fallCents != nullptr) for (double c : *fallCents) fallMax = std::max(fallMax, c);
-  const bool bends = scoopMax > 0.0 || fallMax > 0.0;
-  const double scoopRoom = bends ? std::pow(2.0, (kFluteScoopCoverGain * scoopMax + kFluteFallCoverGain * fallMax + 25.0) / 1200.0) : 1.0;
-  const double reedRoom = bends ? std::pow(2.0, (kReedScoopLengthGain * scoopMax + kReedFallLengthGain * fallMax + 25.0) / 1200.0) : 1.0;
+  // A tiring reed or flute lengthens its column too (step 24.2d).
+  const double tiredMax = prof.fatigueRate > 0.0 ? 1.0 : 0.0;
+  const bool bends = scoopMax > 0.0 || fallMax > 0.0 || tiredMax > 0.0;
+  const double scoopRoom = bends ? std::pow(2.0, (kFluteScoopCoverGain * scoopMax + kFluteFallCoverGain * fallMax + kFluteFatigueCoverCents * tiredMax + 25.0) / 1200.0) : 1.0;
+  const double reedRoom = bends ? std::pow(2.0, (kReedScoopLengthGain * scoopMax + kReedFallLengthGain * fallMax + std::max(kReedFatigueCents, kSaxFatigueCents) * tiredMax + 25.0) / 1200.0) : 1.0;
   const double brassRoom = bends ? std::pow(2.0, (kBrassScoopLengthGain * scoopMax + kBrassFallLengthGain * fallMax + 25.0) / 1200.0) : 1.0;
   const double rel = r.extras.reedReleaseSec >= 0.0 ? r.extras.reedReleaseSec : kReedBreathReleaseSec;
   const double noise = r.extras.breathNoiseScale;
@@ -746,10 +776,11 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
     applyErrors();
     // A fall-off's falling breath slows the jet (step 24.2c): room for the
     // longest note's jet at the lowest breath, with margin for dynamics.
-    if (fallMax > 0.0) {
+    if (fallMax > 0.0 || tiredMax > 0.0) {  // and a tired player's weaker breath (step 24.2d)
       double jetMax = 0.0;
       for (const auto& n : notes) jetMax = std::max(jetMax, n.jetSamples);
-      if (!voice.reserveJetDelaySamples(2.0 * jetMax / std::sqrt(1.0 - kFluteFallBreathDrop))) return false;
+      const double low = (fallMax > 0.0 ? 1.0 - kFluteFallBreathDrop : 1.0) * (1.0 - kFatigueBreathSag * tiredMax);
+      if (!voice.reserveJetDelaySamples(2.0 * jetMax / std::sqrt(low))) return false;
     }
     out = playPhrase(voice, notes, T, true, 0.50, &airway, kRate, prof);
   } else if (r.instrument == I::Trumpet) {

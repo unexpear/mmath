@@ -132,10 +132,101 @@ struct CrackRng {
 };
 }  // namespace phrase_detail
 
+// Player fatigue (step 24.2d). The embouchure and breath muscles follow
+// the three-compartment muscle fatigue model (T. Xia & L. A. Frey Law, "A
+// theoretical approach for modeling peripheral muscle fatigue and
+// recovery", J. Biomech. 41, 3046-3052, 2008): muscle is resting, active
+// or fatigued; the active share follows the target load TL, active muscle
+// fatigues at rate F and fatigued muscle recovers at rate R, R x r in a
+// rest (J. M. Looft, N. Herkert & L. Frey-Law, J. Biomech. 77, 16-25,
+// 2018). No lip or breathing values were published; the hand/grip values
+// are used (F = 0.00980/s, R = 0.00064/s, Frey-Law et al., J. Biomech.
+// 45, 1803-1808, 2012; r = 30, Looft et al. 2018): VERIFY for the lips.
+// In a 20 s rest that gives back about a third of the fatigue (tau 52 s).
+// The load: surface EMG of trumpeters rises with pitch and loudness
+// ("Relationships between abdominal and around-lip muscle activities and
+// acoustic features when playing the trumpet", ISMA 2017, 11 players: the
+// lip muscle with pitch, the abdominal muscle with intensity and
+// duration; also JASA 140, 3418, 2016, doi 10.1121/1.4970806), so TL = kFatigueLoadScale x loudness x
+// register (note pitch / the instrument's middle, fatigueRefHz); its
+// time integral is the note duration. kFatigueLoadScale and the
+// dynamic factors are UNSOURCED.
+inline constexpr double kFatigueRatePerSec = 0.00980;     // F, grip (VERIFY for lips)
+inline constexpr double kRecoveryRatePerSec = 0.00064;    // R, grip (VERIFY for lips)
+inline constexpr double kRestRecoveryMultiplier = 30.0;   // r, grip (Looft et al. 2018)
+inline constexpr double kFatigueLoadScale = 0.45;         // UNSOURCED
+// How the fatigued share u (0..1) moves the controls. All TUNED by the
+// step 24.2d sweeps (runs/pb24/fat: the tune a fourth up, 28 passes,
+// about 2.5 minutes, then a 20 s rest; tiredness 1 and 2): at tiredness 1
+// every wind drifts 18-34 cents flat, steadily, and a 20 s rest brings
+// back 14-50% of it. Larger values broke the clarinet, saxophone and
+// trumpet into squeaks or silence at tiredness 1; a 40-cent conical reed
+// went sharp (the less-damped reed won), hence its own values.
+inline constexpr double kFatigueBreathSag = 0.5;        // TUNED blowing pressure x (1 - this u)
+inline constexpr double kFatigueNoiseGain = 3.0;        // TUNED reed / jet turbulence and edge noise x (1 + this u)
+inline constexpr double kBrassFatigueNoiseGain = 4.0;   // TUNED lip turbulence x (1 + this u)
+inline constexpr double kBrassFatigueLipCents = 150.0;  // TUNED lip resonance sags this u x register, cents
+inline constexpr double kBrassFatigueDampGain = 0.4;    // TUNED lip damping x (1 + this u)
+inline constexpr double kFatigueCrackSdCents = 150.0;   // TUNED extra onset error SD x u x register (24.2a)
+inline constexpr double kReedFatigueCents = 40.0;       // TUNED cylindrical reed: equivalent length, cents x u
+inline constexpr double kReedFatigueDampDrop = 0.4;     // TUNED cylindrical reed: lip damping x (1 - this u)
+inline constexpr double kSaxFatigueCents = 120.0;       // TUNED conical reed: equivalent length, cents x u
+inline constexpr double kSaxFatigueDampDrop = 0.0;      // TUNED conical reed: lip damping x (1 - this u)
+inline constexpr double kFluteFatigueCoverCents = 30.0; // TUNED lip cover drift, cents x u
+inline constexpr double kFluteFatigueAimMeters = 3.0e-4;// TUNED jet aim drift x u, m
+inline constexpr double kFatigueVibratoJitter = 0.5;    // UNSOURCED (not swept) vibrato rate / depth SD x u, per note
+inline constexpr double kFatigueAttackGain = 1.5;       // UNSOURCED (not swept) tongue release time x (1 + this u)
+
+namespace phrase_detail {
+inline double dynamicLoudness(const char* d) {
+  const std::string_view s = d ? d : "";
+  if (s == "pp") return 0.40;
+  if (s == "p") return 0.55;
+  if (s == "mp") return 0.70;
+  if (s == "f") return 1.00;
+  if (s == "ff") return 1.15;
+  return 0.85;  // mf or unmarked
+}
+inline double registerHeight(const PhraseNote& n, const WindPlayerProfile& player) {
+  const double ref = player.fatigueRefHz > 0.0 ? player.fatigueRefHz : 440.0;
+  return std::clamp(n.targetHz / ref, 0.25, 4.0);
+}
+}  // namespace phrase_detail
+
+// The fatigued share of the embouchure muscles, one value per hop of
+// hopFrames from the phrase's start (empty when fatigueRate is 0).
+[[nodiscard]] inline std::vector<double> phraseFatigue(const std::vector<PhraseNote>& notes,
+                                                       const WindPlayerProfile& player, std::uint64_t totalFrames,
+                                                       double rateHz, std::uint64_t hopFrames) {
+  std::vector<double> u;
+  if (!(player.fatigueRate > 0.0) || notes.empty()) return u;
+  const std::uint64_t hops = (totalFrames + hopFrames - 1) / hopFrames;
+  u.resize(static_cast<std::size_t>(hops), 0.0);
+  const double dt = static_cast<double>(hopFrames) / rateHz;
+  const double fRate = kFatigueRatePerSec * player.fatigueRate, rRate = kRecoveryRatePerSec * player.fatigueRecovery;
+  double mf = 0.0;
+  std::size_t active = 0;
+  for (std::uint64_t h = 0; h < hops; ++h) {
+    const double t = static_cast<double>(h * hopFrames) / rateHz;
+    while (active + 1 < notes.size() && notes[active + 1].startSec <= t) ++active;
+    const PhraseNote& n = notes[active];
+    const bool playing = !n.rest && t >= n.startSec && n.targetHz > 0.0;
+    const double tl = playing ? std::min(0.95, kFatigueLoadScale * n.gain * phrase_detail::dynamicLoudness(n.dynamic) *
+                                                     phrase_detail::registerHeight(n, player))
+                              : 0.0;
+    u[static_cast<std::size_t>(h)] = mf;
+    const double ma = std::min(tl, 1.0 - mf);
+    mf += (fRate * ma - rRate * (tl > 0.0 ? 1.0 : kRestRecoveryMultiplier) * mf) * dt;
+    mf = std::clamp(mf, 0.0, 1.0);
+  }
+  return u;
+}
+
 // Each note's onset error in cents (0 for rests): the note's own
 // onsetErrorCents plus the player's random error.
 [[nodiscard]] inline std::vector<double> phraseOnsetErrors(const std::vector<PhraseNote>& notes,
-                                                           const WindPlayerProfile& player) {
+                                                           const WindPlayerProfile& player,
+                                                           const std::vector<double>* onsetFatigue = nullptr) {
   std::vector<double> e(notes.size(), 0.0);
   phrase_detail::CrackRng rng{player.crackSeed ? player.crackSeed : 1};
   for (std::size_t i = 0; i < notes.size(); ++i) {
@@ -143,6 +234,17 @@ struct CrackRng {
     if (notes[i].rest) continue;
     e[i] = notes[i].onsetErrorCents +
            player.crackSdCents * (1.0 + kCrackSoftAttackGain * phrase_detail::softness(notes[i].dynamic)) * draw;
+  }
+  // Step 24.2d: a tired embouchure sets the lips less accurately (brass:
+  // the upper range gets unstable), its own draws so the cracks above
+  // are unchanged.
+  if (onsetFatigue != nullptr && onsetFatigue->size() == notes.size()) {
+    phrase_detail::CrackRng tired{(player.fatigueSeed ? player.fatigueSeed : 1) ^ 0x9E3779B97F4A7C15ull};
+    for (std::size_t i = 0; i < notes.size(); ++i) {
+      const double draw = tired.gauss();
+      if (notes[i].rest || !(notes[i].lipHz > 0.0)) continue;
+      e[i] += kFatigueCrackSdCents * (*onsetFatigue)[i] * phrase_detail::registerHeight(notes[i], player) * draw;
+    }
   }
   return e;
 }
@@ -396,8 +498,27 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     voice.attachAirway(airway);
     airway->placeTongue(1.0);
   }
+  // Step 24.2d: the fatigued share per hop (empty when the player does
+  // not tire); with it the onset errors grow, the vibrato wanders per
+  // note, and the controls below sag.
+  const std::vector<double> fatigue = phraseFatigue(notes, player, total, rateHz, kHop);
+  const bool tiring = !fatigue.empty();
+  std::vector<double> onsetFatigue, vibRate, vibDepth;
+  double vibPhase = 0.0, baseAim = 0.0, baseRelease = 0.0;
+  if (tiring) {
+    phrase_detail::CrackRng wobble{(player.fatigueSeed ? player.fatigueSeed : 1) ^ 0xD1B54A32D192ED03ull};
+    for (const PhraseNote& n : notes) {
+      const auto h = std::min<std::size_t>(fatigue.size() - 1, static_cast<std::size_t>(std::max(0.0, n.startSec) * rateHz) / kHop);
+      const double u = fatigue[h];
+      onsetFatigue.push_back(u);
+      vibRate.push_back(std::max(0.3, 1.0 + kFatigueVibratoJitter * u * wobble.gauss()));
+      vibDepth.push_back(std::max(0.0, 1.0 + kFatigueVibratoJitter * u * wobble.gauss()));
+    }
+    if constexpr (requires(Voice& probe) { probe.jetAimMeters(); }) baseAim = voice.jetAimMeters();
+    if (airway != nullptr) baseRelease = airway->tongueReleaseSeconds();
+  }
   // Step 24.2a: onset errors; none at all leaves every control as before.
-  const std::vector<double> onsetError = phraseOnsetErrors(notes, player);
+  const std::vector<double> onsetError = phraseOnsetErrors(notes, player, tiring ? &onsetFatigue : nullptr);
   const bool anyCrack = std::any_of(onsetError.begin(), onsetError.end(), [](double x) { return x != 0.0; });
   const std::vector<double> scoopDepth = phraseScoopDepths(notes, player);
   const bool anyScoop = std::any_of(scoopDepth.begin(), scoopDepth.end(), [](double x) { return x > 0.0; });
@@ -594,16 +715,28 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
         fallBreath = 1.0 - (note.lipHz > 0.0 ? kBrassFallBreathDrop : fluteJet ? kFluteFallBreathDrop : kReedFallBreathDrop) * w;
       }
     }
-    if (anyCrack && note.lipHz == 0.0 && !fluteJet) {
+    const double tired = tiring ? fatigue[std::min<std::size_t>(fatigue.size() - 1, static_cast<std::size_t>(frame / kHop))] : 0.0;
+    if ((anyCrack || tiring) && note.lipHz == 0.0 && !fluteJet) {
       if constexpr (requires(Voice& probe) { probe.setReedDynamics(1.0, 1.0); }) {
         const double reedSize = std::max(crackSize, -kReedOvershootCapCents);
+        // A tired embouchure presses the reed less: less lip damping on it.
+        constexpr bool conical = requires(Voice& probe) { probe.setLipDampingScale(1.0); };
+        const double tiredDamp = tiring ? 1.0 - (conical ? kSaxFatigueDampDrop : kReedFatigueDampDrop) * tired : 1.0;
         if (!(voice.setReedDynamics(std::pow(2.0, -kReedResonanceCentsPerCent * reedSize / 1200.0),
-                                    std::pow(2.0, -reedSize / kReedSlipCentsPerHalving)))) return {};
+                                    std::pow(2.0, -reedSize / kReedSlipCentsPerHalving) * tiredDamp))) return {};
       }
+    }
+    if (tiring) {
+      if constexpr (requires(Voice& probe) { probe.setTurbulenceScale(1.0); }) {
+        if (!(voice.setTurbulenceScale(1.0 + (note.lipHz > 0.0 ? kBrassFatigueNoiseGain : kFatigueNoiseGain) * tired))) return {};
+      }
+      if (airway != nullptr && baseRelease > 0.0)
+        if (!airway->setTongueReleaseSeconds(baseRelease * (1.0 + kFatigueAttackGain * tired))) return {};
     }
     double env = breathOff ? 0.0 : note.gain * (releasing >= 0 ? releaseLeft : 1.0);
     if (brassRelease >= 0.0) env *= brassRelease;
     if (fallNow > 0.0) env *= fallBreath;
+    if (tiring) env *= 1.0 - kFatigueBreathSag * tired;  // breath support weakens
     const bool dipping = airway == nullptr && fluteJet && note.tongue && sounding > 0 && !note.rest &&
                          time < note.startSec + 0.020;
     if (dipping) env *= 0.55;
@@ -620,8 +753,13 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       length = prev.lengthM + (note.lengthM - prev.lengthM) * alpha;
     }
     double vibrato = 1.0;
+    if (tiring) {  // a tired player's vibrato wanders in rate and width from note to note
+      const double hz = (note.lipHz > 0.0 ? player.brassVibratoHz : player.vibratoHz) * vibRate[static_cast<std::size_t>(sounding)];
+      vibPhase = std::fmod(vibPhase + constants::twoPi * hz * static_cast<double>(count) / rateHz, constants::twoPi);
+    }
     if (note.vibrato && !note.rest && time > note.startSec + player.vibratoOnsetSec) {
-      vibrato = note.lipHz > 0.0
+      vibrato = tiring ? 1.0 - (note.lipHz > 0.0 ? brassDepth : depth) * vibDepth[static_cast<std::size_t>(sounding)] * std::sin(vibPhase)
+                : note.lipHz > 0.0
                     ? 1.0 - brassDepth * std::sin(constants::twoPi * player.brassVibratoHz * time)
                     : 1.0 - depth * std::sin(constants::twoPi * player.vibratoHz * time);
       length *= vibrato;
@@ -637,11 +775,22 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       length *= std::pow(2.0, (note.lipHz > 0.0 ? kBrassScoopLengthGain : kReedScoopLengthGain) * scoopNow / 1200.0);
     if (anyFall && !fluteJet && fallNow > 0.0)
       length *= std::pow(2.0, (note.lipHz > 0.0 ? kBrassFallLengthGain : kReedFallLengthGain) * fallNow / 1200.0);
+    // A tired reed embouchure: the reed is less pinched, its equivalent
+    // length grows and the pitch sags (the scoop mechanism, 24.2b).
+    if (tiring && note.lipHz == 0.0 && !fluteJet) {
+      constexpr bool conical = requires(Voice& probe) { probe.setLipDampingScale(1.0); };
+      length *= std::pow(2.0, (conical ? kSaxFatigueCents : kReedFatigueCents) * tired / 1200.0);
+    }
     if constexpr (requires(Voice& probe) { probe.setEmbouchureCoverMeters(0.0); }) {
-      if ((anyScoop || anyFall) && fluteJet)
+      if ((anyScoop || anyFall || tiring) && fluteJet)
         if (!(voice.setEmbouchureCoverMeters(
-                length * (std::pow(2.0, (kFluteScoopCoverGain * scoopNow + kFluteFallCoverGain * fallNow) / 1200.0) - 1.0))))
+                length * (std::pow(2.0, (kFluteScoopCoverGain * scoopNow + kFluteFallCoverGain * fallNow +
+                                         kFluteFatigueCoverCents * tired) / 1200.0) - 1.0))))
           return {};
+    }
+    if constexpr (requires(Voice& probe) { probe.setJetAimMeters(0.0); }) {
+      if (tiring && fluteJet)  // the tired lip lets the jet's aim drift
+        if (!(voice.setJetAimMeters(baseAim + kFluteFatigueAimMeters * tired))) return {};
     }
     if (!(voice.setSoundingLength(length))) return {};
     // Attack build-up (WindPlayerProfile::attackBuildUpPa, Bianco et al.
@@ -671,6 +820,14 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       double crackRatio = crackCents != 0.0 ? std::pow(2.0, crackCents / 1200.0) : 1.0;
       if (scoopNow > 0.0) crackRatio *= std::pow(2.0, -kBrassScoopLipGain * scoopNow / 1200.0);
       if (fallNow > 0.0) crackRatio *= std::pow(2.0, -kBrassFallLipGain * fallNow / 1200.0);
+      // A tired lip holds less tension: its resonance sags, most on high
+      // notes, and it damps more.
+      if (tiring) {
+        crackRatio *= std::pow(2.0, -kBrassFatigueLipCents * tired * phrase_detail::registerHeight(note, player) / 1200.0);
+        if constexpr (requires(Voice& probe) { probe.setLipDampingScale(1.0); }) {
+          if (!(voice.setLipDampingScale(1.0 + kBrassFatigueDampGain * tired))) return {};
+        }
+      }
       if (!(voice.setLipResonanceHz(note.lipHz * player.lipRatioScale / vibrato * crackRatio))) return {};
     }
     if constexpr (requires(Voice& probe) { probe.setJetDelaySamples(0.0); }) {

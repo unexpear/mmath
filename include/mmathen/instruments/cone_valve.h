@@ -671,8 +671,31 @@ class ConeValveVoice final : public IVoice {
     const double stiffness = trumpet_.lipMassKg * omega * omega;
     if (!std::isfinite(stiffness) || !(stiffness > 0.0)) return false;
     trumpet_.lipStiffnessNewtonsPerMeter = stiffness;
-    if (lipQ_ > 0.0) trumpet_.lipDampingNewtonSecondsPerMeter = trumpet_.lipMassKg * omega / lipQ_;
+    if (lipQ_ > 0.0) trumpet_.lipDampingNewtonSecondsPerMeter = trumpet_.lipMassKg * omega / lipQ_ * lipDampingScale_;
     if (trumpet_.lipCollisionStiffness > 0.0) enableLipCollision(trumpet_);
+    return true;
+  }
+
+  // Step 24.2d (player fatigue): the lip's damping x scale, 1 = as built.
+  // A tired lip holds its tension less well and loses more energy per
+  // cycle. Kept through setLipResonanceHz.
+  bool setLipDampingScale(double scale) {
+    if (!lip_ || !std::isfinite(scale) || !(scale > 0.0)) return false;
+    if (as_.on) return true;  // the asymmetric lip has no separate damping
+    if (!lipDampBaseKept_) { lipDampBase_ = trumpet_.lipDampingNewtonSecondsPerMeter; lipDampBaseKept_ = true; }
+    lipDampingScale_ = scale;
+    trumpet_.lipDampingNewtonSecondsPerMeter =
+        lipQ_ > 0.0 ? std::sqrt(trumpet_.lipStiffnessNewtonsPerMeter * trumpet_.lipMassKg) / lipQ_ * scale : lipDampBase_ * scale;
+    if (trumpet_.lipCollisionStiffness > 0.0) enableLipCollision(trumpet_);
+    return true;
+  }
+
+  // Step 24.2d: the reed / lip turbulence (ValveBlow::reedTurbulence) x
+  // scale, 1 = as built (a tired embouchure leaks more air).
+  bool setTurbulenceScale(double scale) {
+    if (!std::isfinite(scale) || scale < 0.0) return false;
+    if (!turbulenceBaseKept_) { turbulenceBase_ = reedTurbulence_; turbulenceBaseKept_ = true; }
+    reedTurbulence_ = std::min(1.0, turbulenceBase_ * scale);
     return true;
   }
 
@@ -1414,6 +1437,35 @@ class ConeValveVoice final : public IVoice {
     return std::copysign(opening * speed, deltaP);
   }
 
+  // The steps above assume the start lies on the far side of the mouth
+  // pressure from the root. A reed opening of a few 1e-42 m^2 (roundoff
+  // on a shut reed; step 24.2d found one after 142 s of alto sax) leaves
+  // the root at the start, the start's residual a roundoff of the wrong
+  // sign, and the steps walking away from it. These searches step from
+  // the start itself, doubling from 1e-9 Pa, before giving up. Reached
+  // only where the old search failed, so every render it finished is
+  // unchanged.
+  template <class F>
+  [[nodiscard]] static bool bracketBelow(const F& residual, double from, double& lo) {
+    for (int k = 0; k < 80; ++k) {
+      lo = from - 1.0e-9 * std::ldexp(1.0, k);
+      const double at = residual(lo);
+      if (!std::isfinite(at)) return false;
+      if (at <= 0.0) return true;
+    }
+    return false;
+  }
+  template <class F>
+  [[nodiscard]] static bool bracketAbove(const F& residual, double from, double& hi) {
+    for (int k = 0; k < 80; ++k) {
+      hi = from + 1.0e-9 * std::ldexp(1.0, k);
+      const double at = residual(hi);
+      if (!std::isfinite(at)) return false;
+      if (at >= 0.0) return true;
+    }
+    return false;
+  }
+
   // cupCoeff is Z C / dt. Zero is the junction without a cup, and the
   // residual then matches the sealed cone used before the cup existed.
   [[nodiscard]] Result<double, QuantityError> solvePressure(
@@ -1439,7 +1491,7 @@ class ConeValveVoice final : public IVoice {
         const double atHi = residual(hi);
         if (!std::isfinite(atHi)) return R::failure(QuantityError::RangeError);
         if (atHi >= 0.0) break;
-        if (i == 47) return R::failure(QuantityError::RangeError);
+        if (i == 47 && !bracketAbove(residual, lo, hi)) return R::failure(QuantityError::RangeError);
       }
     } else {
       lo = hi;
@@ -1448,7 +1500,7 @@ class ConeValveVoice final : public IVoice {
         const double at = residual(lo);
         if (!std::isfinite(at)) return R::failure(QuantityError::RangeError);
         if (at <= 0.0) break;
-        if (i == 47) return R::failure(QuantityError::RangeError);
+        if (i == 47 && !bracketBelow(residual, hi, lo)) return R::failure(QuantityError::RangeError);
       }
     }
     for (int i = 0; i < 64; ++i) {
@@ -1556,6 +1608,8 @@ class ConeValveVoice final : public IVoice {
   double bellScale_ = 1.0;
   double lipThresholdPa_ = 0.0;
   double lipQ_ = 0.0;
+  double lipDampingScale_ = 1.0, lipDampBase_ = 0.0, turbulenceBase_ = 0.0;
+  bool lipDampBaseKept_ = false, turbulenceBaseKept_ = false;
   struct InwardLip { bool on = false; double ratio = 0.0, q = 0.0, gain = 0.0; } in_;
   double inX_ = 0.0, inV_ = 0.0;
   double lipSide_ = 1.0;  // gap-to-mouth pressure fraction at the lips (series tongue)

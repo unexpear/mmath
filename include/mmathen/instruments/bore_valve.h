@@ -935,6 +935,24 @@ class BoreValveVoice final : public IVoice {
   // Convection delay of the jet, in samples. The buffer is the delay
   // allocated from the construction pressure and cannot grow. The
   // default read stays the integer buffer until this succeeds.
+  // Step 24.2d (player fatigue): the reed / jet turbulence
+  // (ValveBlow::reedTurbulence) and the jet's edge noise
+  // (ValveBlow::jetNoiseMeters) x scale, 1 = as built; and the jet's aim
+  // at the edge, m (ValveBlow::jetAimMeters).
+  bool setTurbulenceScale(double scale) {
+    if (!std::isfinite(scale) || scale < 0.0) return false;
+    if (!turbulenceBaseKept_) { turbulenceBase_ = reedTurbulence_; jetNoiseBase_ = jetNoise_; turbulenceBaseKept_ = true; }
+    reedTurbulence_ = std::min(1.0, turbulenceBase_ * scale);
+    jetNoise_ = jetNoiseBase_ * scale;
+    return true;
+  }
+  bool setJetAimMeters(double meters) {
+    if (law_ != ValveLaw::Jet || !std::isfinite(meters)) return false;
+    jetAim_ = meters;
+    return true;
+  }
+  [[nodiscard]] double jetAimMeters() const { return jetAim_; }
+
   // Room for a slower jet (step 24.2c: a fall-off's falling breath slows
   // the jet, so its delay grows past the build's). Call before playing:
   // the jet's history is cleared and lengthened. A fixed jet delay is the
@@ -1452,6 +1470,9 @@ class BoreValveVoice final : public IVoice {
   double jetNoise_ = 0.0;
   double jetSpeed_ = 0.0;
   double reedTurbulence_ = 0.0;
+  double turbulenceBase_ = 0.0;
+  double jetNoiseBase_ = 0.0;
+  bool turbulenceBaseKept_ = false;
   double lockedBreath_ = -1.0;
   valve_detail::TripLoss wall_{};
   bool wallFit_ = false;

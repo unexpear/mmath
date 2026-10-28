@@ -163,6 +163,15 @@ class PlayerAirway {
   }
 
   // Tongue tip target: 0 is on the reed (shut), 1 is free.
+  // Step 24.2d (player fatigue): the tongue's release time, s (a tired
+  // player's attacks are slower).
+  bool setTongueReleaseSeconds(double seconds) {
+    if (!std::isfinite(seconds) || !(seconds > 0.0)) return false;
+    spec_.tongueReleaseSeconds = seconds;
+    tongueOmega_ = 3.36 / seconds;
+    return true;
+  }
+  [[nodiscard]] double tongueReleaseSeconds() const { return spec_.tongueReleaseSeconds; }
   void setTongueTarget(double target) { tongueTarget_ = std::clamp(target, 0.0, 1.0); }
   // Put the tongue at a position now (start of a render).
   void placeTongue(double position) {

@@ -143,6 +143,21 @@ struct WindPlayerProfile {
   bool fallPhraseEndsOnly = true;
   std::uint64_t fallSeed = 1;
 
+  // --- Fatigue (step 24.2d) ------------------------------------------
+  // How fast the embouchure and breath muscles tire (x the fatigue rate
+  // of phrase_player.h's three-compartment model; 0 = never, off) and
+  // how fast they recover (x the recovery rate). Tiredness feeds the
+  // physical controls: brass lip tension and damping, reed embouchure,
+  // flute jet aim and cover, breath support, noise, vibrato regularity,
+  // attack speed. No measured rate for wind players was found, so every
+  // named profile keeps 0.
+  double fatigueRate = 0.0;
+  double fatigueRecovery = 1.0;
+  std::uint64_t fatigueSeed = 1;
+  // The instrument's middle register for the fatigue load, Hz (set by the
+  // renderer per instrument; 0 = 440 Hz).
+  double fatigueRefHz = 0.0;
+
   // The player's airway with this profile's tongue speed.
   [[nodiscard]] PlayerAirwaySpec airwaySpec(PlayerAirwaySpec base = {}) const {
     base.tongueReleaseSeconds = tongueReleaseSec;

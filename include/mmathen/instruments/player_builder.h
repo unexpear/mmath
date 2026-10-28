@@ -631,6 +631,15 @@ inline PlayerField make(const char* key, const char* label, const char* tip, con
                      0.0, 1.0, "", 1.0, S::Unsourced, "phrase-end heuristic (phrase_player.h, UNSOURCED); on by default",
                      [](const PlayerRig& r) { return r.wind.fallPhraseEndsOnly ? 1.0 : 0.0; },
                      [](PlayerRig& r, double x) { r.wind.fallPhraseEndsOnly = x >= 0.5; }, true));
+    // Step 24.2d: player fatigue (phrase_player.h, a three-compartment
+    // muscle model). No measured rate for wind players: 0 = off for every
+    // named player.
+    v.push_back(make("fatigueRate", "Tiredness", "How fast the player tires on long, loud, high playing: the pitch sags flat, the tone gets airier and weaker (0 = never tires).", "Stamina",
+                     0.0, 5.0, "x", 1.0, S::Unsourced, "x muscle fatigue rate F (Frey-Law et al. 2012, grip; VERIFY for lips); 0 = off",
+                     [](const PlayerRig& r) { return r.wind.fatigueRate; }, [](PlayerRig& r, double x) { r.wind.fatigueRate = x; }));
+    v.push_back(make("fatigueRecovery", "Recovery speed", "How fast the player gets their strength back in rests (1 = usual; needs some tiredness).", "Stamina",
+                     0.25, 4.0, "x", 1.0, S::Unsourced, "x recovery rate R, x30 in rests (Looft et al. 2018, grip; VERIFY)",
+                     [](const PlayerRig& r) { return r.wind.fatigueRecovery; }, [](PlayerRig& r, double x) { r.wind.fatigueRecovery = x; }));
     if (!isBrass(i) && i != I::Flute)
       v.push_back(make("reedReleaseSec", "Note ending fade", "How gently the breath stops at the end of a phrase.", "Note starts & ends",
                        0.03, 0.60, "ms", 1000.0, S::Tuned, "kReedBreathReleaseSec, TUNED to Li et al. 2016",
