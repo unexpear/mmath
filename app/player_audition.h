@@ -654,7 +654,10 @@ inline std::vector<ScoreNote> windScore(const std::vector<PartNote>& w, bool slu
   s.push_back(ScoreNote{"rest", 0.0, 0.8, false, false, "mf"});
   return ensureLeadIn(s);
 }
-inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool slurredScale, std::vector<double>& mix) {
+// onsetCents (tests, step 24.2a): a forced onset error in cents for each
+// written note, added to the player's random one (PhraseNote::onsetErrorCents).
+inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool slurredScale, std::vector<double>& mix,
+                       const std::vector<double>* onsetCents = nullptr) {
   using I = PlayerInstrument;
   constexpr double kAir = 101325.0, kTemp = 293.15;
   const SampleRateHz rate{kRate};
@@ -665,6 +668,11 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
   const std::vector<ScoreNote> song = windScore(w, slurredScale);
   double T = 0; for (const auto& n : song) T += n.seconds;
   std::vector<PhraseNote> notes; std::vector<double> out;
+  auto applyErrors = [&] {
+    if (onsetCents == nullptr || notes.size() < w.size() + 1) return;
+    const std::size_t off = notes.size() - w.size() - 1;  // the lead-in rest; the closing rest is last
+    for (std::size_t k = 0; k < w.size() && k < onsetCents->size(); ++k) notes[k + off].onsetErrorCents = (*onsetCents)[k];
+  };
   const double rel = r.extras.reedReleaseSec >= 0.0 ? r.extras.reedReleaseSec : kReedBreathReleaseSec;
   const double noise = r.extras.breathNoiseScale;
   if (r.instrument == I::Clarinet) {
@@ -677,6 +685,7 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
     auto voiceR = BoreValveVoice::fromClarinet(cl, blow, rate); if (!voiceR.ok()) return false; auto voice = std::move(voiceR).value();
     double start = 0, held = longest;
     for (auto& s : song) { const double L = s.hertz > 0 ? clarinetSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4000.0, 0, rel); if (s.hertz > 0) held = L; start += s.seconds; }
+    applyErrors();
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kRate, prof);
   } else if (r.instrument == I::AltoSaxophone) {
     double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, saxophoneSoundingLengthMeters(s.hertz));
@@ -688,6 +697,7 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
     auto voiceR = ConeValveVoice::fromSaxophone(sax, blow, rate); if (!voiceR.ok()) return false; auto voice = std::move(voiceR).value();
     double start = 0, held = longest;
     for (auto& s : song) { const double L = s.hertz > 0 ? saxophoneSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4200.0, 0, rel); if (s.hertz > 0) held = L; start += s.seconds; }
+    applyErrors();
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kRate, prof);
   } else if (r.instrument == I::Flute) {
     const double span = 7.0e-3, sigma = 0.45, thickness = 1.0e-3, end = fluteEndCorrectionMeters();
@@ -712,6 +722,7 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
       if (s.hertz > 0) { hL = L; hJ = j; hP = p; }
       start += s.seconds;
     }
+    applyErrors();
     out = playPhrase(voice, notes, T, true, 0.50, &airway, kRate, prof);
   } else if (r.instrument == I::Trumpet) {
     TrumpetSpec tpSpec = phraseTrumpetSpec(speed, kAir, kTemp, kPhraseTrumpetLengthMeters);
@@ -730,6 +741,7 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
       if (s.hertz > 0) held = f;
       start += s.seconds;
     }
+    applyErrors();
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kRate, prof);
   } else {  // trombone (wp1's default path)
     double longest = kPhraseTromboneLengthMeters;
@@ -750,6 +762,7 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
       if (s.hertz > 0) held = f;
       start += s.seconds;
     }
+    applyErrors();
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kRate, prof);
   }
   if (out.empty()) return false;

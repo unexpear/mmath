@@ -629,6 +629,25 @@ class ConeValveVoice final : public IVoice {
   // Couple the player's airway (not owned). Null detaches it.
   void attachAirway(PlayerAirway* airway) { airway_ = airway; }
 
+  // The reed as the lip holds it, relative to how it was built (step
+  // 24.2a, cracked notes). resonanceScale moves the reed's own resonance
+  // (by its mass, so the static stiffness and the quasi-static flow stay);
+  // dampingScale multiplies its damping. The lower lip damps the reed and
+  // sets how much of it vibrates: with little damping, or a resonance
+  // near an upper bore mode, the reed sounds in that mode instead of the
+  // fundamental (T. A. Wilson & G. S. Beavers, "Operating modes of the
+  // clarinet", JASA 56, 653-658, 1974; F. Silva, J. Kergomard, C. Vergez
+  // & J. Gilbert, JASA 124, 3284-3295, 2008). (1, 1) = as built.
+  bool setReedDynamics(double resonanceScale, double dampingScale) {
+    if (lip_ || !std::isfinite(resonanceScale) || !(resonanceScale > 0.0) || !std::isfinite(dampingScale) ||
+        dampingScale < 0.0) return false;
+    if (!reedBaseKept_) { reedBase_ = inertia_; reedBaseKept_ = true; }
+    inertia_.massKg = reedBase_.massKg / (resonanceScale * resonanceScale);
+    inertia_.resonanceHz = reedBase_.resonanceHz * resonanceScale;
+    inertia_.dampingNewtonSecondsPerMeter = reedBase_.dampingNewtonSecondsPerMeter * dampingScale;
+    return true;
+  }
+
   // Threshold blowing pressure of the pressed embouchure, Pa. Zero is a
   // lip that rests open at the rest area. See lipPreload().
   bool setLipThresholdPa(double pascals) {
@@ -1602,6 +1621,8 @@ class ConeValveVoice final : public IVoice {
   OpenEndReflection openEnd_{};
   ReedCharacteristic reed_{};
   ReedInertia inertia_{};
+  ReedInertia reedBase_{};  // as built, once setReedDynamics is used
+  bool reedBaseKept_ = false;
   Trumpet trumpet_{};
   std::vector<double> line_;
   std::size_t pos_ = 0;

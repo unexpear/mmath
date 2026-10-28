@@ -900,6 +900,25 @@ class BoreValveVoice final : public IVoice {
     return true;
   }
 
+  // The reed as the lip holds it, relative to how it was built (step
+  // 24.2a, cracked notes). resonanceScale moves the reed's own resonance
+  // (by its mass, so the static stiffness and the quasi-static flow stay);
+  // dampingScale multiplies its damping. The lower lip damps the reed and
+  // sets how much of it vibrates: with little damping, or a resonance
+  // near an upper bore mode, the reed sounds in that mode instead of the
+  // fundamental (T. A. Wilson & G. S. Beavers, "Operating modes of the
+  // clarinet", JASA 56, 653-658, 1974; F. Silva, J. Kergomard, C. Vergez
+  // & J. Gilbert, JASA 124, 3284-3295, 2008). (1, 1) = as built.
+  bool setReedDynamics(double resonanceScale, double dampingScale) {
+    if (law_ != ValveLaw::InwardReed || !std::isfinite(resonanceScale) || !(resonanceScale > 0.0) || !std::isfinite(dampingScale) ||
+        dampingScale < 0.0) return false;
+    if (!reedBaseKept_) { reedBase_ = reed_.inertia; reedBaseKept_ = true; }
+    reed_.inertia.massKg = reedBase_.massKg / (resonanceScale * resonanceScale);
+    reed_.inertia.resonanceHz = reedBase_.resonanceHz * resonanceScale;
+    reed_.inertia.dampingNewtonSecondsPerMeter = reedBase_.dampingNewtonSecondsPerMeter * dampingScale;
+    return true;
+  }
+
   // Convection delay of the jet, in samples. The buffer is the delay
   // allocated from the construction pressure and cannot grow. The
   // default read stays the integer buffer until this succeeds.
@@ -1435,6 +1454,8 @@ class BoreValveVoice final : public IVoice {
   double endCorrection_ = 0.0;
   double variableAge_ = 0.0;
   double jetAge_ = 0.0;
+  ReedInertia reedBase_{};  // as built, once setReedDynamics is used
+  bool reedBaseKept_ = false;
   bool variableRead_ = false;
   bool jetVariable_ = false;
   int delaySamples_ = 1;

@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iterator>
+#include <string_view>
 #include <vector>
 
 #include "../math/constants.h"
@@ -49,7 +50,95 @@ struct PhraseNote {
   // or the phrase end is stopped by lowering the mouth pressure over this
   // time instead of by the tongue. 0 = tongue stop. See kReedBreathReleaseSec.
   double releaseSec = 0.0;
+  // Step 24.2a: an embouchure setting error at this note's start, cents,
+  // added to the player's random one (WindPlayerProfile::crackSdCents).
+  // Tests use it to force a crack; 0 = none.
+  double onsetErrorCents = 0.0;
 };
+
+// Cracked notes (step 24.2a). A cracked or split note is the lip (or
+// reed, or jet) oscillator captured for a moment by the wrong air-column
+// resonance: the player's embouchure is set for a neighbouring partial,
+// the bore's next resonance wins until the player hears it and corrects.
+// While the first reflection has not yet returned from the bell the lip
+// gets no help from the bore, so the setting must be right on its own;
+// this is worst for high notes, where the partials are close (J. Wolfe,
+// "Musical instruments", Oxford Handbook, 2022: "hornists especially fear
+// 'cracked' notes"; M. Campbell, J. Gilbert & A. Myers, The Science of
+// Brass Instruments, Springer 2021, regime selection by the lip
+// resonance; L. Velut, C. Vergez, J. Gilbert & M. Djahanbani, Acta
+// Acustica u. A. 103, 132-148, 2017, coexisting regimes of a lip model).
+// Here the error moves only the player's own controls; the regime that
+// sounds is the voice's physics:
+//   brass   the lip resonance, by the error in cents;
+//   flute   the jet delay, shorter by |error| in cents (a jet that is
+//           too fast overblows to the octave, N. H. Fletcher & T. D.
+//           Rossing, The Physics of Musical Instruments, 2nd ed., ch. 16,
+//           VERIFY section);
+//   reeds   the reed as the lip holds it: |error| lowers the reed's own
+//           resonance by the same cents and halves its damping per
+//           kReedSlipCentsPerHalving (an unsettled lower lip damps the
+//           reed less and lets more of it vibrate; little damping, or a
+//           reed resonance near an upper bore mode, lets the clarinet and
+//           saxophone sound a higher mode: Wilson & Beavers, JASA 56,
+//           653, 1974; Silva et al., JASA 124, 3284, 2008).
+// The error holds for crackHoldSec after the note starts (from the
+// tongue closure before it); over crackCorrectSec the player then pulls
+// past the setting by kCrackOvershoot of the error and back over another
+// crackCorrectSec. Without that pull a captured regime can hold to the
+// end of the note: the regimes coexist (Velut et al. 2017), so undoing
+// the error alone does not always bring the note back.
+// Soft attacks: the error SD grows by kCrackSoftAttackGain x softness
+// (pp 1, p 2/3, mp 1/3, louder 0). Wolfe: a soft start builds slowly, so
+// the bore's help comes later; the size is UNSOURCED.
+// TUNED (step 24.2a, runs/pb24/crack sweeps, YIN pitch track, 6 seeds of
+// the audition tune at crack SD 300 c): with no pull 2 of 66 trombone
+// and 2 of 66 saxophone cracks held to the note's end; a pull of 1x
+// left none on trumpet and saxophone, longest crack 0.21 s and 0.14 s.
+// The reed's pull is capped at one damping halving: a larger one (x2^10
+// at 1000 c) choked the clarinet for 50 ms after the squeak.
+// A reed resonance moved alone (damping kept) gave no squeak at 1000 c;
+// damping alone gave a clarinet pitch pull of +100 c, not a new mode.
+inline constexpr double kReedSlipCentsPerHalving = 100.0;  // TUNED (see above)
+inline constexpr double kReedResonanceCentsPerCent = 1.0;   // TUNED: the reed's resonance moves by the error's cents
+inline constexpr double kCrackOvershoot = 1.0;              // TUNED (see above)
+inline constexpr double kReedOvershootCapCents = 100.0;     // TUNED (see above)
+inline constexpr double kCrackSoftAttackGain = 1.0;         // UNSOURCED
+
+namespace phrase_detail {
+inline double softness(const char* dynamic) {
+  if (dynamic == nullptr) return 0.0;
+  const std::string_view d(dynamic);
+  if (d == "pp" || d == "ppp") return 1.0;
+  if (d == "p") return 2.0 / 3.0;
+  if (d == "mp") return 1.0 / 3.0;
+  return 0.0;
+}
+// xorshift64 + Box-Muller (the generator of player_profile.h).
+struct CrackRng {
+  std::uint64_t s;
+  double uniform() noexcept {
+    s ^= s << 13; s ^= s >> 7; s ^= s << 17;
+    return (static_cast<double>(s >> 11) + 0.5) * (1.0 / 9007199254740992.0);
+  }
+  double gauss() noexcept { return std::sqrt(-2.0 * std::log(uniform())) * std::cos(constants::twoPi * uniform()); }
+};
+}  // namespace phrase_detail
+
+// Each note's onset error in cents (0 for rests): the note's own
+// onsetErrorCents plus the player's random error.
+[[nodiscard]] inline std::vector<double> phraseOnsetErrors(const std::vector<PhraseNote>& notes,
+                                                           const WindPlayerProfile& player) {
+  std::vector<double> e(notes.size(), 0.0);
+  phrase_detail::CrackRng rng{player.crackSeed ? player.crackSeed : 1};
+  for (std::size_t i = 0; i < notes.size(); ++i) {
+    const double draw = player.crackSdCents > 0.0 ? rng.gauss() : 0.0;  // one draw per note, rests too
+    if (notes[i].rest) continue;
+    e[i] = notes[i].onsetErrorCents +
+           player.crackSdCents * (1.0 + kCrackSoftAttackGain * phrase_detail::softness(notes[i].dynamic)) * draw;
+  }
+  return e;
+}
 
 // Li, Almeida, Smith and Wolfe (JASA 139, 825-838, 2016): clarinettists end
 // staccato notes with the tongue (exponential decay ~400 dB/s, the bore's
@@ -142,6 +231,9 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     voice.attachAirway(airway);
     airway->placeTongue(1.0);
   }
+  // Step 24.2a: onset errors; none at all leaves every control as before.
+  const std::vector<double> onsetError = phraseOnsetErrors(notes, player);
+  const bool anyCrack = std::any_of(onsetError.begin(), onsetError.end(), [](double x) { return x != 0.0; });
   bool breathing = false;
   for (std::uint64_t frame = 0; frame < total;) {
     const std::uint64_t count = std::min<std::uint64_t>(kHop, total - frame);
@@ -274,6 +366,32 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
         }
       }
     }
+    // The onset error of the sounding note, weighted 1 from its tongue
+    // closure until crackHoldSec after it starts, then fading out.
+    double crackCents = 0.0, crackSize = 0.0;  // signed error; |error| signed by the weight
+    if (anyCrack && !note.rest && !breathOff) {
+      const double since = time - note.startSec;
+      const double closureSec = static_cast<double>(kTongue) / rateHz;
+      double w = 0.0;
+      const double hold = player.crackHoldSec, fix = player.crackCorrectSec;
+      if (since >= -closureSec && since < hold) w = 1.0;
+      else if (since >= hold && since < hold + fix) {
+        const double a = (since - hold) / fix;
+        w = 1.0 - (1.0 + kCrackOvershoot) * a * a * (3.0 - 2.0 * a);
+      } else if (kCrackOvershoot > 0.0 && since >= hold + fix && since < hold + 2.0 * fix) {
+        const double a = (since - hold - fix) / fix;
+        w = -kCrackOvershoot * (1.0 - a * a * (3.0 - 2.0 * a));
+      }
+      crackCents = w * onsetError[static_cast<std::size_t>(sounding)];
+      crackSize = w * std::fabs(onsetError[static_cast<std::size_t>(sounding)]);
+    }
+    if (anyCrack && note.lipHz == 0.0 && !fluteJet) {
+      if constexpr (requires(Voice& probe) { probe.setReedDynamics(1.0, 1.0); }) {
+        const double reedSize = std::max(crackSize, -kReedOvershootCapCents);
+        if (!(voice.setReedDynamics(std::pow(2.0, -kReedResonanceCentsPerCent * reedSize / 1200.0),
+                                    std::pow(2.0, -reedSize / kReedSlipCentsPerHalving)))) return {};
+      }
+    }
     double env = breathOff ? 0.0 : note.gain * (releasing >= 0 ? releaseLeft : 1.0);
     if (brassRelease >= 0.0) env *= brassRelease;
     const bool dipping = airway == nullptr && fluteJet && note.tongue && sounding > 0 && !note.rest &&
@@ -329,7 +447,10 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     // the lip resonance moves with the pitch. Moving only the bore pulled
     // the bore partial away from a fixed lip and the 1.2 s vibrato notes
     // of Jingle Bells (E4, G4) lost the lock and died (-45 dB end vs mid).
-    if (note.lipHz > 0.0) if (!(voice.setLipResonanceHz(note.lipHz * player.lipRatioScale / vibrato))) return {};
+    if (note.lipHz > 0.0) {
+      const double crackRatio = crackCents != 0.0 ? std::pow(2.0, crackCents / 1200.0) : 1.0;
+      if (!(voice.setLipResonanceHz(note.lipHz * player.lipRatioScale / vibrato * crackRatio))) return {};
+    }
     if constexpr (requires(Voice& probe) { probe.setJetDelaySamples(0.0); }) {
       if (!fluteJet || note.rest || breathOff) {  // no breath, no jet to time
         if (fluteJet && note.jetSamples > 0.0) if (!(voice.setJetDelaySamples(note.jetSamples))) return {};
@@ -344,6 +465,7 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
         const double prev = notes[static_cast<std::size_t>(sounding - 1)].jetSamples;
         jetNote = prev + (note.jetSamples - prev) * alpha;
       }
+      if (crackSize > 0.0) jetNote *= std::pow(2.0, -crackSize / 1200.0);
       if (!(voice.setJetDelaySamples(jetNote / std::sqrt(std::max(env, 1.0e-3))))) return {};
       }
     }

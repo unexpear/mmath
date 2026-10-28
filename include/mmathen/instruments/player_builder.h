@@ -595,6 +595,12 @@ inline PlayerField make(const char* key, const char* label, const char* tip, con
                      // (box probe), so its range is 0.1x..1.5x.
                      i == I::Flute ? 0.1 : 0.0, i == I::Flute ? 1.5 : 3.0, "x", 1.0, S::Tuned, "the instrument's reed / jet turbulence (wind_presets.h, TUNED)",
                      [](const PlayerRig& r) { return r.extras.breathNoiseScale; }, [](PlayerRig& r, double x) { r.extras.breathNoiseScale = x; }));
+    // Step 24.2a: the onset embouchure error that lets the lips / reed / jet
+    // lock onto a neighbouring resonance for a moment (phrase_player.h). No
+    // measured player rate was found, so 0 = off for every named player.
+    v.push_back(make("crackSdCents", "Cracked notes", "How often a note cracks: the lips, reed or air jet catch the wrong note for a moment (0 = never).", "Mistakes",
+                     0.0, 1200.0, "cents", 1.0, S::Unsourced, "onset embouchure error (Wolfe 2022; Velut et al. 2017); no measured rate, 0 = off",
+                     [](const PlayerRig& r) { return r.wind.crackSdCents; }, [](PlayerRig& r, double x) { r.wind.crackSdCents = x; }));
     if (!isBrass(i) && i != I::Flute)
       v.push_back(make("reedReleaseSec", "Note ending fade", "How gently the breath stops at the end of a phrase.", "Note starts & ends",
                        0.03, 0.60, "ms", 1000.0, S::Tuned, "kReedBreathReleaseSec, TUNED to Li et al. 2016",

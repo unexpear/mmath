@@ -13,9 +13,21 @@
 // VERIFY / UNSOURCED. Embouchure (lip resonance ratio, reed) stays in
 // the instrument rows (wind_presets.h); the profile scales it per player.
 
+#include <cstdint>
+
 #include "player_airway.h"
 
 namespace mmathen {
+
+// Cracked notes (step 24.2a). How long a player keeps a wrong embouchure
+// setting before correcting it: the pitch-shift reflex of singers
+// responds 104-223 ms after a heard pitch error (T. A. Burnett, M. B.
+// Freedland, C. R. Larson & T. C. Hain, "Voice F0 responses to
+// manipulations in pitch feedback", JASA 103, 3153-3161, 1998); 0.10 s,
+// the low end, for a trained player (VERIFY for brass and reed players).
+inline constexpr double kCrackHoldSec = 0.10;
+// Time the correction takes once it starts (UNSOURCED).
+inline constexpr double kCrackCorrectSec = 0.05;
 
 struct WindPlayerProfile {
   const char* name = "default";
@@ -72,6 +84,24 @@ struct WindPlayerProfile {
   // Constant pitch habit, cents (+ sharp), applied as a bore-length
   // change. 0 = in tune.
   double intonationCents = 0.0;
+  // --- Cracked notes (step 24.2a) ------------------------------------
+  // SD of the embouchure's setting error at a note's start, in cents of
+  // the oscillator's own tuning (the lip resonance on brass, the jet on
+  // the flute; on the reeds the same slip lowers the reed's resonance and
+  // loosens the lip's damping of it, phrase_player.h). The phrase player draws one
+  // error per note (seeded by crackSeed), holds it while the player hears
+  // the note and then corrects it (crackHoldSec, crackCorrectSec). Whether
+  // the note cracks is the instrument's physics: the bore's next
+  // resonance captures the oscillation only when the error comes near it,
+  // so notes with close partials crack more; soft attacks (pp, p, mp)
+  // draw a larger error (kCrackSoftAttackGain). 0 = off.
+  // No measured crack rate was found for professional players (step 24.2a
+  // notes), so every named profile keeps 0 (UNSOURCED range in the
+  // builder).
+  double crackSdCents = 0.0;
+  double crackHoldSec = kCrackHoldSec;
+  double crackCorrectSec = kCrackCorrectSec;
+  std::uint64_t crackSeed = 1;
 
   // The player's airway with this profile's tongue speed.
   [[nodiscard]] PlayerAirwaySpec airwaySpec(PlayerAirwaySpec base = {}) const {
