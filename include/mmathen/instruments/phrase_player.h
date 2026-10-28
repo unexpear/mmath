@@ -54,6 +54,9 @@ struct PhraseNote {
   // added to the player's random one (WindPlayerProfile::crackSdCents).
   // Tests use it to force a crack; 0 = none.
   double onsetErrorCents = 0.0;
+  // Forced scoop depth in cents (step 24.2b; tests). Above 0 the note
+  // scoops this deep whatever the player's scoop chance; 0 = the player's.
+  double scoopCents = 0.0;
 };
 
 // Cracked notes (step 24.2a). A cracked or split note is the lip (or
@@ -138,6 +141,87 @@ struct CrackRng {
            player.crackSdCents * (1.0 + kCrackSoftAttackGain * phrase_detail::softness(notes[i].dynamic)) * draw;
   }
   return e;
+}
+
+// Scoops (step 24.2b). A scoop starts a note below its pitch and slides
+// up into it. The slide is made by the player's embouchure acting on the
+// instrument; the sounding pitch is the voice's physics (no pitch shifting
+// of the output). Per family:
+//   brass   the player lips the note down and the bore follows: the lip
+//           resonance and the bore's sounding length both start
+//           scoopCents low and rise to the note (kBrassScoopLipGain,
+//           kBrassScoopLengthGain). Moving the lip alone barely moves the
+//           pitch in this model: the bore holds it near its resonance
+//           (24.2b probe, lip held 300 c low for the whole note: trumpet
+//           F4 -11 c, C5 -63 c; a 300 c lip offset at 0.15 s cracked
+//           C5). Real players lip a resonance by about half a semitone (D.
+//           Norman, M. Campbell, J. Chick, A. Myers & J. Gilbert, "Pitch
+//           bending on early brass instruments", ISMA 2010) and use the
+//           trombone slide or a half-pressed valve for more; the length
+//           change stands in for that (a half valve is really a branched
+//           tube: VERIFY, approximation). Wolfe (UNSW, "Brass instrument
+//           (lip reed) acoustics") notes players lip down further than up.
+//   reeds   the jaw drops: a less pinched reed is more compliant, and the
+//           reed's compliance acts as extra air-column length (the reed
+//           "equivalent volume / length", A. H. Benade, Fundamentals of
+//           Musical Acoustics, 1976, ch. 21; J.-P. Dalmont, B. Gazengel,
+//           J. Gilbert & J. Kergomard, "Some aspects of tuning and clean
+//           intonation in reed instruments", Applied Acoustics 46, 1995).
+//           The model's reed has no pumping flow, so moving its resonance
+//           or damping did not bend the pitch (24.2b probe, about 0 c);
+//           the jaw's effect enters as that lumped length,
+//           x 2^(kReedScoopLengthGain * cents / 1200). A saxophone scoop
+//           "starts a half step flat, by loosening the jaw" (Timbral
+//           Explorations for Wind & Percussion Instruments, doi
+//           10.71889/5fylantbak.29862011).
+//   flute   the lip covers more of the embouchure hole (rolling in): a
+//           smaller hole is a longer end correction, so the air column is
+//           longer (BoreValveVoice::setEmbouchureCoverMeters). Turning
+//           the flute bends it "approximately a half step" (same source).
+//   bowed strings: not done in 24.2b (the vibrato delay ring would have to
+//           be resized and the slide threaded through three note paths).
+// Depth and time: sung scoops measured 50-150 cents, in the first 220 ms
+// of the tone, approaching the pitch exponentially (P. Larrouy-Maestri &
+// P. Q. Pfordresher, "Pitch perception in music: do scoops matter?",
+// J. Exp. Psych.: Human Perception and Performance 44, 1523-1541, 2018).
+// Jazz: 708 of 85,821 annotated tones in the Weimar Jazz Database start
+// with a slide (0.8%), Sidney Bechet almost 15% (J. Abesser, E. Cano, K.
+// Frieler, M. Pfleiderer & W.-G. Zaddach, ISMIR 2015). No depth or time
+// was reported for wind slides, and named players are not jazz players,
+// so every named profile keeps scoops off.
+// The offset is the full depth from the tongue closure to the release and
+// falls to 0 over scoopSec on a smoothstep (no step at either end).
+// Gains: TUNED so the YIN pitch at the release lands near the requested
+// depth (24.2b sweep, 100 c over 0.15 s, deepest YIN pitch in the first
+// 40 ms after the release, cents from the note; low note / high note):
+//   brass length 1 + lip 1: trumpet F4 -85, C5 -111; trombone F4 -144.
+//     (lip 0: about the same; lip 1 keeps the lip on the bore's
+//     resonance so the slide does not crack.)
+//   reeds length 1: clarinet E4 -70, C5 -43; sax E4 -88, C5 -51.
+//         length 1.5: clarinet -113, -67; sax -129, -77.
+//         length 2: clarinet -157, -108; sax -168, -112.  -> 1.5
+//   flute cover 1: C5 -87, G5 -82; 1.15: -100, -94.  -> 1.15
+inline constexpr double kBrassScoopLipGain = 1.0;      // TUNED, see above
+inline constexpr double kBrassScoopLengthGain = 1.0;   // TUNED, see above
+inline constexpr double kReedScoopLengthGain = 1.5;    // TUNED, see above
+inline constexpr double kFluteScoopCoverGain = 1.15;   // TUNED, see above
+
+// Each note's scoop depth in cents: the note's forced scoopCents, else
+// the player's scoopCents on a tongued note with probability scoopChance
+// (slurred notes are joined at pitch and do not scoop). One draw per note
+// when the player scoops, rests too, seeded by scoopSeed.
+[[nodiscard]] inline std::vector<double> phraseScoopDepths(const std::vector<PhraseNote>& notes,
+                                                           const WindPlayerProfile& player) {
+  std::vector<double> d(notes.size(), 0.0);
+  const bool drawing = player.scoopCents > 0.0 && player.scoopSec >= 0.0;
+  phrase_detail::CrackRng rng{player.scoopSeed ? player.scoopSeed : 1};
+  for (std::size_t i = 0; i < notes.size(); ++i) {
+    const double u = drawing ? rng.uniform() : 1.0;
+    if (notes[i].rest) continue;
+    if (notes[i].scoopCents > 0.0) d[i] = notes[i].scoopCents;
+    else if (drawing && notes[i].tongue && u < player.scoopChance) d[i] = player.scoopCents;
+  }
+  return d;
 }
 
 // Li, Almeida, Smith and Wolfe (JASA 139, 825-838, 2016): clarinettists end
@@ -234,6 +318,9 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
   // Step 24.2a: onset errors; none at all leaves every control as before.
   const std::vector<double> onsetError = phraseOnsetErrors(notes, player);
   const bool anyCrack = std::any_of(onsetError.begin(), onsetError.end(), [](double x) { return x != 0.0; });
+  const std::vector<double> scoopDepth = phraseScoopDepths(notes, player);
+  const bool anyScoop = std::any_of(scoopDepth.begin(), scoopDepth.end(), [](double x) { return x > 0.0; });
+  const double scoopSec = player.scoopSec > 0.0 ? player.scoopSec : kScoopDefaultSec;
   bool breathing = false;
   for (std::uint64_t frame = 0; frame < total;) {
     const std::uint64_t count = std::min<std::uint64_t>(kHop, total - frame);
@@ -385,6 +472,18 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       crackCents = w * onsetError[static_cast<std::size_t>(sounding)];
       crackSize = w * std::fabs(onsetError[static_cast<std::size_t>(sounding)]);
     }
+    // The scoop of the sounding note: its full depth from the tongue
+    // closure to the release, then down to 0 over scoopSec.
+    double scoopNow = 0.0;
+    if (anyScoop && !note.rest && !breathOff) {
+      const double since = time - note.startSec;
+      const double closureSec = static_cast<double>(kTongue) / rateHz;
+      const double depthCents = scoopDepth[static_cast<std::size_t>(sounding)];
+      if (depthCents > 0.0 && since >= -closureSec && since < scoopSec) {
+        const double a = since <= 0.0 ? 0.0 : since / scoopSec;
+        scoopNow = depthCents * (1.0 - a * a * (3.0 - 2.0 * a));
+      }
+    }
     if (anyCrack && note.lipHz == 0.0 && !fluteJet) {
       if constexpr (requires(Voice& probe) { probe.setReedDynamics(1.0, 1.0); }) {
         const double reedSize = std::max(crackSize, -kReedOvershootCapCents);
@@ -423,6 +522,13 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
         env *= 1.0 + player.vibratoPressureFraction * std::sin(constants::twoPi * player.vibratoHz * time);
     }
     if (player.intonationCents != 0.0) length *= tuneScale;
+    if (anyScoop && !fluteJet && scoopNow > 0.0)
+      length *= std::pow(2.0, (note.lipHz > 0.0 ? kBrassScoopLengthGain : kReedScoopLengthGain) * scoopNow / 1200.0);
+    if constexpr (requires(Voice& probe) { probe.setEmbouchureCoverMeters(0.0); }) {
+      if (anyScoop && fluteJet)
+        if (!(voice.setEmbouchureCoverMeters(length * (std::pow(2.0, kFluteScoopCoverGain * scoopNow / 1200.0) - 1.0))))
+          return {};
+    }
     if (!(voice.setSoundingLength(length))) return {};
     // Attack build-up (WindPlayerProfile::attackBuildUpPa, Bianco et al.
     // 2012): behind the closed tongue before a tongued note that follows
@@ -448,7 +554,8 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     // the bore partial away from a fixed lip and the 1.2 s vibrato notes
     // of Jingle Bells (E4, G4) lost the lock and died (-45 dB end vs mid).
     if (note.lipHz > 0.0) {
-      const double crackRatio = crackCents != 0.0 ? std::pow(2.0, crackCents / 1200.0) : 1.0;
+      double crackRatio = crackCents != 0.0 ? std::pow(2.0, crackCents / 1200.0) : 1.0;
+      if (scoopNow > 0.0) crackRatio *= std::pow(2.0, -kBrassScoopLipGain * scoopNow / 1200.0);
       if (!(voice.setLipResonanceHz(note.lipHz * player.lipRatioScale / vibrato * crackRatio))) return {};
     }
     if constexpr (requires(Voice& probe) { probe.setJetDelaySamples(0.0); }) {

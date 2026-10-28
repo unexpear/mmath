@@ -601,6 +601,19 @@ inline PlayerField make(const char* key, const char* label, const char* tip, con
     v.push_back(make("crackSdCents", "Cracked notes", "How often a note cracks: the lips, reed or air jet catch the wrong note for a moment (0 = never).", "Mistakes",
                      0.0, 1200.0, "cents", 1.0, S::Unsourced, "onset embouchure error (Wolfe 2022; Velut et al. 2017); no measured rate, 0 = off",
                      [](const PlayerRig& r) { return r.wind.crackSdCents; }, [](PlayerRig& r, double x) { r.wind.crackSdCents = x; }));
+    // Step 24.2b: scoops, a slide up into the note made by the embouchure
+    // (phrase_player.h). No measured rate or depth for wind players, so
+    // 0 = off for every named player.
+    v.push_back(make("scoopCents", "Scoop depth", "How far below the note the player starts and slides up into it, like a jazz scoop (0 = no scoops; 100 = a half step).", "Note starts & ends",
+                     0.0, isBrass(i) ? 150.0 : 200.0, "cents", 1.0, S::Unsourced,
+                     "sung scoops 50-150 c (Larrouy-Maestri & Pfordresher 2018); wind depth UNSOURCED, 0 = off",
+                     [](const PlayerRig& r) { return r.wind.scoopCents; }, [](PlayerRig& r, double x) { r.wind.scoopCents = x; }));
+    v.push_back(make("scoopSec", "Scoop time", "How long the slide up into the note takes (0 = the usual, about 0.2 s). Needs some scoop depth.", "Note starts & ends",
+                     0.0, 0.40, "ms", 1000.0, S::Unsourced, "0 = kScoopDefaultSec, 220 ms (Larrouy-Maestri & Pfordresher 2018)",
+                     [](const PlayerRig& r) { return r.wind.scoopSec; }, [](PlayerRig& r, double x) { r.wind.scoopSec = x; }));
+    v.push_back(make("scoopChance", "Scoop how often", "Share of tongued notes that get a scoop (100% = every one). Needs some scoop depth.", "Note starts & ends",
+                     0.0, 1.0, "%", 100.0, S::Unsourced, "jazz soloists: 0.8% of tones, Bechet ~15% (Abesser et al., ISMIR 2015); default 100% of the depth's notes",
+                     [](const PlayerRig& r) { return r.wind.scoopChance; }, [](PlayerRig& r, double x) { r.wind.scoopChance = x; }));
     if (!isBrass(i) && i != I::Flute)
       v.push_back(make("reedReleaseSec", "Note ending fade", "How gently the breath stops at the end of a phrase.", "Note starts & ends",
                        0.03, 0.60, "ms", 1000.0, S::Tuned, "kReedBreathReleaseSec, TUNED to Li et al. 2016",

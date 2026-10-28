@@ -28,6 +28,10 @@ namespace mmathen {
 inline constexpr double kCrackHoldSec = 0.10;
 // Time the correction takes once it starts (UNSOURCED).
 inline constexpr double kCrackCorrectSec = 0.05;
+// Scoop time used when a depth is set and the time is left at 0: 0.22 s,
+// the window sung scoops were measured and synthesised in (Larrouy-Maestri
+// & Pfordresher, JEP:HPP 44, 1523, 2018).
+inline constexpr double kScoopDefaultSec = 0.22;
 
 struct WindPlayerProfile {
   const char* name = "default";
@@ -102,6 +106,21 @@ struct WindPlayerProfile {
   double crackHoldSec = kCrackHoldSec;
   double crackCorrectSec = kCrackCorrectSec;
   std::uint64_t crackSeed = 1;
+
+  // --- Scoops (step 24.2b) -------------------------------------------
+  // A scoop starts a note scoopCents below its pitch and slides up into
+  // it over scoopSec, by the embouchure (phrase_player.h: the lip
+  // resonance on brass, the reed on clarinet and saxophone, the lip's
+  // cover of the embouchure hole on the flute). scoopChance is the share
+  // of tongued notes that scoop (seeded by scoopSeed); slurred notes do
+  // not. 0 depth = off; a depth with time 0 uses kScoopDefaultSec. Sung
+  // scoops: 50-150 cents in the first 220 ms (Larrouy-Maestri &
+  // Pfordresher 2018); jazz soloists slide into 0.8% of tones (Abesser et
+  // al., ISMIR 2015). Named players are not jazz players: all keep 0.
+  double scoopCents = 0.0;
+  double scoopSec = 0.0;
+  double scoopChance = 1.0;
+  std::uint64_t scoopSeed = 1;
 
   // The player's airway with this profile's tongue speed.
   [[nodiscard]] PlayerAirwaySpec airwaySpec(PlayerAirwaySpec base = {}) const {

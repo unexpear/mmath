@@ -853,6 +853,7 @@ class BoreValveVoice final : public IVoice {
     const double fs = rate_.value();
     double air = lengthMeters;
     if (!radiating_) air += endCorrection_;
+    air += cover_;
     if (!(air > 0.0) || !std::isfinite(fs) || !(fs > 0.0)) return false;
     // Same round-trip accounting as makeCylinder. There is no half-sample
     // Nyquist average on this bore, so none is removed here.
@@ -884,6 +885,18 @@ class BoreValveVoice final : public IVoice {
     if (timed > limit) timed = limit;
     variableAge_ = timed;
     variableRead_ = true;
+    return true;
+  }
+
+  // Flute (step 24.2b, scoops): extra end correction from the lip
+  // covering more of the embouchure hole. A smaller opening has a longer
+  // end correction, so the air column plays lower (N. H. Fletcher & T. D.
+  // Rossing, The Physics of Musical Instruments, 2nd ed., ch. 16: the
+  // player rolls the flute in to flatten; VERIFY section). Read by the
+  // next setSoundingLength. 0 = as blown. A jet only.
+  bool setEmbouchureCoverMeters(double meters) {
+    if (law_ != ValveLaw::Jet || !std::isfinite(meters) || meters < 0.0) return false;
+    cover_ = meters;
     return true;
   }
 
@@ -1452,6 +1465,7 @@ class BoreValveVoice final : public IVoice {
   double flueToEdge_ = 0.0;
   double speed_ = 0.0;
   double endCorrection_ = 0.0;
+  double cover_ = 0.0;  // setEmbouchureCoverMeters
   double variableAge_ = 0.0;
   double jetAge_ = 0.0;
   ReedInertia reedBase_{};  // as built, once setReedDynamics is used

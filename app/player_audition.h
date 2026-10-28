@@ -656,8 +656,10 @@ inline std::vector<ScoreNote> windScore(const std::vector<PartNote>& w, bool slu
 }
 // onsetCents (tests, step 24.2a): a forced onset error in cents for each
 // written note, added to the player's random one (PhraseNote::onsetErrorCents).
+// scoopCents (tests, step 24.2b): a forced scoop depth per written note
+// (PhraseNote::scoopCents).
 inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool slurredScale, std::vector<double>& mix,
-                       const std::vector<double>* onsetCents = nullptr) {
+                       const std::vector<double>* onsetCents = nullptr, const std::vector<double>* scoopCents = nullptr) {
   using I = PlayerInstrument;
   constexpr double kAir = 101325.0, kTemp = 293.15;
   const SampleRateHz rate{kRate};
@@ -669,15 +671,26 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
   double T = 0; for (const auto& n : song) T += n.seconds;
   std::vector<PhraseNote> notes; std::vector<double> out;
   auto applyErrors = [&] {
-    if (onsetCents == nullptr || notes.size() < w.size() + 1) return;
+    if (notes.size() < w.size() + 1) return;
     const std::size_t off = notes.size() - w.size() - 1;  // the lead-in rest; the closing rest is last
-    for (std::size_t k = 0; k < w.size() && k < onsetCents->size(); ++k) notes[k + off].onsetErrorCents = (*onsetCents)[k];
+    if (onsetCents != nullptr)
+      for (std::size_t k = 0; k < w.size() && k < onsetCents->size(); ++k) notes[k + off].onsetErrorCents = (*onsetCents)[k];
+    if (scoopCents != nullptr)
+      for (std::size_t k = 0; k < w.size() && k < scoopCents->size(); ++k) notes[k + off].scoopCents = (*scoopCents)[k];
   };
+  // A flute scoop lengthens the air column (the lip covers the hole) and
+  // the bore's delay line cannot grow, so a scooping flute is built
+  // longer by the deepest scoop. Without scoops the build is unchanged.
+  double scoopMax = prof.scoopCents > 0.0 && prof.scoopSec >= 0.0 ? prof.scoopCents : 0.0;
+  if (scoopCents != nullptr) for (double c : *scoopCents) scoopMax = std::max(scoopMax, c);
+  const double scoopRoom = scoopMax > 0.0 ? std::pow(2.0, (kFluteScoopCoverGain * scoopMax + 25.0) / 1200.0) : 1.0;
+  const double reedRoom = scoopMax > 0.0 ? std::pow(2.0, (kReedScoopLengthGain * scoopMax + 25.0) / 1200.0) : 1.0;
+  const double brassRoom = scoopMax > 0.0 ? std::pow(2.0, (kBrassScoopLengthGain * scoopMax + 25.0) / 1200.0) : 1.0;
   const double rel = r.extras.reedReleaseSec >= 0.0 ? r.extras.reedReleaseSec : kReedBreathReleaseSec;
   const double noise = r.extras.breathNoiseScale;
   if (r.instrument == I::Clarinet) {
     double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, clarinetSoundingLengthMeters(s.hertz));
-    ClarinetSpec spec{longest * 1.04, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0, 1.0e-6, 1.0e-4, 1.0e-3, 0.11};
+    ClarinetSpec spec{longest * 1.04 * reedRoom, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0, 1.0e-6, 1.0e-4, 1.0e-3, 0.11};
     auto clR = makeClarinet(spec); if (!clR.ok()) return false; auto cl = std::move(clR).value();
     ValveBlow blow = clarinetBoreLosses(sustained(4000.0, 1500.0, 19200)); blow.frames = static_cast<std::uint64_t>(std::llround((T + 0.5) * kRate));
     blow.reedTurbulence = kClarinetReedTurbulence * noise; blow.reflectionCutoffHz = kClarinetReflectionCutoffHz; blow.wallFitFundamental = true;
@@ -689,7 +702,7 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kRate, prof);
   } else if (r.instrument == I::AltoSaxophone) {
     double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, saxophoneSoundingLengthMeters(s.hertz));
-    SaxophoneSpec spec{longest * 1.08, 0.20, 1.6e-4, kAir, kTemp, 1.8e-5, 7500.0, 2.0e-6, 1.4e-4, 7.0e-4, 0.09};
+    SaxophoneSpec spec{longest * 1.08 * reedRoom, 0.20, 1.6e-4, kAir, kTemp, 1.8e-5, 7500.0, 2.0e-6, 1.4e-4, 7.0e-4, 0.09};
     auto saxR = makeSaxophone(spec); if (!saxR.ok()) return false; auto sax = std::move(saxR).value();
     ValveBlow blow = sustained(4200.0, 1500.0, 19200); blow.frames = static_cast<std::uint64_t>(std::llround((T + 0.5) * kRate));
     blow.initialDisplacementMeters = 1.0e-5; blow.reedTurbulence = kSaxophoneReedTurbulence * noise; blow.reflectionCutoffHz = 1500.0;
@@ -703,7 +716,7 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
     const double span = 7.0e-3, sigma = 0.45, thickness = 1.0e-3, end = fluteEndCorrectionMeters();
     auto bore = [&](double f) { return fluteSoundingLengthMeters(speed, f, end); };
     double longest = 0, lowest = 1e9; for (auto& s : song) if (s.hertz > 0) { longest = std::max(longest, bore(s.hertz)); lowest = std::min(lowest, s.hertz); }
-    FluteSpec spec{longest * 1.04, 2.8e-4, kAir, kTemp, 1.2e-5, thickness, span, sigma};
+    FluteSpec spec{longest * 1.04 * scoopRoom, 2.8e-4, kAir, kTemp, 1.2e-5, thickness, span, sigma};
     auto flR = makeFlute(spec); if (!flR.ok()) return false; auto fl = std::move(flR).value();
     auto pressureFor = [&](double f) { const double v = 2.0 * span * f / sigma; return 0.5 * fl.airDensityKgPerM3 * v * v; };
     ValveBlow jet = sustained(pressureFor(lowest) * 0.5, kFluteReflectionCutoffHz, 960); jet.frames = static_cast<std::uint64_t>(std::llround(T * kRate));
@@ -725,7 +738,7 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
     applyErrors();
     out = playPhrase(voice, notes, T, true, 0.50, &airway, kRate, prof);
   } else if (r.instrument == I::Trumpet) {
-    TrumpetSpec tpSpec = phraseTrumpetSpec(speed, kAir, kTemp, kPhraseTrumpetLengthMeters);
+    TrumpetSpec tpSpec = phraseTrumpetSpec(speed, kAir, kTemp, kPhraseTrumpetLengthMeters * brassRoom);
     tpSpec.lipMassKg *= r.extras.lipMassScale; tpSpec.lipStiffnessNewtonsPerMeter *= r.extras.lipMassScale;  // wp1 WP_MASS
     auto tpR = makeTrumpet(tpSpec); if (!tpR.ok()) return false; auto tp = std::move(tpR).value();
     ValveBlow lip = sustained(2800.0, 10000.0, 1920); lip.frames = static_cast<std::uint64_t>(std::llround(T * kRate));
@@ -746,7 +759,7 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
   } else {  // trombone (wp1's default path)
     double longest = kPhraseTromboneLengthMeters;
     for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, tromboneFinger(s.hertz).length * 1.04);
-    auto boneSpec = phraseTromboneSpec(speed, kAir, kTemp, longest);
+    auto boneSpec = phraseTromboneSpec(speed, kAir, kTemp, longest * brassRoom);
     boneSpec.lipMassKg *= r.extras.lipMassScale; boneSpec.lipStiffnessNewtonsPerMeter *= r.extras.lipMassScale;
     auto hornR = makeTrombone(boneSpec); if (!hornR.ok()) return false; auto horn = std::move(hornR).value();
     ValveBlow bone = sustained(1600.0, 5000.0, 6144); bone.frames = static_cast<std::uint64_t>(std::llround(T * kRate));
