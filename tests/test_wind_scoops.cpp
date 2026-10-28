@@ -50,6 +50,14 @@ double yinHz(const std::vector<double>& x, std::size_t a, double fs, double fLo,
       if (dn[t] < m) { m = dn[t]; best = t; }
     if (m > 0.5) return 0.0;
   }
+  // Step 24.2f: parabolic refinement of the dip (de Cheveigne & Kawahara
+  // section II.E). One whole lag is about 19 cents at C5, wider than the
+  // 15-cent "reached" band, so the plain integer lag could not tell an
+  // in-tune C5 from one 19 cents off.
+  if (best > 0 && best + 1 < dn.size()) {
+    const double a0 = dn[best - 1], a1 = dn[best], a2 = dn[best + 1], den = a0 - 2.0 * a1 + a2;
+    if (den > 0.0) return fs / (static_cast<double>(best) + 0.5 * (a0 - a2) / den);
+  }
   return fs / static_cast<double>(best);
 }
 

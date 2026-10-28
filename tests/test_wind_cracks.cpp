@@ -249,13 +249,20 @@ TEST_CASE("wind cracks: a forced error is a brief jump to another partial", "[wi
     const auto tr = playForced(instrumentOf("trumpet"), {65, 65, 72, 72}, {0, 0, 0, -400});
     checkCrack(tr[3], tr[2], 0.75, 0.05);
   }
-  SECTION("trombone: G3 jumps to the partial above (5/4)") {
-    const auto tr = playForced(instrumentOf("trombone"), {55, 55, 65, 65}, {0, 500, 0, 500});
-    checkCrack(tr[1], tr[0], 1.25, 0.06);
+  // Step 24.2f: the trombone fingers were refitted (before, G3 and below
+  // sat on wrong rows). F4 is its third partial; an 800-cent error lifts
+  // it briefly onto the fourth, 4/3 up.
+  SECTION("trombone: F4 jumps to the partial above (4/3)") {
+    const auto tr = playForced(instrumentOf("trombone"), {55, 55, 65, 65}, {0, 0, 0, 800});
+    checkCrack(tr[3], tr[2], 4.0 / 3.0, 0.06);
   }
-  SECTION("alto saxophone: a first note squawks up a twelfth (3x)") {
-    const auto tr = playForced(instrumentOf("alto_sax"), {64, 64}, {1000, 0});
-    checkCrack(tr[0], tr[1], 3.0, 0.1);
+  // Step 24.2f: with the register-dependent lip damping the saxophone no
+  // longer overblows onto a stray partial (the old 3x was the same fault
+  // that put whole notes a twelfth up). A large error now gives a brief
+  // squeak in the reed's own regime, about 2.4x on E4, then the note.
+  SECTION("alto saxophone: a first note squeaks high, the reed's own regime") {
+    const auto tr = playForced(instrumentOf("alto_sax"), {64, 64}, {1500, 0});
+    checkCrack(tr[0], tr[1], 2.4, 0.2);
   }
   SECTION("clarinet: a first note squeaks high, the reed's own regime") {
     const auto tr = playForced(instrumentOf("clarinet"), {64, 64, 72, 72}, {1000, 0, 1000, 0});

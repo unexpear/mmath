@@ -61,6 +61,10 @@ struct PhraseNote {
   // falls this deep whatever the player's chance, unless it is slurred
   // into the next note; 0 = the player's.
   double fallCents = 0.0;
+  // Step 24.2f: the lower lip's damping on the reed for this note, x the
+  // reed as built (a reed voice only; 1 = as built). The phrase sax sets
+  // it by register (saxophoneLipDamping).
+  double reedDampScale = 1.0;
 };
 
 // Cracked notes (step 24.2a). A cracked or split note is the lip (or
@@ -520,6 +524,7 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
   // Step 24.2a: onset errors; none at all leaves every control as before.
   const std::vector<double> onsetError = phraseOnsetErrors(notes, player, tiring ? &onsetFatigue : nullptr);
   const bool anyCrack = std::any_of(onsetError.begin(), onsetError.end(), [](double x) { return x != 0.0; });
+  const bool anyReedDamp = std::any_of(notes.begin(), notes.end(), [](const PhraseNote& n) { return n.reedDampScale != 1.0; });
   const std::vector<double> scoopDepth = phraseScoopDepths(notes, player);
   const bool anyScoop = std::any_of(scoopDepth.begin(), scoopDepth.end(), [](double x) { return x > 0.0; });
   const double scoopSec = player.scoopSec > 0.0 ? player.scoopSec : kScoopDefaultSec;
@@ -716,14 +721,14 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       }
     }
     const double tired = tiring ? fatigue[std::min<std::size_t>(fatigue.size() - 1, static_cast<std::size_t>(frame / kHop))] : 0.0;
-    if ((anyCrack || tiring) && note.lipHz == 0.0 && !fluteJet) {
+    if ((anyCrack || tiring || anyReedDamp) && note.lipHz == 0.0 && !fluteJet) {
       if constexpr (requires(Voice& probe) { probe.setReedDynamics(1.0, 1.0); }) {
         const double reedSize = std::max(crackSize, -kReedOvershootCapCents);
         // A tired embouchure presses the reed less: less lip damping on it.
         constexpr bool conical = requires(Voice& probe) { probe.setLipDampingScale(1.0); };
         const double tiredDamp = tiring ? 1.0 - (conical ? kSaxFatigueDampDrop : kReedFatigueDampDrop) * tired : 1.0;
         if (!(voice.setReedDynamics(std::pow(2.0, -kReedResonanceCentsPerCent * reedSize / 1200.0),
-                                    std::pow(2.0, -reedSize / kReedSlipCentsPerHalving) * tiredDamp))) return {};
+                                    std::pow(2.0, -reedSize / kReedSlipCentsPerHalving) * tiredDamp * note.reedDampScale))) return {};
       }
     }
     if (tiring) {

@@ -8,6 +8,7 @@
 // Values are unchanged; their sources are the comments carried with them.
 // Anything without a source is marked UNSOURCED.
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <vector>
@@ -432,6 +433,90 @@ inline double saxophoneSoundingLengthMeters(double frequency) {
       return table[n - 1].meters * table[n - 1].hertz / frequency;
     }
 
+// Phrase clarinet (step 24.2f): the bore length of every semitone from
+// concert D3 to Bb5 (written E3 to C6, MIDI 50-82) at 4000 Pa, a secant fit
+// of each length to 0 cents on a held 1.5 s note (spectral fundamental,
+// checked against YIN; runs/pb24/f2 clfit). TUNED, not published lengths.
+// The interpolated clarinetSoundingLengthMeters read -23 to +30 c over
+// that range. Above Bb5 the single-cylinder model has no register hole
+// and no altissimo fingering: B5 and up do not speak (out of the model).
+inline constexpr int kClarinetPlayedLowMidi = 50;
+inline constexpr double kClarinetPlayedLengths[] = {
+      0.56135, 0.53091, 0.50223, 0.47107, 0.44071, 0.41538,
+      0.38910, 0.37066, 0.35033, 0.33052, 0.30747, 0.28769,
+      0.27113, 0.25476, 0.23688, 0.21860, 0.21491, 0.20186,
+      0.18918, 0.17836, 0.16813, 0.15905, 0.14224, 0.13286,
+      0.12559, 0.11819, 0.11023, 0.10314, 0.09730, 0.09101,
+      0.08522, 0.07930, 0.07306,
+};
+inline double clarinetPlayedLengthMeters(double frequency) {
+  constexpr int n = static_cast<int>(sizeof(kClarinetPlayedLengths) / sizeof(kClarinetPlayedLengths[0]));
+  const double midi = 69.0 + 12.0 * std::log2(frequency / 440.0);
+  auto hz = [](int m) { return 440.0 * std::pow(2.0, (m - 69) / 12.0); };
+  const double x = midi - kClarinetPlayedLowMidi;
+  if (x <= 0.0) return kClarinetPlayedLengths[0] * hz(kClarinetPlayedLowMidi) / frequency;
+  if (x >= n - 1) return kClarinetPlayedLengths[n - 1] * hz(kClarinetPlayedLowMidi + n - 1) / frequency;
+  const int i = static_cast<int>(std::floor(x));
+  const double t = x - i;
+  return ((1.0 - t) * kClarinetPlayedLengths[i] * hz(kClarinetPlayedLowMidi + i) +
+          t * kClarinetPlayedLengths[i + 1] * hz(kClarinetPlayedLowMidi + i + 1)) / frequency;
+}
+
+// Phrase alto saxophone (step 24.2f): the whole written range, Bb3 to F#6
+// (concert Db3 to A5, MIDI 49-81), every semitone. Two parts:
+//
+// The lower lip's damping on the reed, by register. The lip damping sets
+// which bore mode the reed sounds in: with little damping the reed locks
+// to an upper mode (T. A. Wilson & G. S. Beavers, JASA 56, 653-658, 1974;
+// F. Silva et al., JASA 124, 3284-3295, 2008). At the old fixed 0.09
+// N s/m the phrase sax sounded A3, B3, C4 and G4 an octave (or a twelfth)
+// up, D3 two octaves and a fifth up, F4 as a split (two pitches, YIN
+// +145 c, measured with spectra: no energy at the written fundamental,
+// -57 to -72 dB), so the octave-high readings were the model, not the
+// pitch tracker. A sweep of the damping (tools: runs/pb24/f2 saxfit)
+// found every note from D3 up to D5 sounds its fundamental at 0.40, every
+// note from Eb3 up at 0.25, and the top (F#5-A5) only at 0.20 or less;
+// Db3 and D3 need 0.40. The damping is 0.40 up to D3 and falls linearly
+// per semitone to 0.20 at F#5 (TUNED: the middle of the working band of
+// each note).
+inline constexpr double kSaxophoneLipDampingLow = 0.40;   // N s/m, TUNED (Db3-D3)
+inline constexpr double kSaxophoneLipDampingHigh = 0.20;  // N s/m, TUNED (F#5 up)
+inline constexpr int kSaxophoneLipDampingLowMidi = 50;    // D3
+inline constexpr int kSaxophoneLipDampingHighMidi = 78;   // F#5
+inline double saxophoneLipDamping(double frequency) {
+  const double midi = 69.0 + 12.0 * std::log2(frequency / 440.0);
+  const double t = std::clamp((midi - kSaxophoneLipDampingLowMidi) /
+                                  double(kSaxophoneLipDampingHighMidi - kSaxophoneLipDampingLowMidi), 0.0, 1.0);
+  return kSaxophoneLipDampingLow + (kSaxophoneLipDampingHigh - kSaxophoneLipDampingLow) * t;
+}
+// The cone length of each semitone at that damping, 4200 Pa: a secant fit
+// of each length to 0 cents on a held 1.5 s note (spectral fundamental,
+// checked against YIN), not published lengths. TUNED.
+inline constexpr int kSaxophonePlayedLowMidi = 49;
+inline constexpr double kSaxophonePlayedLengths[] = {
+      1.05830, 0.98948, 0.92570, 0.86547, 0.80903, 0.75584,
+      0.70569, 0.65814, 0.61312, 0.57142, 0.53203, 0.49350,
+      0.45989, 0.42815, 0.39830, 0.36946, 0.34248, 0.32087,
+      0.29777, 0.27600, 0.25635, 0.23839, 0.22094, 0.19705,
+      0.17801, 0.16575, 0.15416, 0.14300, 0.13230, 0.12259,
+      0.11305, 0.10368, 0.09441,
+};
+inline double saxophonePlayedLengthMeters(double frequency) {
+  constexpr int n = static_cast<int>(sizeof(kSaxophonePlayedLengths) / sizeof(kSaxophonePlayedLengths[0]));
+  const double midi = 69.0 + 12.0 * std::log2(frequency / 440.0);
+  auto hz = [](int m) { return 440.0 * std::pow(2.0, (m - 69) / 12.0); };
+  const double x = midi - kSaxophonePlayedLowMidi;
+  // Outside the range: the end row's length-frequency product.
+  if (x <= 0.0) return kSaxophonePlayedLengths[0] * hz(kSaxophonePlayedLowMidi) / frequency;
+  if (x >= n - 1) return kSaxophonePlayedLengths[n - 1] * hz(kSaxophonePlayedLowMidi + n - 1) / frequency;
+  // Between semitones (bends, intonation): the product, linear in pitch.
+  const int i = static_cast<int>(std::floor(x));
+  const double t = x - i;
+  const double a = kSaxophonePlayedLengths[i] * hz(kSaxophonePlayedLowMidi + i);
+  const double b = kSaxophonePlayedLengths[i + 1] * hz(kSaxophonePlayedLowMidi + i + 1);
+  return ((1.0 - t) * a + t * b) / frequency;
+}
+
 struct BrassFinger {
   double hertz;
   double length;
@@ -448,16 +533,39 @@ struct BrassFinger {
       // The throat is now the Bach 42 .547 in bore. The fingers tuned
       // for 1.0e-4 mÂ² sat flat on the wider bore.
       {466.16, 1.331, 4}, {440.00, 1.416, 4}, {392.00, 1.596, 4}, {349.23, 1.312, 3},
-      {523.25, 1.181, 4}, {329.63, 1.394, 3}, {293.66, 1.579, 3}, {554.37, 1.732, 6},
+      {523.25, 1.181, 4}, {329.63, 1.394, 3}, {293.66, 1.59199, 3}, {554.37, 1.732, 6},
       // D5 for the song passages: the Db5 row scaled, then lengthened by the
       // +33 cents that scaling measured.
-      {587.33, 1.6435, 6},
+      {587.33, 1.63277, 6},  // step 24.2f: refitted (1.6435 m read -12 c)
       // Silent Night alto (MEASURED, YIN on the phrase render, wp1 trombone):
       // the scaled neighbours read B3 -32, C4 -14, B4 +44 cents. C4 moved
       // by its cents, (L + 0.60) x 2^(c/1200); B3 and B4 interpolated from
       // length sweeps (B3: 1.92 m +27 c, 1.98 m -20 c; B4: 1.2226 m +44 c,
       // 1.2690 m -18 c). Now B3 0, C4 +3, B4 0 cents.
       {246.94, 1.9545, 3}, {261.63, 1.8264, 3}, {493.88, 1.2554, 4},
+      // Step 24.2f: the whole range, E2 to F5, every semitone. Below B3
+      // the rows above, scaled, played a different pitch: E3 sounded
+      // near G3 (+270 c, strongest partial at 1.18x), C3 and D3 two
+      // octaves out or near silent, A3 -35 c. A grid of mode x lip ratio
+      // (0.6-1.1) x mouth pressure (400-3200 Pa) (runs/pb24/f2 bonefit,
+      // held 1.5 s notes) found: E2-C3 sound on the cone's 1st mode with
+      // the lip at 0.8 (E2 0.9) of it and 600 Pa; C#3-Bb3 on the 2nd mode,
+      // lip 0.7, 800-1000 Pa (F3-A3 0.75: at 0.7 F#3-G#3 stuck +55 c
+      // after a neighbour in a chromatic run); Eb5-F5 on the 5th, lip 0.7, 1600 Pa. Lip
+      // ratio and pressure (x 1600 Pa) are the row's; each length a
+      // secant fit to 0 cents (spectral fundamental, checked against
+      // YIN). D4 (+12 c) and D5 (-12 c) are refitted, C#4, Eb4, F#4 and
+      // G#4 (+11, -23, +36, +33 c scaled) have rows of their own. TUNED.
+      // The low notes sound 8-18 dB under the middle register.
+      {82.41, 1.88588, 1, 0.90, 0.375}, {87.31, 1.71784, 1, 0.80, 0.375}, {92.50, 1.59980, 1, 0.80, 0.375},
+      {98.00, 1.48754, 1, 0.80, 0.375}, {103.83, 1.40850, 1, 0.80, 0.375}, {110.00, 1.33438, 1, 0.80, 0.375},
+      {116.54, 1.25208, 1, 0.80, 0.375}, {123.47, 1.16366, 1, 0.80, 0.375}, {130.81, 1.06431, 1, 0.80, 0.375},
+      {138.59, 2.24930, 2, 0.70, 0.500}, {146.83, 2.10888, 2, 0.70, 0.500}, {155.56, 1.98782, 2, 0.70, 0.625},
+      {164.81, 1.86261, 2, 0.70, 0.625}, {174.61, 1.73399, 2, 0.75, 0.625}, {185.00, 1.62702, 2, 0.75, 0.625},
+      {196.00, 1.52827, 2, 0.75, 0.625}, {207.65, 1.43726, 2, 0.75, 0.625}, {220.00, 1.35158, 2, 0.75, 0.625},
+      {233.08, 1.19666, 2, 0.70, 0.625},
+      {277.18, 1.70609, 3}, {311.13, 1.49082, 3}, {369.99, 1.23184, 3}, {415.30, 1.50293, 4},
+      {622.25, 0.99902, 5, 0.70}, {659.26, 0.94085, 5, 0.70}, {698.46, 0.88617, 5, 0.70},
   };
   inline BrassFinger tromboneFinger(double hertz) {
       for (const BrassFinger& row : kTromboneFingers)
@@ -506,7 +614,7 @@ struct BrassFinger {
       // notes left the 294 Hz regime for about 352 Hz (+300 c); 2.2-2.6 kPa
       // held within 8 c.
       {392.00, 1.2190, 3}, {349.23, 0.8955, 0}, {466.16, 1.0099, 3},
-      {523.25, 1.2200, 4}, {698.46, 1.4028, 6, 0.86}, {587.33, 1.0793, 4},
+      {523.25, 1.2200, 4}, {698.46, 1.39465, 6, 0.86}, {587.33, 1.0793, 4},
       // A4 for When the Saints: the Bb4 row scaled sat 27.8 cents flat;
       // (L + apex) shortened by that measured ratio.
       {440.00, 1.0756, 3},
@@ -530,6 +638,32 @@ struct BrassFinger {
       // read +5.3 c and is that scaled length lengthened by it.
       {493.88, 0.9492, 3},
       {329.63, 1.4731, 3}, {369.99, 1.2972, 3},
+      // Step 24.2f: the low octave, written F#3 to Eb4 (concert E3 to C#4).
+      // A Bb trumpet plays written F#3-C4 as its 2nd partial (valves 1-2-3
+      // down to open) and C#4-Eb4 as its 3rd (1-2-3, 1-3, 2-3), so concert
+      // E3-Bb3 are mode 2 rows and B3-C#4 mode 3 rows. A grid of lip ratio
+      // 0.60-0.90 x mouth pressure 0.4-1.2 of the pressure law (runs/pb24/f2
+      // tpfit, held 1.5 s notes) found these notes sound their written
+      // pitch only with a low lip (0.64-0.70) and soft breath (0.5-0.7):
+      // above that they split, double their period, or jump a partial.
+      // Each row is 0.68 / 0.5 (E3-G3) or 0.68 / 0.6, the length a secant
+      // fit to 0 cents (spectral fundamental, checked against YIN). TUNED.
+      // They sound about 8-10 dB under the 3rd-partial notes above.
+      {164.81, 1.95049, 2, 0.68, 0.50}, {174.61, 1.83687, 2, 0.68, 0.50}, {185.00, 1.72983, 2, 0.68, 0.50},
+      {196.00, 1.62922, 2, 0.68, 0.50}, {207.65, 1.53486, 2, 0.68, 0.60}, {220.00, 1.44806, 2, 0.68, 0.60},
+      {233.08, 1.36495, 2, 0.68, 0.60}, {246.94, 1.98075, 3, 0.68, 0.60}, {261.63, 1.86347, 3, 0.68, 0.60},
+      {277.18, 1.74979, 3, 0.68, 0.60},
+      // Step 24.2f, the rest of the written range: G#4 (scaled from its
+      // neighbours it read +12 c) as a mode 3 row, Eb5 (+18 c) mode 4, and
+      // F#5-Bb5 (written G#5-C6, +6 to +83 c scaled from the F5 row) as
+      // the 8th partial, where a Bb trumpet plays them (valves 2-3 to
+      // open); the open Bb5 row fits at 1.404 m, the open F5 row's length.
+      // Lip ratio 0.86 as the F5 row; lengths secant-fitted to 0 c. TUNED.
+      // F5 (1.4028 m) read -9.7 c held and is refitted (1.39465 m); Eb4,
+      // scaled from D4, read -6.9 c and is a mode 3 row of its own.
+      {415.30, 1.14507, 3}, {622.25, 1.01595, 4}, {311.13, 1.56993, 3},
+      {739.99, 1.77779, 8, 0.86}, {783.99, 1.67590, 8, 0.86}, {830.61, 1.57982, 8, 0.86},
+      {880.00, 1.48931, 8, 0.86}, {932.33, 1.40397, 8, 0.86},
   };
   // Lip natural frequency over the bore partial it drives. An
   // outward-striking lip plays just above its own resonance, so the lip

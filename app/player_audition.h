@@ -82,7 +82,7 @@ enum class Phrase { Tune = 0, Scale = 1, Short = 2 };
     case I::Glockenspiel: return 84;
     case I::Celesta: case I::Handbells: case I::Flute: return 72;
     case I::Trombone: return 48;
-    case I::Trumpet: return 65;  // the phrase trumpet's 1.70 m bore cannot reach C4 (1.90 m)
+    case I::Trumpet: return 65;  // F4: the phrase sits in the trumpet's strong middle register
     default: return 60;
   }
 }
@@ -727,7 +727,8 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
   const double rel = r.extras.reedReleaseSec >= 0.0 ? r.extras.reedReleaseSec : kReedBreathReleaseSec;
   const double noise = r.extras.breathNoiseScale;
   if (r.instrument == I::Clarinet) {
-    double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, clarinetSoundingLengthMeters(s.hertz));
+    // Step 24.2f: every semitone in tune (clarinetPlayedLengthMeters).
+    double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, clarinetPlayedLengthMeters(s.hertz));
     ClarinetSpec spec{longest * 1.04 * reedRoom, 2.0e-4, kAir, kTemp, 2.0e-5, 6000.0, 1.0e-6, 1.0e-4, 1.0e-3, 0.11};
     auto clR = makeClarinet(spec); if (!clR.ok()) return false; auto cl = std::move(clR).value();
     ValveBlow blow = clarinetBoreLosses(sustained(4000.0, 1500.0, 19200)); blow.frames = static_cast<std::uint64_t>(std::llround((T + 0.5) * kRate));
@@ -735,19 +736,28 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
     blow.lockedBreathFraction = kClarinetLockedBreathFraction;
     auto voiceR = BoreValveVoice::fromClarinet(cl, blow, rate); if (!voiceR.ok()) return false; auto voice = std::move(voiceR).value();
     double start = 0, held = longest;
-    for (auto& s : song) { const double L = s.hertz > 0 ? clarinetSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4000.0, 0, rel); if (s.hertz > 0) held = L; start += s.seconds; }
+    for (auto& s : song) { const double L = s.hertz > 0 ? clarinetPlayedLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4000.0, 0, rel); if (s.hertz > 0) held = L; start += s.seconds; }
     applyErrors();
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kRate, prof);
   } else if (r.instrument == I::AltoSaxophone) {
-    double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, saxophoneSoundingLengthMeters(s.hertz));
-    SaxophoneSpec spec{longest * 1.08 * reedRoom, 0.20, 1.6e-4, kAir, kTemp, 1.8e-5, 7500.0, 2.0e-6, 1.4e-4, 7.0e-4, 0.09};
+    // Step 24.2f: the whole written range in tune (saxophonePlayedLengthMeters)
+    // with the lower lip's damping set by register (saxophoneLipDamping).
+    double longest = 0; for (auto& s : song) if (s.hertz > 0) longest = std::max(longest, saxophonePlayedLengthMeters(s.hertz));
+    SaxophoneSpec spec{longest * 1.08 * reedRoom, 0.20, 1.6e-4, kAir, kTemp, 1.8e-5, 7500.0, 2.0e-6, 1.4e-4, 7.0e-4, kSaxophoneLipDampingLow};
     auto saxR = makeSaxophone(spec); if (!saxR.ok()) return false; auto sax = std::move(saxR).value();
     ValveBlow blow = sustained(4200.0, 1500.0, 19200); blow.frames = static_cast<std::uint64_t>(std::llround((T + 0.5) * kRate));
     blow.initialDisplacementMeters = 1.0e-5; blow.reedTurbulence = kSaxophoneReedTurbulence * noise; blow.reflectionCutoffHz = 1500.0;
     blow.lockedBreathFraction = kSaxophoneLockedBreathFraction; blow.spectrumBreakHz = kSaxophoneSpectrumBreakHz; blow.radiationHz = kSaxophoneRadiationHz;
     auto voiceR = ConeValveVoice::fromSaxophone(sax, blow, rate); if (!voiceR.ok()) return false; auto voice = std::move(voiceR).value();
     double start = 0, held = longest;
-    for (auto& s : song) { const double L = s.hertz > 0 ? saxophoneSoundingLengthMeters(s.hertz) : held; push(notes, s, start, L, 0, 4200.0, 0, rel); if (s.hertz > 0) held = L; start += s.seconds; }
+    double heldDamp = 1.0;
+    for (auto& s : song) {
+      const double L = s.hertz > 0 ? saxophonePlayedLengthMeters(s.hertz) : held;
+      push(notes, s, start, L, 0, 4200.0, 0, rel);
+      if (s.hertz > 0) { held = L; heldDamp = saxophoneLipDamping(s.hertz) / kSaxophoneLipDampingLow; }
+      notes.back().reedDampScale = heldDamp;
+      start += s.seconds;
+    }
     applyErrors();
     out = playPhrase(voice, notes, T, false, 0.50, &airway, kRate, prof);
   } else if (r.instrument == I::Flute) {
@@ -784,7 +794,12 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
     }
     out = playPhrase(voice, notes, T, true, 0.50, &airway, kRate, prof);
   } else if (r.instrument == I::Trumpet) {
-    TrumpetSpec tpSpec = phraseTrumpetSpec(speed, kAir, kTemp, kPhraseTrumpetLengthMeters * brassRoom);
+    // The bore is built long enough for the longest fingering (step 24.2f:
+    // the low octave needs up to 1.98 m); a phrase that fits keeps 1.70 m.
+    double tpLongest = 0.0;
+    for (auto& s : song) if (s.hertz > 0) tpLongest = std::max(tpLongest, trumpetFinger(s.hertz).length);
+    const double tpBuild = tpLongest > kPhraseTrumpetLengthMeters ? 1.04 * tpLongest : kPhraseTrumpetLengthMeters;
+    TrumpetSpec tpSpec = phraseTrumpetSpec(speed, kAir, kTemp, tpBuild * brassRoom);
     tpSpec.lipMassKg *= r.extras.lipMassScale; tpSpec.lipStiffnessNewtonsPerMeter *= r.extras.lipMassScale;  // wp1 WP_MASS
     auto tpR = makeTrumpet(tpSpec); if (!tpR.ok()) return false; auto tp = std::move(tpR).value();
     ValveBlow lip = sustained(2800.0, 10000.0, 1920); lip.frames = static_cast<std::uint64_t>(std::llround(T * kRate));
@@ -816,7 +831,8 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
     double start = 0; BrassFinger held = kTromboneFingers[0];
     for (auto& s : song) {
       const BrassFinger f = s.hertz > 0 ? tromboneFinger(s.hertz) : held;
-      push(notes, s, start, f.length, 0.80 * conePartial(f.length, 0.60, f.mode), 1600.0, 0);
+      // A row's own lip ratio and pressure (step 24.2f, the low and top notes); 0.80 and 1600 Pa otherwise.
+      push(notes, s, start, f.length, (f.lipRatio > 0.0 ? f.lipRatio : 0.80) * conePartial(f.length, 0.60, f.mode), 1600.0 * f.pressureScale, 0);
       notes.back().peakHz = impedancePeakHz(f.length, 0.60, f.mode, f.hertz);
       if (s.hertz > 0) held = f;
       start += s.seconds;
