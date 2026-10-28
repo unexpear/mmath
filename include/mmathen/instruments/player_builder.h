@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cerrno>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -984,29 +985,50 @@ struct PlayersFile {
   return dir / "players.txt";
 }
 
+// A path as UTF-8 text for messages and UIs. path::string() uses the Windows
+// code page and can throw on names it can't show (step 24.2).
+inline std::string pathText(const std::filesystem::path& p) {
+  const std::u8string u = p.u8string();
+  return std::string(reinterpret_cast<const char*>(u.data()), u.size());
+}
+
 namespace player_builder_detail {
+// The operating system's text for the last C-library error (step 24.2:
+// failed saves show the real reason).
+inline std::string lastOsErrorText() {
+  const int e = errno;
+  return e != 0 ? std::generic_category().message(e) : std::string("the system gave no reason");
+}
 // Writes text via a temporary file and a rename, so a failed write never
 // leaves a half file.
 inline bool writeFileAtomic(const std::filesystem::path& path, const std::string& text, std::string* error = nullptr) {
   std::error_code ec;
-  if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path(), ec);
+  if (path.has_parent_path()) {
+    std::filesystem::create_directories(path.parent_path(), ec);
+    if (ec) {
+      if (error) *error = "could not create the folder " + pathText(path.parent_path()) + ": " + ec.message();
+      return false;
+    }
+  }
   std::filesystem::path tmp = path;
   tmp += ".tmp";
   {
+    errno = 0;
     std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
     if (!f) {
-      if (error) *error = "could not create " + tmp.string();
+      if (error) *error = "could not create " + pathText(tmp) + ": " + lastOsErrorText();
       return false;
     }
+    errno = 0;
     f << text;
     if (!f.flush()) {
-      if (error) *error = "could not write " + tmp.string();
+      if (error) *error = "could not write " + pathText(tmp) + ": " + lastOsErrorText();
       return false;
     }
   }
   std::filesystem::rename(tmp, path, ec);
   if (ec) {
-    if (error) *error = ec.message();
+    if (error) *error = "could not replace " + pathText(path) + ": " + ec.message();
     std::error_code ec2;
     std::filesystem::remove(tmp, ec2);
     return false;
@@ -1111,12 +1133,12 @@ template <class Change>
   PlayersEdit r;
   PlayersLoad cur = loadPlayersFile(path);
   if (cur.state == PlayersFileState::Unreadable) {
-    r.error = "Not saved: " + path.string() + " can't be read (" + cur.error + "). Nothing was changed.";
+    r.error = "Not saved: " + pathText(path) + " can't be read (" + cur.error + "). Nothing was changed.";
     r.after = std::move(cur);
     return r;
   }
   if (cur.state == PlayersFileState::Newer) {
-    r.error = "Not saved: " + path.string() + " was saved by a newer version of the app, so it is read-only here.";
+    r.error = "Not saved: " + pathText(path) + " was saved by a newer version of the app, so it is read-only here.";
     r.after = std::move(cur);
     return r;
   }
@@ -1127,14 +1149,14 @@ template <class Change>
     std::error_code ec;
     std::filesystem::copy_file(path, bak, std::filesystem::copy_options::overwrite_existing, ec);
     if (ec) {
-      r.error = "Not saved: could not keep a backup at " + bak.string() + " (" + ec.message() + ").";
+      r.error = "Not saved: could not keep a backup at " + pathText(bak) + " (" + ec.message() + ").";
       r.after = loadPlayersFile(path);
       return r;
     }
   }
   std::string why;
   if (!player_builder_detail::writeFileAtomic(path, playersToText(cur.file), &why)) {
-    r.error = "Not saved: could not write " + path.string() + " (" + why + ").";
+    r.error = "Not saved: " + why + ".";
     r.after = loadPlayersFile(path);
     return r;
   }

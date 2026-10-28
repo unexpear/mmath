@@ -2790,6 +2790,7 @@ int main(int argc, char* argv[]) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "mmathEn", SDL_GetError(), nullptr);
     return 1;
   }
+  a.builder.window = a.window;  // the builder's Export / Import dialogs
   a.renderer = SDL_CreateRenderer(a.window, nullptr);
   if (!a.renderer) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "mmathEn", SDL_GetError(), a.window);
@@ -2878,7 +2879,7 @@ int main(int argc, char* argv[]) {
   if (builderArg) {
     a.openBuilder();
     mmathen::PlayerInstrument bi{};
-    if (!playersArg.empty()) a.builder.playersPath = playersArg;
+    if (!playersArg.empty()) a.builder.setPlayersPath(playersArg);
     if (!builderKey.empty() && mmathen::playerInstrumentFromKey(builderKey, bi)) a.builder.select(bi);
     if (!builderLoad.empty() && !a.builder.loadByName(builderLoad)) a.status = a.builder.loadError();
     if (builderPlayArg) a.builder.play();
@@ -2892,9 +2893,14 @@ int main(int argc, char* argv[]) {
     SDL_Event ev;
     while (SDL_PollEvent(&ev)) {
       ImGui_ImplSDL3_ProcessEvent(&ev);
-      if (ev.type == SDL_EVENT_QUIT) running = false;
-      if (ev.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && ev.window.windowID == SDL_GetWindowID(a.window))
-        running = false;
+      // Step 24.2: unsaved players are asked about first (the builder shows
+      // the question; quitApproved() ends the loop once answered).
+      const bool quitAsked = ev.type == SDL_EVENT_QUIT ||
+                             (ev.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && ev.window.windowID == SDL_GetWindowID(a.window));
+      if (quitAsked) {
+        if (a.builder.requestQuit()) running = false;
+        else a.openBuilder();
+      }
       if (ev.type == SDL_EVENT_DROP_FILE && ev.drop.data) a.loadPath(ev.drop.data);
       if ((ev.type == SDL_EVENT_AUDIO_DEVICE_ADDED || ev.type == SDL_EVENT_AUDIO_DEVICE_REMOVED ||
            ev.type == SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED) && ev.adevice.recording) {
@@ -2967,6 +2973,7 @@ int main(int argc, char* argv[]) {
       rc = saved ? 0 : 2;
       running = false;
     }
+    if (a.builder.quitApproved()) running = false;
     SDL_RenderPresent(a.renderer);
   }
 

@@ -7,6 +7,10 @@
 // exists but can't be read blocks Save and Delete (nothing is overwritten),
 // each save re-reads the file and keeps players.txt.bak, and lines the app
 // can't use are kept and listed with their line numbers.
+// Step 24.2: the saved-players logic lives in player_library.h (tested);
+// this panel adds the confirmations: unsaved changes before a load or
+// quitting, replacing a saved player, import name clashes; Revert to saved;
+// Export / Import (.mmplayer) and Open folder; help on keyboard focus.
 //
 // The panel owns its render thread. The app takes finished audio from
 // takeAudio() and plays it through its normal transport; wantStop() asks it
@@ -14,9 +18,11 @@
 
 #include "desktop_style.h"
 #include "player_audition.h"
+#include "player_library.h"
 
 #include <mmathen/instruments/player_builder.h>
 
+#include <SDL3/SDL.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -27,6 +33,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -34,11 +41,6 @@
 #include <vector>
 
 namespace app::builder {
-
-using mmathen::CustomPlayer;
-using mmathen::PlayerField;
-using mmathen::PlayerInstrument;
-using mmathen::PlayerValues;
 
 struct PlayRequest {
   std::vector<double> mono;  // 48 kHz, already levelled for playback
@@ -52,13 +54,12 @@ class Panel {
   Panel& operator=(const Panel&) = delete;
   ~Panel() { stopWorker(); }
 
-  // Where saved players live (set before the first draw to use another file).
-  std::filesystem::path playersPath = mmathen::defaultPlayersPath();
+  // The window file dialogs belong to (set by the app).
+  SDL_Window* window = nullptr;
 
-  void select(PlayerInstrument i) {
-    instrument_ = i;
-    ensureValues();
-  }
+  // Another saved-players file (set before the first draw).
+  void setPlayersPath(const std::filesystem::path& p) { lib_.setPath(p); }
+  void select(PlayerInstrument i) { lib_.select(i); }
   [[nodiscard]] bool busy() const { return job_ != nullptr; }
   [[nodiscard]] std::optional<PlayRequest> takeAudio() { return std::exchange(ready_, std::nullopt); }
   [[nodiscard]] bool wantStop() { return std::exchange(stopPlayback_, false); }
@@ -68,19 +69,31 @@ class Panel {
   // one player has it (for --builder-load captures). On failure the reason
   // is in loadError().
   bool loadByName(const std::string& spec) {
-    if (!loaded_) loadList();
-    const int k = mmathen::findPlayer(saved_, spec, loadError_);
+    lib_.ensureLoaded();
+    const int k = mmathen::findPlayer(lib_.players(), spec, loadError_);
     if (k < 0) return false;
     savedSel_ = k;
-    loadPlayer(k);
+    loadNow(k);
     return true;
   }
   [[nodiscard]] const std::string& loadError() const { return loadError_; }
 
+  // Quitting: true when nothing is unsaved (quit now). Otherwise the panel
+  // asks (the app shows the builder) and quitApproved() turns true once
+  // the user chooses to quit without saving.
+  bool requestQuit() {
+    if (!lib_.anyUnsaved() || quitOk_) return true;
+    askQuit_ = true;
+    return false;
+  }
+  [[nodiscard]] bool quitApproved() { return std::exchange(quitNow_, false); }
+  [[nodiscard]] bool anyUnsaved() const { return lib_.anyUnsaved(); }
+
   void draw() {
     poll();
-    if (!loaded_) loadList();
-    ensureValues();
+    takeDialogResults();
+    lib_.ensureLoaded();
+    (void)lib_.values();
     const float u = ui::unit();
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const float gap = ImGui::GetStyle().ItemSpacing.x;
@@ -105,6 +118,7 @@ class Panel {
     drawSaved();
     ImGui::EndChild();
     ImGui::EndChild();
+    drawQuitPrompt();
   }
 
  private:
@@ -127,9 +141,9 @@ class Panel {
       return std::make_pair(static_cast<int>(i), static_cast<int>(p)) < std::make_pair(static_cast<int>(o.i), static_cast<int>(o.p));
     }
   };
+  enum class DialogKind { Export, Import };
 
-  PlayerInstrument instrument_ = PlayerInstrument::Violin;
-  std::map<PlayerInstrument, PlayerValues> values_;  // edits kept per instrument
+  PlayerLibrary lib_;
   audition::Phrase phrase_ = audition::Phrase::Tune;
   std::unique_ptr<Job> job_;
   std::map<CacheKey, std::vector<double>> standard_;  // the built-in player's render, per phrase
@@ -137,29 +151,19 @@ class Panel {
   bool stopPlayback_ = false;
   std::string status_ = "Pick an instrument, move a slider, then press Play.";
   bool statusWarn_ = false;
-  std::vector<CustomPlayer> saved_;
-  bool loaded_ = false;
   int savedSel_ = -1;
   char name_[256] = "My player";  // kPlayerNameMaxChars UTF-8 characters fit
   std::string pendingDelete_;
-  mmathen::PlayersFileState fileState_ = mmathen::PlayersFileState::Missing;
-  std::string fileError_;
-  std::vector<mmathen::PlayersFileWarning> warnings_;
   std::string loadError_;
-
-  PlayerValues& values() { return values_[instrument_]; }
-  void ensureValues() {
-    if (values_.find(instrument_) == values_.end()) values_[instrument_] = mmathen::defaultValues(instrument_);
-  }
-  [[nodiscard]] int changedCount() {
-    const PlayerValues d = mmathen::defaultValues(instrument_);
-    int n = 0;
-    for (const auto& [k, x] : values()) {
-      const auto it = d.find(k);
-      if (it != d.end() && it->second != x) ++n;
-    }
-    return n;
-  }
+  int pendingLoad_ = -1;          // a load waiting for "discard unsaved changes?"
+  bool askLoad_ = false, askOverwrite_ = false, askQuit_ = false, quitOk_ = false, quitNow_ = false;
+  std::string pendingSaveName_;
+  // File dialogs answer on another thread.
+  std::mutex dialogMu_;
+  std::vector<std::pair<DialogKind, std::string>> dialogResults_;
+  int exportIndex_ = -1;
+  PlayerLibrary::ImportFile importing_;
+  bool askImport_ = false;
 
   // --- 1. instrument list ---------------------------------------------------
   void drawInstrumentList() {
@@ -172,15 +176,17 @@ class Panel {
         ImGui::Spacing();
         ui::caption(info.category);
       }
-      const bool sel = info.id == instrument_;
+      const bool sel = info.id == lib_.instrument();
+      const bool unsaved = lib_.unsaved(info.id);
       std::string label = std::string("  ") + info.label;
-      const auto it = values_.find(info.id);
-      if (it != values_.end() && it->second != mmathen::defaultValues(info.id)) label += "  *";
+      if (unsaved) label += "  *";
       label += "##pbi";
       label += info.key;
-      if (ImGui::Selectable(label.c_str(), sel)) select(info.id);
-      if (ImGui::IsItemHovered() && it != values_.end() && it->second != mmathen::defaultValues(info.id))
-        ImGui::SetTooltip("You have changed this player (not saved yet).");
+      // Switching keeps every instrument's edits (marked *), so nothing
+      // is lost and no question is needed.
+      if (ImGui::Selectable(label.c_str(), sel)) lib_.select(info.id);
+      if (unsaved && (ImGui::IsItemHovered() || (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible)))
+        ImGui::SetTooltip("Changed and not saved yet. The changes stay while you look at other instruments.");
     }
   }
 
@@ -207,8 +213,7 @@ class Panel {
     char buf[64];
     if (f.toggle) return stored >= 0.5 ? "on" : "off";
     const double x = stored * f.displayScale;
-    const double span = (f.maxValue - f.minValue) * f.displayScale;
-    const int dp = f.integer ? 0 : span >= 100 ? 0 : span >= 10 ? 1 : span >= 1 ? 2 : 3;
+    const int dp = displayDecimals(f);
     std::snprintf(buf, sizeof buf, "%.*f", dp, x);
     std::string s = buf;
     if (std::string(f.unit) == "x") return s + "x";
@@ -216,20 +221,19 @@ class Panel {
     return s;
   }
   static std::string sliderFormat(const PlayerField& f) {
-    const double span = (f.maxValue - f.minValue) * f.displayScale;
-    const int dp = span >= 100 ? 0 : span >= 10 ? 1 : span >= 1 ? 2 : 3;
-    std::string unit = f.unit;
-    std::string fmt = "%." + std::to_string(dp) + "f";
+    const std::string unit = f.unit;
+    const std::string fmt = "%." + std::to_string(displayDecimals(f)) + "f";
     if (unit == "%") return fmt + " %%";
     if (unit == "x") return fmt + "x";
     if (!unit.empty()) return fmt + " " + unit;
     return fmt;
   }
+  // Help for a setting: on mouse hover, and on keyboard focus (Tab / arrows).
+  static bool wantsHelp() { return ImGui::IsItemHovered() || (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible); }
 
   void drawField(const PlayerField& f, float labelW, float sliderW) {
     const float u = ui::unit();
-    PlayerValues& v = values();
-    double& stored = v[f.key];
+    const double stored = lib_.values()[f.key];
     const bool changed = stored != f.defaultValue;
     ImGui::PushID(f.key);
     ImGui::AlignTextToFramePadding();
@@ -238,37 +242,31 @@ class Panel {
     const bool hoverLabel = ImGui::IsItemHovered();
     ImGui::SameLine(labelW);
     ImGui::SetNextItemWidth(sliderW);
-    bool edited = false;
     if (f.toggle) {
       bool on = stored >= 0.5;
-      if (ImGui::Checkbox(on ? "On" : "Off", &on)) { stored = on ? 1.0 : 0.0; edited = true; }
+      if (ImGui::Checkbox(on ? "On" : "Off", &on)) lib_.setValue(f, on ? 1.0 : 0.0);
     } else if (f.integer) {
       int x = static_cast<int>(std::llround(stored));
-      if (ImGui::SliderInt("##v", &x, static_cast<int>(f.minValue), static_cast<int>(f.maxValue), "%d", ImGuiSliderFlags_AlwaysClamp)) {
-        stored = x;
-        edited = true;
-      }
+      if (ImGui::SliderInt("##v", &x, static_cast<int>(f.minValue), static_cast<int>(f.maxValue), "%d", ImGuiSliderFlags_AlwaysClamp))
+        lib_.setValue(f, x);
     } else {
       float x = static_cast<float>(stored * f.displayScale);
       const std::string fmt = sliderFormat(f);
       if (ImGui::SliderFloat("##v", &x, static_cast<float>(f.minValue * f.displayScale), static_cast<float>(f.maxValue * f.displayScale),
-                             fmt.c_str(), ImGuiSliderFlags_AlwaysClamp)) {
-        stored = static_cast<double>(x) / f.displayScale;
-        edited = true;
-      }
+                             fmt.c_str(), ImGuiSliderFlags_AlwaysClamp))
+        lib_.setValue(f, static_cast<double>(x) / f.displayScale);  // snapped: back on the default reads as unchanged
     }
-    const bool hoverSlider = ImGui::IsItemHovered();
-    if (edited) stored = mmathen::clampFieldValue(f, stored);
+    const bool helpSlider = wantsHelp();
     ImGui::SameLine();
     ImGui::TextColored(sourceColor(f.source), "%s", sourceText(f.source));
     const bool hoverSource = ImGui::IsItemHovered();
     ImGui::SameLine(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - 62.0f * u);
     ImGui::BeginDisabled(!changed);
-    if (ImGui::Button("Reset", ImVec2(62.0f * u, 0))) stored = f.defaultValue;
+    if (ImGui::Button("Reset", ImVec2(62.0f * u, 0))) lib_.resetField(f);
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible))
       ImGui::SetTooltip("Back to the built-in player's %s.", shown(f, f.defaultValue).c_str());
-    if (hoverLabel || hoverSlider || hoverSource) {
+    if (hoverLabel || helpSlider || hoverSource) {
       ImGui::BeginTooltip();
       ImGui::PushTextWrapPos(ImGui::GetFontSize() * 30.0f);
       ImGui::TextUnformatted(f.tooltip);
@@ -283,23 +281,34 @@ class Panel {
 
   void drawSliders() {
     const float u = ui::unit();
-    const auto& info = mmathen::playerInstrumentInfo(instrument_);
+    const PlayerInstrument inst = lib_.instrument();
+    const auto& info = mmathen::playerInstrumentInfo(inst);
     ui::heading("2. Shape the player", 19);
-    ImGui::SameLine(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - 96.0f * u);
-    const int changed = changedCount();
-    ImGui::BeginDisabled(changed == 0);
-    if (ImGui::Button("Reset all", ImVec2(96.0f * u, 0))) values() = mmathen::defaultValues(instrument_);
+    const int changed = lib_.changedFromBuiltIn(inst);
+    const auto saved = lib_.savedName(inst);
+    const float bw = 96.0f * u, bw2 = 128.0f * u;
+    ImGui::SameLine(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - bw - bw2 - ImGui::GetStyle().ItemSpacing.x);
+    ImGui::BeginDisabled(!lib_.canRevert());
+    if (ImGui::Button("Revert to saved", ImVec2(bw2, 0))) lib_.revertToSaved();
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Put every slider back to the built-in player.");
-    char line[200];
-    std::snprintf(line, sizeof line, "%s, starting from the built-in \"%s\" player.  %s", info.label,
-                  mmathen::builtInPlayerName(mmathen::builtInPlayer(instrument_)),
-                  changed == 0 ? "Nothing changed yet." : (std::to_string(changed) + (changed == 1 ? " setting changed." : " settings changed.")).c_str());
-    ui::caption(line);
-    ui::caption("Hover any setting for what it does and where its starting value comes from.");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible))
+      ImGui::SetTooltip("%s", saved ? ("Put every slider back to the saved player \"" + *saved + "\".").c_str()
+                                    : "Load or save a player first; then this undoes changes made since.");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(changed == 0);
+    if (ImGui::Button("Reset all", ImVec2(bw, 0))) lib_.resetToBuiltIn();
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible))
+      ImGui::SetTooltip("Put every slider back to the built-in player.");
+    std::string line = std::string(info.label) + (saved ? ", editing your saved player \"" + *saved + "\"" : std::string(", starting from the built-in \"") +
+                                                              mmathen::builtInPlayerName(mmathen::builtInPlayer(inst)) + "\" player") + ".  ";
+    line += changed == 0 ? "Same as the built-in player." : std::to_string(changed) + (changed == 1 ? " setting differs" : " settings differ") + " from the built-in player.";
+    if (lib_.unsaved(inst)) line += "  Not saved.";
+    ui::caption(line.c_str());
+    ui::caption("Hover or Tab to any setting for what it does and where its starting value comes from.");
     ImGui::Separator();
     ImGui::BeginChild("pb-fields");
-    const auto fields = mmathen::playerFields(instrument_);
+    const auto fields = mmathen::playerFields(inst);
     // Groups in first-seen order.
     std::vector<std::string> groups;
     for (const auto& f : fields)
@@ -327,10 +336,10 @@ class Panel {
     ImGui::TextUnformatted("Play");
     ImGui::SameLine(80.0f * u);
     ImGui::SetNextItemWidth(-1);
-    const char* cur = audition::phraseLabel(instrument_, phrase_);
+    const char* cur = audition::phraseLabel(lib_.instrument(), phrase_);
     if (ImGui::BeginCombo("##phrase", cur)) {
       for (audition::Phrase p : {audition::Phrase::Tune, audition::Phrase::Scale})
-        if (ImGui::Selectable(audition::phraseLabel(instrument_, p), p == phrase_)) phrase_ = p;
+        if (ImGui::Selectable(audition::phraseLabel(lib_.instrument(), p), p == phrase_)) phrase_ = p;
       ImGui::EndCombo();
     }
     const float bw = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3.0f;
@@ -362,6 +371,7 @@ class Panel {
   }
 
   // --- 4. saved players -----------------------------------------------------------
+  [[nodiscard]] bool hasSel() const { return savedSel_ >= 0 && savedSel_ < static_cast<int>(lib_.players().size()); }
   void drawSaved() {
     const float u = ui::unit();
     ui::heading("4. My players", 19);
@@ -369,50 +379,80 @@ class Panel {
     ImGui::InputTextWithHint("##name", "Name this player", name_, sizeof name_);
     ImGui::SameLine();
     const std::string clean = mmathen::cleanPlayerName(name_);
-    const bool canSave = fileState_ == mmathen::PlayersFileState::Missing || fileState_ == mmathen::PlayersFileState::Ok;
+    const bool canSave = lib_.canSave();
     ImGui::BeginDisabled(clean.empty() || !canSave);
-    if (ImGui::Button("Save", ImVec2(-1, 0))) savePlayer(clean);
+    if (ImGui::Button("Save", ImVec2(-1, 0))) {
+      if (lib_.nameTaken(clean)) {
+        pendingSaveName_ = clean;
+        askOverwrite_ = true;
+      } else {
+        report(lib_.save(clean));
+        selectSaved(lib_.instrument(), clean);
+      }
+    }
     ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-      ImGui::SetTooltip("%s", canSave ? "Keep these settings under this name (the same name replaces it)."
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible))
+      ImGui::SetTooltip("%s", canSave ? "Keep these settings under this name (asks before replacing one)."
                                       : "Saving is off until the players file can be read (see the note below the list).");
-    const bool notice = !canSave || !warnings_.empty();
-    const float listH = std::max(60.0f * u, ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * (notice ? 3.3f : 2.2f));
+    const bool notice = !canSave || !lib_.warnings().empty();
+    const float listH = std::max(60.0f * u, ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() * (notice ? 4.3f : 3.2f));
     ImGui::BeginChild("pb-list", ImVec2(0, listH), ImGuiChildFlags_FrameStyle);
-    if (saved_.empty()) ui::caption("No saved players yet.");
-    for (int k = 0; k < static_cast<int>(saved_.size()); ++k) {
-      const auto& p = saved_[static_cast<std::size_t>(k)];
+    const auto& players = lib_.players();
+    if (players.empty()) ui::caption("No saved players yet.");
+    for (int k = 0; k < static_cast<int>(players.size()); ++k) {
+      const auto& p = players[static_cast<std::size_t>(k)];
       const std::string label = p.name + "   (" + mmathen::playerInstrumentInfo(p.instrument).label + ")##pbs" + std::to_string(k);
       if (ImGui::Selectable(label.c_str(), k == savedSel_, ImGuiSelectableFlags_AllowDoubleClick)) {
         savedSel_ = k;
-        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) loadPlayer(k);
+        if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) askToLoad(k);
       }
     }
     ImGui::EndChild();
-    const bool has = savedSel_ >= 0 && savedSel_ < static_cast<int>(saved_.size());
-    const float bw = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2.0f;
+    const bool has = hasSel();
+    const float sp = ImGui::GetStyle().ItemSpacing.x;
+    const float bw = (ImGui::GetContentRegionAvail().x - sp) / 2.0f;
     ImGui::BeginDisabled(!has);
-    if (ImGui::Button("Load", ImVec2(bw, 0))) loadPlayer(savedSel_);
+    if (ImGui::Button("Load", ImVec2(bw, 0))) askToLoad(savedSel_);
     ImGui::SameLine();
     ImGui::BeginDisabled(!canSave);
     if (ImGui::Button("Delete", ImVec2(bw, 0))) {
-      pendingDelete_ = saved_[static_cast<std::size_t>(savedSel_)].name;
+      pendingDelete_ = lib_.players()[static_cast<std::size_t>(savedSel_)].name;
       ImGui::OpenPopup("Delete player?");
     }
     ImGui::EndDisabled();
     ImGui::EndDisabled();
-    drawFileNotice();
+    const float bw3 = (ImGui::GetContentRegionAvail().x - 2 * sp) / 3.0f;
+    ImGui::BeginDisabled(!has);
+    if (ImGui::Button("Export...", ImVec2(bw3, 0))) startExport();
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible))
+      ImGui::SetTooltip("Save the selected player as one .mmplayer file to share.");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!canSave);
+    if (ImGui::Button("Import...", ImVec2(bw3, 0))) startImport();
+    ImGui::EndDisabled();
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) || (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible))
+      ImGui::SetTooltip("Add players from a .mmplayer (or players.txt) file.");
+    ImGui::SameLine();
+    if (ImGui::Button("Open folder", ImVec2(bw3, 0))) openFolder();
+    if (ImGui::IsItemHovered() || (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible))
+      ImGui::SetTooltip("Show the folder with players.txt and its backup.");
     if (ImGui::BeginPopupModal("Delete player?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-      ImGui::Text("Delete \"%s\"? This cannot be undone.", pendingDelete_.c_str());
+      ImGui::Text("Delete \"%s\"? The previous file is kept as players.txt.bak.", pendingDelete_.c_str());
       if (ImGui::Button("Delete", ImVec2(100.0f * u, 0))) {
-        deletePlayer(savedSel_);
+        report(lib_.remove(savedSel_));
+        savedSel_ = -1;
         ImGui::CloseCurrentPopup();
       }
       ImGui::SameLine();
       if (ImGui::Button("Keep it", ImVec2(100.0f * u, 0))) ImGui::CloseCurrentPopup();
       ImGui::EndPopup();
     }
-    const std::string where = "Saved in " + playersPath.string();
+    drawFileNotice();
+    drawLoadPrompt();
+    drawOverwritePrompt();
+    drawImportPrompt();
+    const std::string where = "Saved in " + utf8(lib_.path());
     ui::caption(where.c_str());
   }
 
@@ -422,27 +462,28 @@ class Panel {
   void drawFileNotice() {
     const float u = ui::unit();
     using S = mmathen::PlayersFileState;
-    if (fileState_ == S::Unreadable) {
+    if (lib_.state() == S::Unreadable) {
       ImGui::TextColored(ImVec4(1, .45f, .40f, 1), "Can't read the players file, so saving is off.");
-      if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s (%s).\nNothing has been changed in it.", playersPath.string().c_str(), fileError_.c_str());
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s (%s).\nNothing has been changed in it.", utf8(lib_.path()).c_str(), lib_.fileError().c_str());
       ImGui::SameLine();
       if (ImGui::SmallButton("Try again")) reloadList();
-    } else if (fileState_ == S::Newer) {
+    } else if (lib_.state() == S::Newer) {
       ImGui::TextColored(ImVec4(1, .68f, .38f, 1), "Saved by a newer version: read-only here.");
     }
-    if (!warnings_.empty()) {
+    const auto& warnings = lib_.warnings();
+    if (!warnings.empty()) {
       char line[96];
-      std::snprintf(line, sizeof line, "%d line%s in the file need%s a look (kept unchanged).", static_cast<int>(warnings_.size()),
-                    warnings_.size() == 1 ? "" : "s", warnings_.size() == 1 ? "s" : "");
+      std::snprintf(line, sizeof line, "%d line%s in the file need%s a look (kept unchanged).", static_cast<int>(warnings.size()),
+                    warnings.size() == 1 ? "" : "s", warnings.size() == 1 ? "s" : "");
       ImGui::TextColored(ImVec4(1, .68f, .38f, 1), "%s", line);
       ImGui::SameLine();
       if (ImGui::SmallButton("Show")) ImGui::OpenPopup("Players file problems");
     }
     if (ImGui::BeginPopupModal("Players file problems", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-      ImGui::TextUnformatted(playersPath.string().c_str());
+      ImGui::TextUnformatted(utf8(lib_.path()).c_str());
       ui::caption("Lines the app could not use. They stay in the file exactly as written; fix them in a text editor, then press Reload.");
       ImGui::BeginChild("pb-warn", ImVec2(560.0f * u, 220.0f * u), ImGuiChildFlags_FrameStyle);
-      for (const auto& w : warnings_) ImGui::Text("line %d: %s", w.line, w.message.c_str());
+      for (const auto& w : lib_.warnings()) ImGui::Text("line %d: %s", w.line, w.message.c_str());
       ImGui::EndChild();
       if (ImGui::Button("Reload", ImVec2(100.0f * u, 0))) reloadList();
       ImGui::SameLine();
@@ -450,60 +491,186 @@ class Panel {
       ImGui::EndPopup();
     }
   }
-  void applyLoad(mmathen::PlayersLoad r) {
-    saved_ = std::move(r.file.players);
-    fileState_ = r.state;
-    fileError_ = std::move(r.error);
-    warnings_ = std::move(r.file.warnings);
-    if (savedSel_ >= static_cast<int>(saved_.size())) savedSel_ = -1;
+
+  // --- confirmations ------------------------------------------------------------------
+  void askToLoad(int k) {
+    if (lib_.loadWouldDiscard(k)) {
+      pendingLoad_ = k;
+      askLoad_ = true;
+    } else {
+      loadNow(k);
+    }
   }
-  void loadList() {
-    loaded_ = true;
-    applyLoad(mmathen::loadPlayersFile(playersPath));
-    if (fileState_ == mmathen::PlayersFileState::Unreadable)
-      setStatus("Can't read " + playersPath.string() + " (" + fileError_ + "). Saving is off so nothing in it is lost.", true);
+  void loadNow(int k) {
+    const Outcome r = lib_.load(k);
+    report(r);
+    if (r.ok) std::snprintf(name_, sizeof name_, "%s", lib_.players()[static_cast<std::size_t>(k)].name.c_str());
+  }
+  void drawLoadPrompt() {
+    const float u = ui::unit();
+    if (askLoad_) {
+      ImGui::OpenPopup("Unsaved changes");
+      askLoad_ = false;
+    }
+    if (ImGui::BeginPopupModal("Unsaved changes", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+      const bool ok = pendingLoad_ >= 0 && pendingLoad_ < static_cast<int>(lib_.players().size());
+      if (ok) {
+        const auto& p = lib_.players()[static_cast<std::size_t>(pendingLoad_)];
+        ImGui::Text("Your %s changes are not saved.", mmathen::playerInstrumentInfo(p.instrument).label);
+        ImGui::Text("Load \"%s\" and lose them?", p.name.c_str());
+      }
+      if (ImGui::Button("Load and lose changes", ImVec2(190.0f * u, 0))) {
+        if (ok) loadNow(pendingLoad_);
+        pendingLoad_ = -1;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel", ImVec2(100.0f * u, 0))) {
+        pendingLoad_ = -1;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+    }
+  }
+  void drawOverwritePrompt() {
+    const float u = ui::unit();
+    if (askOverwrite_) {
+      ImGui::OpenPopup("Replace saved player?");
+      askOverwrite_ = false;
+    }
+    if (ImGui::BeginPopupModal("Replace saved player?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+      ImGui::Text("You already have a %s player called \"%s\".", mmathen::playerInstrumentInfo(lib_.instrument()).label, pendingSaveName_.c_str());
+      ImGui::TextUnformatted("Replace it with these settings? (The previous file is kept as players.txt.bak.)");
+      if (ImGui::Button("Replace", ImVec2(100.0f * u, 0))) {
+        report(lib_.save(pendingSaveName_));
+        selectSaved(lib_.instrument(), pendingSaveName_);
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel", ImVec2(100.0f * u, 0))) ImGui::CloseCurrentPopup();
+      ImGui::EndPopup();
+    }
+  }
+  void drawImportPrompt() {
+    const float u = ui::unit();
+    if (askImport_) {
+      ImGui::OpenPopup("Import players");
+      askImport_ = false;
+    }
+    if (ImGui::BeginPopupModal("Import players", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+      ImGui::Text("%d player%s to import.", static_cast<int>(importing_.players.size()), importing_.players.size() == 1 ? "" : "s");
+      if (importing_.warnings > 0) ImGui::Text("%d line%s in that file could not be used and are left out.", importing_.warnings, importing_.warnings == 1 ? "" : "s");
+      ImGui::Text("%d of them %s the same instrument and name as one of yours.", importing_.clashes, importing_.clashes == 1 ? "has" : "have");
+      auto finish = [&](PlayerLibrary::Clash c) {
+        report(lib_.importPlayers(importing_.players, c));
+        importing_ = {};
+        ImGui::CloseCurrentPopup();
+      };
+      if (ImGui::Button("Keep both", ImVec2(110.0f * u, 0))) finish(PlayerLibrary::Clash::KeepBoth);
+      if (ImGui::IsItemHovered() || (ImGui::IsItemFocused() && ImGui::GetIO().NavVisible)) ImGui::SetTooltip("Imported ones get \" (2)\" added to the name.");
+      ImGui::SameLine();
+      if (ImGui::Button("Replace mine", ImVec2(110.0f * u, 0))) finish(PlayerLibrary::Clash::Replace);
+      ImGui::SameLine();
+      if (ImGui::Button("Skip those", ImVec2(110.0f * u, 0))) finish(PlayerLibrary::Clash::Skip);
+      ImGui::SameLine();
+      if (ImGui::Button("Cancel", ImVec2(90.0f * u, 0))) {
+        importing_ = {};
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::EndPopup();
+    }
+  }
+  void drawQuitPrompt() {
+    const float u = ui::unit();
+    if (askQuit_) {
+      ImGui::OpenPopup("Quit without saving?");
+      askQuit_ = false;
+    }
+    if (ImGui::BeginPopupModal("Quit without saving?", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+      std::string list;
+      for (PlayerInstrument i : lib_.unsavedInstruments()) list += std::string(list.empty() ? "" : ", ") + mmathen::playerInstrumentInfo(i).label;
+      ImGui::Text("These players have changes that are not saved: %s.", list.c_str());
+      if (ImGui::Button("Quit without saving", ImVec2(170.0f * u, 0))) {
+        quitOk_ = quitNow_ = true;
+        ImGui::CloseCurrentPopup();
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Go back", ImVec2(100.0f * u, 0))) ImGui::CloseCurrentPopup();
+      ImGui::EndPopup();
+    }
+  }
+
+  // --- export / import / folder ---------------------------------------------------------
+  static void SDLCALL onExportChosen(void* user, const char* const* list, int) { pushDialog(user, DialogKind::Export, list); }
+  static void SDLCALL onImportChosen(void* user, const char* const* list, int) { pushDialog(user, DialogKind::Import, list); }
+  static void pushDialog(void* user, DialogKind kind, const char* const* list) {
+    auto* self = static_cast<Panel*>(user);
+    if (!list || !list[0]) return;  // error or cancelled
+    std::lock_guard<std::mutex> lock(self->dialogMu_);
+    self->dialogResults_.emplace_back(kind, list[0]);
+  }
+  void takeDialogResults() {
+    std::vector<std::pair<DialogKind, std::string>> todo;
+    {
+      std::lock_guard<std::mutex> lock(dialogMu_);
+      todo.swap(dialogResults_);
+    }
+    for (const auto& [kind, file] : todo) {
+      std::filesystem::path p(std::u8string(reinterpret_cast<const char8_t*>(file.data()), file.size()));  // SDL gives UTF-8
+      if (kind == DialogKind::Export) {
+        if (p.extension().empty()) p += std::string(".") + kPlayerExportExtension;
+        report(lib_.exportPlayer(exportIndex_, p));
+      } else {
+        importing_ = lib_.readImport(p);
+        if (!importing_.ok) {
+          setStatus(importing_.message, true);
+        } else if (importing_.clashes == 0 && importing_.warnings == 0) {
+          report(lib_.importPlayers(importing_.players, PlayerLibrary::Clash::KeepBoth));
+          importing_ = {};
+        } else {
+          askImport_ = true;
+        }
+      }
+    }
+  }
+  void startExport() {
+    if (!hasSel()) return;
+    exportIndex_ = savedSel_;
+    static const SDL_DialogFileFilter filters[] = {{"mmathEn player", kPlayerExportExtension}};
+    std::error_code ec;
+    std::filesystem::create_directories(lib_.folder(), ec);
+    const std::string where = utf8(lib_.folder() / exportFileName(lib_.players()[static_cast<std::size_t>(savedSel_)]));
+    SDL_ShowSaveFileDialog(&Panel::onExportChosen, this, window, filters, 1, where.c_str());
+  }
+  void startImport() {
+    static const SDL_DialogFileFilter filters[] = {{"mmathEn player", kPlayerExportExtension}, {"Players file", "txt"}};
+    // A trailing separator makes the Windows dialog open inside the folder, not beside it.
+    const std::string where = utf8(lib_.folder() / "");
+    SDL_ShowOpenFileDialog(&Panel::onImportChosen, this, window, filters, 2, where.c_str(), false);
+  }
+  void openFolder() {
+    std::error_code ec;
+    std::filesystem::create_directories(lib_.folder(), ec);
+    if (!SDL_OpenURL(fileUrl(std::filesystem::absolute(lib_.folder(), ec)).c_str()))
+      setStatus("Could not open " + utf8(lib_.folder()) + ": " + SDL_GetError(), true);
+  }
+  // SDL and ImGui take UTF-8.
+  static std::string utf8(const std::filesystem::path& p) { return mmathen::pathText(p); }
+
+  void selectSaved(PlayerInstrument i, const std::string& name) {
+    const auto& players = lib_.players();
+    for (int k = 0; k < static_cast<int>(players.size()); ++k)
+      if (players[static_cast<std::size_t>(k)].instrument == i && players[static_cast<std::size_t>(k)].name == name) savedSel_ = k;
   }
   void reloadList() {
     savedSel_ = -1;
-    loadList();
-    if (fileState_ != mmathen::PlayersFileState::Unreadable) setStatus("Players file read again.", false);
+    lib_.reload();
+    if (lib_.state() == mmathen::PlayersFileState::Unreadable)
+      setStatus("Can't read " + utf8(lib_.path()) + " (" + lib_.fileError() + "). Saving is off so nothing in it is lost.", true);
+    else
+      setStatus("Players file read again.", false);
   }
-  void savePlayer(const std::string& name) {
-    CustomPlayer p;
-    p.name = name;
-    p.instrument = instrument_;
-    p.values = values();
-    auto r = mmathen::editPlayersFile(playersPath, [&](std::vector<CustomPlayer>& list) { mmathen::upsertPlayer(list, p); });
-    const std::string cleanName = mmathen::cleanPlayerName(p.name);
-    applyLoad(std::move(r.after));
-    if (!r.ok) {
-      setStatus(r.error, true);
-      return;
-    }
-    for (int k = 0; k < static_cast<int>(saved_.size()); ++k)
-      if (saved_[static_cast<std::size_t>(k)].name == cleanName && saved_[static_cast<std::size_t>(k)].instrument == p.instrument) savedSel_ = k;
-    setStatus("Saved \"" + cleanName + "\".", false);
-  }
-  void loadPlayer(int k) {
-    if (k < 0 || k >= static_cast<int>(saved_.size())) return;
-    const CustomPlayer& p = saved_[static_cast<std::size_t>(k)];
-    instrument_ = p.instrument;
-    values_[instrument_] = mmathen::clampValues(p.instrument, p.values);
-    std::snprintf(name_, sizeof name_, "%s", p.name.c_str());
-    setStatus("Loaded \"" + p.name + "\" (" + mmathen::playerInstrumentInfo(p.instrument).label + ").", false);
-  }
-  void deletePlayer(int k) {
-    if (k < 0 || k >= static_cast<int>(saved_.size())) return;
-    const CustomPlayer gone = saved_[static_cast<std::size_t>(k)];
-    auto r = mmathen::editPlayersFile(playersPath, [&](std::vector<CustomPlayer>& list) { (void)mmathen::removePlayer(list, gone.instrument, gone.name); });
-    applyLoad(std::move(r.after));
-    savedSel_ = -1;
-    if (!r.ok) {
-      setStatus(r.error, true);
-      return;
-    }
-    setStatus("Deleted \"" + gone.name + "\".", false);
-  }
+  void report(const Outcome& r) { setStatus(r.message, !r.ok); }
   void setStatus(std::string s, bool warn) {
     status_ = std::move(s);
     statusWarn_ = warn;
@@ -515,13 +682,13 @@ class Panel {
     stopPlayback_ = true;  // stop the last phrase while the next one renders
     auto j = std::make_unique<Job>();
     j->compare = compare;
-    j->instrument = instrument_;
+    j->instrument = lib_.instrument();
     j->phrase = phrase_;
-    j->custom = mmathen::makePlayer(instrument_, values());
-    j->standard = mmathen::builtInPlayer(instrument_);
-    j->needStandard = standard_.find(CacheKey{instrument_, phrase_}) == standard_.end();
-    j->label = std::string(mmathen::playerInstrumentInfo(instrument_).label) + ", " +
-               (compare ? "built-in player then yours" : (changedCount() ? "your player" : "built-in player"));
+    j->custom = mmathen::makePlayer(lib_.instrument(), lib_.values());
+    j->standard = mmathen::builtInPlayer(lib_.instrument());
+    j->needStandard = standard_.find(CacheKey{lib_.instrument(), phrase_}) == standard_.end();
+    j->label = std::string(mmathen::playerInstrumentInfo(lib_.instrument()).label) + ", " +
+               (compare ? "built-in player then yours" : (lib_.changedFromBuiltIn(lib_.instrument()) ? "your player" : "built-in player"));
     Job* raw = j.get();
     raw->thread = std::thread([raw] {
       // The built-in render (cached) sets the playback level, so a louder
