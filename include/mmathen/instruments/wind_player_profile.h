@@ -32,6 +32,11 @@ inline constexpr double kCrackCorrectSec = 0.05;
 // the window sung scoops were measured and synthesised in (Larrouy-Maestri
 // & Pfordresher, JEP:HPP 44, 1523, 2018).
 inline constexpr double kScoopDefaultSec = 0.22;
+// Fall-off length when the player sets a depth but no length (step
+// 24.2c). UNSOURCED: no published fall-off duration was found (Abesser
+// et al., ISMIR 2015 annotate fall-offs but report no time); 0.3 s is a
+// short "doit/fall" at a moderate tempo.
+inline constexpr double kFallDefaultSec = 0.30;
 
 struct WindPlayerProfile {
   const char* name = "default";
@@ -121,6 +126,22 @@ struct WindPlayerProfile {
   double scoopSec = 0.0;
   double scoopChance = 1.0;
   std::uint64_t scoopSeed = 1;
+
+  // --- Fall-offs (step 24.2c) ----------------------------------------
+  // A fall-off drops the end of a note fallCents below its pitch over
+  // its last fallSec while the breath fades, by the embouchure
+  // (phrase_player.h: the scoop mechanisms in reverse). fallChance is the
+  // share of eligible notes that fall (seeded by fallSeed); with
+  // fallPhraseEndsOnly only phrase-ending notes are eligible. A note
+  // slurred into the next never falls. 0 depth = off; a depth with
+  // length 0 uses kFallDefaultSec. Jazz soloists: 146 of 87,643
+  // annotated tones fall off (0.17%; Abesser et al., ISMIR 2015); no
+  // depth or length was published, so named players all keep 0.
+  double fallCents = 0.0;
+  double fallSec = 0.0;
+  double fallChance = 1.0;
+  bool fallPhraseEndsOnly = true;
+  std::uint64_t fallSeed = 1;
 
   // The player's airway with this profile's tongue speed.
   [[nodiscard]] PlayerAirwaySpec airwaySpec(PlayerAirwaySpec base = {}) const {

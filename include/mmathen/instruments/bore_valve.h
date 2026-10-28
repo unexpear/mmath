@@ -935,6 +935,21 @@ class BoreValveVoice final : public IVoice {
   // Convection delay of the jet, in samples. The buffer is the delay
   // allocated from the construction pressure and cannot grow. The
   // default read stays the integer buffer until this succeeds.
+  // Room for a slower jet (step 24.2c: a fall-off's falling breath slows
+  // the jet, so its delay grows past the build's). Call before playing:
+  // the jet's history is cleared and lengthened. A fixed jet delay is the
+  // history's length, so a caller that reserves sets the delay with
+  // setJetDelaySamples.
+  bool reserveJetDelaySamples(double samples) {
+    if (law_ != ValveLaw::Jet || jetDelay_.empty() || !std::isfinite(samples) || samples < 1.0) return false;
+    const auto n = static_cast<std::size_t>(std::ceil(samples));
+    if (n > jetDelay_.size()) {
+      jetDelay_.assign(n, initialDisplacement_);
+      jetPos_ = 0;
+    }
+    return true;
+  }
+
   bool setJetDelaySamples(double samples) {
     if (law_ != ValveLaw::Jet || jetDelay_.empty()) return false;
     if (!std::isfinite(samples)) return false;

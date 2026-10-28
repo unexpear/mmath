@@ -142,9 +142,11 @@ static double controlEffect(PlayerInstrument i, const PlayerField& f) {
     PlayerValues base = defaultValues(i);
     if (attempt == 2)
       for (const PlayerField& g : fields)
-        // The scoop chance's far value is 0% (no note scoops), which would
-        // silence the scoop depth and time it gates; keep it at 100%.
-        if (std::string(g.key) != f.key && std::string(g.key) != "noteLength" && std::string(g.key) != "scoopChance")
+        // The scoop and fall-off chances' far value is 0% (no note scoops
+        // or falls), which would silence the depth and time they gate;
+        // keep them at 100%.
+        if (std::string(g.key) != f.key && std::string(g.key) != "noteLength" && std::string(g.key) != "scoopChance" &&
+            std::string(g.key) != "fallChance")
           base[g.key] = farValue(g);
     const auto ref = au::renderAudition(makePlayer(i, base), phrase);
     if (!ref.ok) return -1.0;

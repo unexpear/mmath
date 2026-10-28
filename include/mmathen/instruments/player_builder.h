@@ -614,6 +614,23 @@ inline PlayerField make(const char* key, const char* label, const char* tip, con
     v.push_back(make("scoopChance", "Scoop how often", "Share of tongued notes that get a scoop (100% = every one). Needs some scoop depth.", "Note starts & ends",
                      0.0, 1.0, "%", 100.0, S::Unsourced, "jazz soloists: 0.8% of tones, Bechet ~15% (Abesser et al., ISMIR 2015); default 100% of the depth's notes",
                      [](const PlayerRig& r) { return r.wind.scoopChance; }, [](PlayerRig& r, double x) { r.wind.scoopChance = x; }));
+    // Step 24.2c: fall-offs, the end of a note dropping in pitch as the
+    // breath fades (phrase_player.h). No measured depth or length for wind
+    // players, so 0 = off for every named player.
+    v.push_back(make("fallCents", "Fall-off depth", "How far the pitch drops at the end of a note, like a jazz fall (0 = no fall-offs; 100 = a half step, 1200 = an octave).", "Note starts & ends",
+                     0.0, 1200.0, "cents", 1.0, S::Unsourced,
+                     "jazz fall-offs annotated, no depth published (Abesser et al., ISMIR 2015); 0 = off",
+                     [](const PlayerRig& r) { return r.wind.fallCents; }, [](PlayerRig& r, double x) { r.wind.fallCents = x; }));
+    v.push_back(make("fallSec", "Fall-off length", "How long the drop at the end of the note takes (0 = the usual, 0.3 s). Needs some fall-off depth.", "Note starts & ends",
+                     0.0, 1.0, "ms", 1000.0, S::Unsourced, "0 = kFallDefaultSec, 300 ms (UNSOURCED)",
+                     [](const PlayerRig& r) { return r.wind.fallSec; }, [](PlayerRig& r, double x) { r.wind.fallSec = x; }));
+    v.push_back(make("fallChance", "Fall-off how often", "Share of the notes that can fall that do (100% = every one). Needs some fall-off depth.", "Note starts & ends",
+                     0.0, 1.0, "%", 100.0, S::Unsourced, "jazz soloists: 0.17% of tones (Abesser et al., ISMIR 2015); default 100%",
+                     [](const PlayerRig& r) { return r.wind.fallChance; }, [](PlayerRig& r, double x) { r.wind.fallChance = x; }));
+    v.push_back(make("fallPhraseEndsOnly", "Fall-offs only at phrase ends", "On: only the last note of a phrase (or a long held note) falls. Off: any note that is not slurred into the next can.", "Note starts & ends",
+                     0.0, 1.0, "", 1.0, S::Unsourced, "phrase-end heuristic (phrase_player.h, UNSOURCED); on by default",
+                     [](const PlayerRig& r) { return r.wind.fallPhraseEndsOnly ? 1.0 : 0.0; },
+                     [](PlayerRig& r, double x) { r.wind.fallPhraseEndsOnly = x >= 0.5; }, true));
     if (!isBrass(i) && i != I::Flute)
       v.push_back(make("reedReleaseSec", "Note ending fade", "How gently the breath stops at the end of a phrase.", "Note starts & ends",
                        0.03, 0.60, "ms", 1000.0, S::Tuned, "kReedBreathReleaseSec, TUNED to Li et al. 2016",

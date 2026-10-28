@@ -57,6 +57,10 @@ struct PhraseNote {
   // Forced scoop depth in cents (step 24.2b; tests). Above 0 the note
   // scoops this deep whatever the player's scoop chance; 0 = the player's.
   double scoopCents = 0.0;
+  // Forced fall-off depth in cents (step 24.2c; tests). Above 0 the note
+  // falls this deep whatever the player's chance, unless it is slurred
+  // into the next note; 0 = the player's.
+  double fallCents = 0.0;
 };
 
 // Cracked notes (step 24.2a). A cracked or split note is the lip (or
@@ -224,6 +228,83 @@ inline constexpr double kFluteScoopCoverGain = 1.15;   // TUNED, see above
   return d;
 }
 
+// Fall-offs (step 24.2c): the end of a note drops below its pitch while
+// the breath fades. The scoop mechanisms (above) run in reverse:
+//   brass   the lips relax and the effective tube lengthens (the slide,
+//           or on the trumpet a half-pressed valve: VERIFY, the length
+//           change approximates the branched tube), kBrassFall...
+//   reeds   the jaw loosens (the reed's equivalent length grows) and the
+//           breath drops.
+//   flute   the lip rolls in over the hole and the breath drops; the jet
+//           delay follows the falling breath (the jet slows).
+// The breath falls by k...FallBreathDrop of its level over the fall, so the
+// note fades as it falls. Jazz: 146 of 87,643 annotated tones in the
+// Weimar Jazz Database fall off, "a drop of the f0 contour in the end of
+// the tone after a stationary part" (Abesser, Frieler, Cano, Pfleiderer
+// & Zaddach, ISMIR 2015, Table 3); no depth or duration was published.
+// What the model does (24.2c probes, fall harness, 0.8 s notes, fall over
+// the last 0.3 s; pitch at the fall's end, cents from the note):
+//   brass: lips and tube together glide down on the same resonance, a
+//     smooth smear (trumpet F4/C5: 100 c -> -99/-115, 300 c -> -277/-303,
+//     500 c -> -454/-489; trombone C4/F4 300 c -> -286/-301). The model
+//     does not rip down the partials: with the tube capped at 200 c and
+//     the lips alone going further, the pitch stalled near -200 to -290 c
+//     on the same partial instead of stepping to the next one down.
+//   reeds (length 1.5): breath drop 0.2 / 0.3 / 0.4 -> clarinet F4
+//     -412 / -402 / -381, sax E4 -367 / -362 / -404 at 300 c; at 0.4 the
+//     clarinet C5 dropped to its low register (-1601 c) and the level fell
+//     11-17 dB. Length 1.2 at drop 0.3: clarinet -316/-341, sax -278/-212.
+//   flute (cover 1.15): breath drop 0.3 -> -340/-336, 0.5 -> -347/-344 at
+//     300 c; at 0.5 the jet needed a longer delay than the build's
+//     (BoreValveVoice::reserveJetDelaySamples).
+// Gains and breath drops: TUNED from those sweeps.
+inline constexpr double kBrassFallLipGain = 1.0;     // TUNED
+inline constexpr double kBrassFallLengthGain = 1.0;  // TUNED
+inline constexpr double kReedFallLengthGain = 1.3;   // TUNED (between 1.2 and 1.5)
+inline constexpr double kFluteFallCoverGain = 1.0;   // TUNED (1.15 overshot by 15%)
+inline constexpr double kBrassFallBreathDrop = 0.5;  // TUNED: still speaking, -5 to -10 dB
+inline constexpr double kReedFallBreathDrop = 0.3;   // TUNED: 0.4 drops the clarinet's register
+inline constexpr double kFluteFallBreathDrop = 0.5;  // TUNED
+// A fall never takes more than this share of the note: the start stays
+// on pitch. UNSOURCED.
+inline constexpr double kFallMaxNoteFraction = 0.7;
+
+namespace phrase_detail {
+// A phrase-ending note (fall-offs): the next note is a rest or the end, or
+// the note is held at least 1.5x as long as each sounding neighbour (a
+// held note closing a group of shorter ones). A heuristic, UNSOURCED;
+// the KTH punctuation rule finds such boundaries in more detail (Friberg,
+// Bresin, Fryden & Sundberg, J. New Music Research 27, 271-292, 1998).
+inline bool phraseEnd(const std::vector<PhraseNote>& notes, std::size_t i) {
+  const std::size_t n = notes.size();
+  if (i + 1 >= n || notes[i + 1].rest) return true;
+  const double here = notes[i + 1].startSec - notes[i].startSec;
+  const double next = i + 2 < n ? notes[i + 2].startSec - notes[i + 1].startSec : here;
+  const bool prevOk = i == 0 || notes[i - 1].rest || here >= 1.5 * (notes[i].startSec - notes[i - 1].startSec);
+  return prevOk && here >= 1.5 * next;
+}
+}  // namespace phrase_detail
+
+// Each note's fall-off depth in cents: never on a rest or a note slurred
+// into the next; else the note's forced fallCents, else the player's
+// fallCents with probability fallChance on an eligible note (phrase ends
+// only with fallPhraseEndsOnly). One draw per note when the player falls.
+[[nodiscard]] inline std::vector<double> phraseFallDepths(const std::vector<PhraseNote>& notes,
+                                                          const WindPlayerProfile& player) {
+  std::vector<double> d(notes.size(), 0.0);
+  const bool drawing = player.fallCents > 0.0 && player.fallSec >= 0.0;
+  phrase_detail::CrackRng rng{player.fallSeed ? player.fallSeed : 1};
+  for (std::size_t i = 0; i < notes.size(); ++i) {
+    const double u = drawing ? rng.uniform() : 1.0;
+    if (notes[i].rest) continue;
+    if (i + 1 < notes.size() && !notes[i + 1].rest && !notes[i + 1].tongue) continue;  // slurred on
+    if (notes[i].fallCents > 0.0) d[i] = notes[i].fallCents;
+    else if (drawing && u < player.fallChance && (!player.fallPhraseEndsOnly || phrase_detail::phraseEnd(notes, i)))
+      d[i] = player.fallCents;
+  }
+  return d;
+}
+
 // Li, Almeida, Smith and Wolfe (JASA 139, 825-838, 2016): clarinettists end
 // staccato notes with the tongue (exponential decay ~400 dB/s, the bore's
 // bandwidth); "in all other cases, notes are stopped by decreasing" the
@@ -321,6 +402,21 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
   const std::vector<double> scoopDepth = phraseScoopDepths(notes, player);
   const bool anyScoop = std::any_of(scoopDepth.begin(), scoopDepth.end(), [](double x) { return x > 0.0; });
   const double scoopSec = player.scoopSec > 0.0 ? player.scoopSec : kScoopDefaultSec;
+  // Step 24.2c: fall-offs. A falling note falls over its last fallSec,
+  // ending at the next note's tongue closure (or the score's end).
+  const std::vector<double> fallDepth = phraseFallDepths(notes, player);
+  const bool anyFall = std::any_of(fallDepth.begin(), fallDepth.end(), [](double x) { return x > 0.0; });
+  std::vector<double> fallStart(notes.size(), 0.0), fallLen(notes.size(), 0.0);
+  if (anyFall) {
+    const double want = player.fallSec > 0.0 ? player.fallSec : kFallDefaultSec;
+    const double closureSec = static_cast<double>(kTongue) / rateHz;
+    for (std::size_t i = 0; i < notes.size(); ++i) {
+      if (!(fallDepth[i] > 0.0)) continue;
+      const double end = (i + 1 < notes.size() ? notes[i + 1].startSec : static_cast<double>(scoreFrames) / rateHz) - closureSec;
+      fallLen[i] = std::max(1.0e-3, std::min(want, kFallMaxNoteFraction * (end - notes[i].startSec)));
+      fallStart[i] = end - fallLen[i];
+    }
+  }
   bool breathing = false;
   for (std::uint64_t frame = 0; frame < total;) {
     const std::uint64_t count = std::min<std::uint64_t>(kHop, total - frame);
@@ -484,6 +580,20 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
         scoopNow = depthCents * (1.0 - a * a * (3.0 - 2.0 * a));
       }
     }
+    // The fall-off of the sounding note: 0 until its fall starts, then
+    // down to its full depth on a smoothstep; it stays there through a
+    // breath release. The breath falls with it.
+    double fallNow = 0.0, fallBreath = 1.0;
+    if (anyFall && !note.rest) {
+      const double depthCents = fallDepth[static_cast<std::size_t>(sounding)];
+      const double since = time - fallStart[static_cast<std::size_t>(sounding)];
+      if (depthCents > 0.0 && since >= 0.0) {
+        const double a = std::min(1.0, since / fallLen[static_cast<std::size_t>(sounding)]);
+        const double w = a * a * (3.0 - 2.0 * a);
+        fallNow = depthCents * w;
+        fallBreath = 1.0 - (note.lipHz > 0.0 ? kBrassFallBreathDrop : fluteJet ? kFluteFallBreathDrop : kReedFallBreathDrop) * w;
+      }
+    }
     if (anyCrack && note.lipHz == 0.0 && !fluteJet) {
       if constexpr (requires(Voice& probe) { probe.setReedDynamics(1.0, 1.0); }) {
         const double reedSize = std::max(crackSize, -kReedOvershootCapCents);
@@ -493,6 +603,7 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     }
     double env = breathOff ? 0.0 : note.gain * (releasing >= 0 ? releaseLeft : 1.0);
     if (brassRelease >= 0.0) env *= brassRelease;
+    if (fallNow > 0.0) env *= fallBreath;
     const bool dipping = airway == nullptr && fluteJet && note.tongue && sounding > 0 && !note.rest &&
                          time < note.startSec + 0.020;
     if (dipping) env *= 0.55;
@@ -524,9 +635,12 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     if (player.intonationCents != 0.0) length *= tuneScale;
     if (anyScoop && !fluteJet && scoopNow > 0.0)
       length *= std::pow(2.0, (note.lipHz > 0.0 ? kBrassScoopLengthGain : kReedScoopLengthGain) * scoopNow / 1200.0);
+    if (anyFall && !fluteJet && fallNow > 0.0)
+      length *= std::pow(2.0, (note.lipHz > 0.0 ? kBrassFallLengthGain : kReedFallLengthGain) * fallNow / 1200.0);
     if constexpr (requires(Voice& probe) { probe.setEmbouchureCoverMeters(0.0); }) {
-      if (anyScoop && fluteJet)
-        if (!(voice.setEmbouchureCoverMeters(length * (std::pow(2.0, kFluteScoopCoverGain * scoopNow / 1200.0) - 1.0))))
+      if ((anyScoop || anyFall) && fluteJet)
+        if (!(voice.setEmbouchureCoverMeters(
+                length * (std::pow(2.0, (kFluteScoopCoverGain * scoopNow + kFluteFallCoverGain * fallNow) / 1200.0) - 1.0))))
           return {};
     }
     if (!(voice.setSoundingLength(length))) return {};
@@ -556,6 +670,7 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     if (note.lipHz > 0.0) {
       double crackRatio = crackCents != 0.0 ? std::pow(2.0, crackCents / 1200.0) : 1.0;
       if (scoopNow > 0.0) crackRatio *= std::pow(2.0, -kBrassScoopLipGain * scoopNow / 1200.0);
+      if (fallNow > 0.0) crackRatio *= std::pow(2.0, -kBrassFallLipGain * fallNow / 1200.0);
       if (!(voice.setLipResonanceHz(note.lipHz * player.lipRatioScale / vibrato * crackRatio))) return {};
     }
     if constexpr (requires(Voice& probe) { probe.setJetDelaySamples(0.0); }) {

@@ -657,9 +657,11 @@ inline std::vector<ScoreNote> windScore(const std::vector<PartNote>& w, bool slu
 // onsetCents (tests, step 24.2a): a forced onset error in cents for each
 // written note, added to the player's random one (PhraseNote::onsetErrorCents).
 // scoopCents (tests, step 24.2b): a forced scoop depth per written note
-// (PhraseNote::scoopCents).
+// (PhraseNote::scoopCents). fallCents (tests, step 24.2c): a forced
+// fall-off depth per written note (PhraseNote::fallCents).
 inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool slurredScale, std::vector<double>& mix,
-                       const std::vector<double>* onsetCents = nullptr, const std::vector<double>* scoopCents = nullptr) {
+                       const std::vector<double>* onsetCents = nullptr, const std::vector<double>* scoopCents = nullptr,
+                       const std::vector<double>* fallCents = nullptr) {
   using I = PlayerInstrument;
   constexpr double kAir = 101325.0, kTemp = 293.15;
   const SampleRateHz rate{kRate};
@@ -677,15 +679,21 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
       for (std::size_t k = 0; k < w.size() && k < onsetCents->size(); ++k) notes[k + off].onsetErrorCents = (*onsetCents)[k];
     if (scoopCents != nullptr)
       for (std::size_t k = 0; k < w.size() && k < scoopCents->size(); ++k) notes[k + off].scoopCents = (*scoopCents)[k];
+    if (fallCents != nullptr)
+      for (std::size_t k = 0; k < w.size() && k < fallCents->size(); ++k) notes[k + off].fallCents = (*fallCents)[k];
   };
   // A flute scoop lengthens the air column (the lip covers the hole) and
   // the bore's delay line cannot grow, so a scooping flute is built
   // longer by the deepest scoop. Without scoops the build is unchanged.
   double scoopMax = prof.scoopCents > 0.0 && prof.scoopSec >= 0.0 ? prof.scoopCents : 0.0;
   if (scoopCents != nullptr) for (double c : *scoopCents) scoopMax = std::max(scoopMax, c);
-  const double scoopRoom = scoopMax > 0.0 ? std::pow(2.0, (kFluteScoopCoverGain * scoopMax + 25.0) / 1200.0) : 1.0;
-  const double reedRoom = scoopMax > 0.0 ? std::pow(2.0, (kReedScoopLengthGain * scoopMax + 25.0) / 1200.0) : 1.0;
-  const double brassRoom = scoopMax > 0.0 ? std::pow(2.0, (kBrassScoopLengthGain * scoopMax + 25.0) / 1200.0) : 1.0;
+  // A fall-off lengthens the column too (step 24.2c), by up to its depth.
+  double fallMax = prof.fallCents > 0.0 && prof.fallSec >= 0.0 ? prof.fallCents : 0.0;
+  if (fallCents != nullptr) for (double c : *fallCents) fallMax = std::max(fallMax, c);
+  const bool bends = scoopMax > 0.0 || fallMax > 0.0;
+  const double scoopRoom = bends ? std::pow(2.0, (kFluteScoopCoverGain * scoopMax + kFluteFallCoverGain * fallMax + 25.0) / 1200.0) : 1.0;
+  const double reedRoom = bends ? std::pow(2.0, (kReedScoopLengthGain * scoopMax + kReedFallLengthGain * fallMax + 25.0) / 1200.0) : 1.0;
+  const double brassRoom = bends ? std::pow(2.0, (kBrassScoopLengthGain * scoopMax + kBrassFallLengthGain * fallMax + 25.0) / 1200.0) : 1.0;
   const double rel = r.extras.reedReleaseSec >= 0.0 ? r.extras.reedReleaseSec : kReedBreathReleaseSec;
   const double noise = r.extras.breathNoiseScale;
   if (r.instrument == I::Clarinet) {
@@ -736,6 +744,13 @@ inline bool renderWind(const PlayerRig& r, const std::vector<PartNote>& w, bool 
       start += s.seconds;
     }
     applyErrors();
+    // A fall-off's falling breath slows the jet (step 24.2c): room for the
+    // longest note's jet at the lowest breath, with margin for dynamics.
+    if (fallMax > 0.0) {
+      double jetMax = 0.0;
+      for (const auto& n : notes) jetMax = std::max(jetMax, n.jetSamples);
+      if (!voice.reserveJetDelaySamples(2.0 * jetMax / std::sqrt(1.0 - kFluteFallBreathDrop))) return false;
+    }
     out = playPhrase(voice, notes, T, true, 0.50, &airway, kRate, prof);
   } else if (r.instrument == I::Trumpet) {
     TrumpetSpec tpSpec = phraseTrumpetSpec(speed, kAir, kTemp, kPhraseTrumpetLengthMeters * brassRoom);
