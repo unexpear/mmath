@@ -166,18 +166,33 @@ inline constexpr double kFatigueLoadScale = 0.45;         // UNSOURCED
 // back 14-50% of it. Larger values broke the clarinet, saxophone and
 // trumpet into squeaks or silence at tiredness 1; a 40-cent conical reed
 // went sharp (the less-damped reed won), hence its own values.
-inline constexpr double kFatigueBreathSag = 0.5;        // TUNED blowing pressure x (1 - this u)
+inline constexpr double kFatigueBreathSag = 0.5;        // TUNED blowing pressure x (1 - this u): clarinet, flute
+inline constexpr double kSaxFatigueBreathSag = 0.3;     // TUNED (24.2f) the same, alto saxophone (0.5 choked the reed: see below)
+inline constexpr double kBrassFatigueBreathSag = 0.7;   // TUNED (24.2f) the same, brass (see below)
 inline constexpr double kFatigueNoiseGain = 3.0;        // TUNED reed / jet turbulence and edge noise x (1 + this u)
 inline constexpr double kBrassFatigueNoiseGain = 4.0;   // TUNED lip turbulence x (1 + this u)
 inline constexpr double kBrassFatigueLipCents = 150.0;  // TUNED lip resonance sags this u x register, cents
 inline constexpr double kBrassFatigueDampGain = 0.4;    // TUNED lip damping x (1 + this u)
+inline constexpr double kBrassFatigueLeak = 0.3;        // TUNED (24.2f) sustained lip-leak turbulence, this x u x tone rms
 inline constexpr double kFatigueCrackSdCents = 150.0;   // TUNED extra onset error SD x u x register (24.2a)
 inline constexpr double kReedFatigueCents = 40.0;       // TUNED cylindrical reed: equivalent length, cents x u
 inline constexpr double kReedFatigueDampDrop = 0.4;     // TUNED cylindrical reed: lip damping x (1 - this u)
-inline constexpr double kSaxFatigueCents = 120.0;       // TUNED conical reed: equivalent length, cents x u
+inline constexpr double kSaxFatigueCents = 80.0;        // TUNED conical reed: equivalent length, cents x u (24.2f: was 120)
 inline constexpr double kSaxFatigueDampDrop = 0.0;      // TUNED conical reed: lip damping x (1 - this u)
 inline constexpr double kFluteFatigueCoverCents = 30.0; // TUNED lip cover drift, cents x u
 inline constexpr double kFluteFatigueAimMeters = 3.0e-4;// TUNED jet aim drift x u, m
+// Step 24.2f retune (runs/pb24/fat, the same sweep, tiredness 1, fresh /
+// tired / rested): the register-dependent saxophone reed damping (24.2f
+// part A) let the 0.5 breath sag choke the tired saxophone (level -13 dB,
+// half the frames unpitched, -93 cents); 0.3 with 80 cents keeps it
+// speaking (-1 / -37 / -26 cents). The brass level barely sagged and the
+// trumpet's did not come back after the rest, because the sagging lip
+// resonance makes the buzz louder while the weaker breath makes it
+// softer: 0.7 lets the breath win (trumpet -16.5 / -20.8 / -19.8 dB,
+// trombone -12.5 / -14.4 / -13.8 dB). The lip leak adds the air heard
+// around a tired embouchure (trombone noise between the harmonics -34 /
+// -25 / -29 dB; flute -39 / -32 / -34 dB with the locked-breath leak in
+// setTurbulenceScale). No published values: TUNED.
 inline constexpr double kFatigueVibratoJitter = 0.5;    // UNSOURCED (not swept) vibrato rate / depth SD x u, per note
 inline constexpr double kFatigueAttackGain = 1.5;       // UNSOURCED (not swept) tongue release time x (1 + this u)
 
@@ -197,6 +212,27 @@ inline double registerHeight(const PhraseNote& n, const WindPlayerProfile& playe
 }
 }  // namespace phrase_detail
 
+// Step 24.2f: "Start tired". The fatigued share after this long of
+// steady mf playing in the instrument's middle register, from rest, at
+// the player's rates: the same model, so the share and its recovery stay
+// consistent. TUNED (runs/pb24/capb): at Tiredness 1 a minute puts the
+// short audition tune 9-21 cents flat and up to 2 dB weaker; 150 s (the
+// step 24.2d sweep's tired point) put the low trombone more than a
+// semitone flat and choked the clarinet at Tiredness 2.
+inline constexpr double kStartTiredSec = 60.0;
+[[nodiscard]] inline double startTiredShare(const WindPlayerProfile& player) {
+  if (!player.startTired || !(player.fatigueRate > 0.0)) return 0.0;
+  const double fRate = kFatigueRatePerSec * player.fatigueRate, rRate = kRecoveryRatePerSec * player.fatigueRecovery;
+  const double tl = std::min(0.95, kFatigueLoadScale * phrase_detail::dynamicLoudness("mf"));
+  constexpr double dt = 0.01;
+  double mf = 0.0;
+  for (int k = 0; k < static_cast<int>(kStartTiredSec / dt); ++k) {
+    const double ma = std::min(tl, 1.0 - mf);
+    mf = std::clamp(mf + (fRate * ma - rRate * mf) * dt, 0.0, 1.0);
+  }
+  return mf;
+}
+
 // The fatigued share of the embouchure muscles, one value per hop of
 // hopFrames from the phrase's start (empty when fatigueRate is 0).
 [[nodiscard]] inline std::vector<double> phraseFatigue(const std::vector<PhraseNote>& notes,
@@ -208,7 +244,7 @@ inline double registerHeight(const PhraseNote& n, const WindPlayerProfile& playe
   u.resize(static_cast<std::size_t>(hops), 0.0);
   const double dt = static_cast<double>(hopFrames) / rateHz;
   const double fRate = kFatigueRatePerSec * player.fatigueRate, rRate = kRecoveryRatePerSec * player.fatigueRecovery;
-  double mf = 0.0;
+  double mf = startTiredShare(player);  // 0 unless "Start tired" (24.2f)
   std::size_t active = 0;
   for (std::uint64_t h = 0; h < hops; ++h) {
     const double t = static_cast<double>(h * hopFrames) / rateHz;
@@ -372,8 +408,18 @@ inline constexpr double kBrassFallBreathDrop = 0.5;  // TUNED: still speaking, -
 inline constexpr double kReedFallBreathDrop = 0.3;   // TUNED: 0.4 drops the clarinet's register
 inline constexpr double kFluteFallBreathDrop = 0.5;  // TUNED
 // A fall never takes more than this share of the note: the start stays
-// on pitch. UNSOURCED.
-inline constexpr double kFallMaxNoteFraction = 0.7;
+// on pitch. UNSOURCED. Step 24.2f: 0.7 -> 0.3 and the same limit on a
+// scoop (from the note's start), so the middle of every note sits on its
+// pitch at any slider setting and a tune stays recognisable (runs/pb24/
+// capb: with every note falling over 0.7 of a 0.3 s note, 64-82% of the
+// tune's notes read more than 50 cents off in their middle half).
+inline constexpr double kFallMaxNoteFraction = 0.3;
+inline constexpr double kScoopMaxNoteFraction = 0.3;
+// Step 24.2f: a crack (hold, correction and overshoot, phrase_player's
+// onset error) takes at most this share of its note; a shorter note's
+// crack is shortened in proportion (a 0.3 s note: 120 ms, not 200 ms).
+// Notes of 0.5 s and longer are unchanged. TUNED (runs/pb24/capb).
+inline constexpr double kCrackMaxNoteFraction = 0.4;
 
 namespace phrase_detail {
 // A phrase-ending note (fall-offs): the next note is a rest or the end, or
@@ -528,6 +574,13 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
   const std::vector<double> scoopDepth = phraseScoopDepths(notes, player);
   const bool anyScoop = std::any_of(scoopDepth.begin(), scoopDepth.end(), [](double x) { return x > 0.0; });
   const double scoopSec = player.scoopSec > 0.0 ? player.scoopSec : kScoopDefaultSec;
+  // Step 24.2f: each scoop takes at most kScoopMaxNoteFraction of its note.
+  std::vector<double> scoopLen(notes.size(), scoopSec);
+  if (anyScoop)
+    for (std::size_t i = 0; i < notes.size(); ++i) {
+      const double end = i + 1 < notes.size() ? notes[i + 1].startSec : static_cast<double>(scoreFrames) / rateHz;
+      scoopLen[i] = std::max(1.0e-3, std::min(scoopSec, kScoopMaxNoteFraction * (end - notes[i].startSec)));
+    }
   // Step 24.2c: fall-offs. A falling note falls over its last fallSec,
   // ending at the next note's tongue closure (or the score's end).
   const std::vector<double> fallDepth = phraseFallDepths(notes, player);
@@ -541,6 +594,15 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       const double end = (i + 1 < notes.size() ? notes[i + 1].startSec : static_cast<double>(scoreFrames) / rateHz) - closureSec;
       fallLen[i] = std::max(1.0e-3, std::min(want, kFallMaxNoteFraction * (end - notes[i].startSec)));
       fallStart[i] = end - fallLen[i];
+    }
+  }
+  // Step 24.2f: each note's crack time scale (kCrackMaxNoteFraction).
+  std::vector<double> crackFit(notes.size(), 1.0);
+  if (anyCrack) {
+    const double span = player.crackHoldSec + (kCrackOvershoot > 0.0 ? 2.0 : 1.0) * player.crackCorrectSec;
+    for (std::size_t i = 0; i < notes.size() && span > 0.0; ++i) {
+      const double end = i + 1 < notes.size() ? notes[i + 1].startSec : static_cast<double>(scoreFrames) / rateHz;
+      crackFit[i] = std::clamp(kCrackMaxNoteFraction * (end - notes[i].startSec) / span, 1.0e-3, 1.0);
     }
   }
   bool breathing = false;
@@ -682,7 +744,8 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       const double since = time - note.startSec;
       const double closureSec = static_cast<double>(kTongue) / rateHz;
       double w = 0.0;
-      const double hold = player.crackHoldSec, fix = player.crackCorrectSec;
+      const double fit = crackFit[static_cast<std::size_t>(sounding)];
+      const double hold = player.crackHoldSec * fit, fix = player.crackCorrectSec * fit;
       if (since >= -closureSec && since < hold) w = 1.0;
       else if (since >= hold && since < hold + fix) {
         const double a = (since - hold) / fix;
@@ -701,8 +764,9 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
       const double since = time - note.startSec;
       const double closureSec = static_cast<double>(kTongue) / rateHz;
       const double depthCents = scoopDepth[static_cast<std::size_t>(sounding)];
-      if (depthCents > 0.0 && since >= -closureSec && since < scoopSec) {
-        const double a = since <= 0.0 ? 0.0 : since / scoopSec;
+      const double len = scoopLen[static_cast<std::size_t>(sounding)];
+      if (depthCents > 0.0 && since >= -closureSec && since < len) {
+        const double a = since <= 0.0 ? 0.0 : since / len;
         scoopNow = depthCents * (1.0 - a * a * (3.0 - 2.0 * a));
       }
     }
@@ -741,7 +805,15 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
     double env = breathOff ? 0.0 : note.gain * (releasing >= 0 ? releaseLeft : 1.0);
     if (brassRelease >= 0.0) env *= brassRelease;
     if (fallNow > 0.0) env *= fallBreath;
-    if (tiring) env *= 1.0 - kFatigueBreathSag * tired;  // breath support weakens
+    if (tiring) {  // breath support weakens
+      constexpr bool coneVoice = requires(Voice& probe) { probe.setLipDampingScale(1.0); };
+      // Brass (24.2f): a note below the middle needs less pressure, so a
+      // weakened breath short of its old top costs it less: x (pitch /
+      // middle)^2 below the middle. Without it the low trombone sagged
+      // 45-100 cents at the tired point while the middle sagged 25.
+      const double h = note.lipHz > 0.0 ? std::min(1.0, phrase_detail::registerHeight(note, player)) : 1.0;
+      env *= 1.0 - (note.lipHz > 0.0 ? kBrassFatigueBreathSag * h * h : (coneVoice && !fluteJet) ? kSaxFatigueBreathSag : kFatigueBreathSag) * tired;
+    }
     const bool dipping = airway == nullptr && fluteJet && note.tongue && sounding > 0 && !note.rest &&
                          time < note.startSec + 0.020;
     if (dipping) env *= 0.55;
@@ -831,6 +903,9 @@ std::vector<double> playPhrase(Voice& voice, const std::vector<PhraseNote>& note
         crackRatio *= std::pow(2.0, -kBrassFatigueLipCents * tired * phrase_detail::registerHeight(note, player) / 1200.0);
         if constexpr (requires(Voice& probe) { probe.setLipDampingScale(1.0); }) {
           if (!(voice.setLipDampingScale(1.0 + kBrassFatigueDampGain * tired))) return {};
+        }
+        if constexpr (requires(Voice& probe) { probe.setLipLeakFraction(0.0); }) {
+          if (!(voice.setLipLeakFraction(std::min(1.0, kBrassFatigueLeak * tired)))) return {};
         }
       }
       if (!(voice.setLipResonanceHz(note.lipHz * player.lipRatioScale / vibrato * crackRatio))) return {};

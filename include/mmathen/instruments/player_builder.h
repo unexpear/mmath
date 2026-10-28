@@ -108,6 +108,12 @@ struct PlayerInstrumentInfo {
   return false;
 }
 [[nodiscard]] inline bool isBrass(PlayerInstrument i) { return i == PlayerInstrument::Trumpet || i == PlayerInstrument::Trombone; }
+// Step 24.2f: fault slider caps where every wind's audition (tune and
+// scale, every other fault at its most, "Start tired" on) still has 80%
+// of its notes within 50 cents in their middle half (runs/pb24/capb).
+// TUNED.
+inline constexpr double kWindTirednessMax = 1.5;
+inline constexpr double kBrassCrackSdMax = 150.0;
 
 // Phrasing habits from the expressive-timing rules (music/expressive_timing.h,
 // TimingRules: Friberg et al. 2006 KTH phrase arch, Repp 1992 variation),
@@ -598,8 +604,11 @@ inline PlayerField make(const char* key, const char* label, const char* tip, con
     // Step 24.2a: the onset embouchure error that lets the lips / reed / jet
     // lock onto a neighbouring resonance for a moment (phrase_player.h). No
     // measured player rate was found, so 0 = off for every named player.
+    // Step 24.2f: the brass crack more readily (the lip is locked to one
+    // partial of many), so their slider stops where the tune is still
+    // recognisable (runs/pb24/capb, TUNED).
     v.push_back(make("crackSdCents", "Cracked notes", "How shaky the start of each note is: higher = more notes crack, and crack further (the lips, reed or air jet catch the wrong note for a moment). 0 = never.", "Mistakes",
-                     0.0, 1200.0, "cents", 1.0, S::Unsourced, "onset embouchure error (Wolfe 2022; Velut et al. 2017); no measured rate, 0 = off",
+                     0.0, isBrass(i) ? kBrassCrackSdMax : 1200.0, "cents", 1.0, S::Unsourced, "onset embouchure error (Wolfe 2022; Velut et al. 2017); no measured rate, 0 = off",
                      [](const PlayerRig& r) { return r.wind.crackSdCents; }, [](PlayerRig& r, double x) { r.wind.crackSdCents = x; }));
     // Step 24.2b: scoops, a slide up into the note made by the embouchure
     // (phrase_player.h). No measured rate or depth for wind players, so
@@ -635,11 +644,19 @@ inline PlayerField make(const char* key, const char* label, const char* tip, con
     // muscle model). No measured rate for wind players: 0 = off for every
     // named player.
     v.push_back(make("fatigueRate", "Tiredness", "How fast the player tires on long, loud, high playing: the pitch sags flat, the tone gets airier and weaker (0 = never tires).", "Stamina",
-                     0.0, 5.0, "x", 1.0, S::Unsourced, "x muscle fatigue rate F (Frey-Law et al. 2012, grip; VERIFY for lips); 0 = off",
+                     // Step 24.2f: capped at 1.5 (was 5): above it a player
+                     // who starts tired is more than 50 cents off on some
+                     // winds (trombone first). runs/pb24/capb, TUNED.
+                     0.0, kWindTirednessMax, "x", 1.0, S::Unsourced, "x muscle fatigue rate F (Frey-Law et al. 2012, grip; VERIFY for lips); 0 = off",
                      [](const PlayerRig& r) { return r.wind.fatigueRate; }, [](PlayerRig& r, double x) { r.wind.fatigueRate = x; }));
     v.push_back(make("fatigueRecovery", "Recovery speed", "How fast the player gets their strength back in rests (1 = usual; needs some tiredness).", "Stamina",
                      0.25, 4.0, "x", 1.0, S::Unsourced, "x recovery rate R, x30 in rests (Looft et al. 2018, grip; VERIFY)",
                      [](const PlayerRig& r) { return r.wind.fatigueRecovery; }, [](PlayerRig& r, double x) { r.wind.fatigueRecovery = x; }));
+    // Step 24.2f: pre-load the fatigue so a short audition shows it.
+    v.push_back(make("startTired", "Start tired", "On: the player starts already tired, as after about a minute of steady playing, so even a short tune shows it. Needs some tiredness.", "Stamina",
+                     0.0, 1.0, "", 1.0, S::Tuned, "fatigue pre-loaded: kStartTiredSec = 60 s of mf playing (phrase_player.h, TUNED); off by default",
+                     [](const PlayerRig& r) { return r.wind.startTired ? 1.0 : 0.0; },
+                     [](PlayerRig& r, double x) { r.wind.startTired = x >= 0.5; }, true));
     if (!isBrass(i) && i != I::Flute)
       v.push_back(make("reedReleaseSec", "Note ending fade", "How gently the breath stops at the end of a phrase.", "Note starts & ends",
                        0.03, 0.60, "ms", 1000.0, S::Tuned, "kReedBreathReleaseSec, TUNED to Li et al. 2016",

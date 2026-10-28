@@ -223,9 +223,15 @@ TEST_CASE("player fatigue: a tired wind drifts flat, sags and changes tone; a re
     const char* key;
     double minDropCents, minSagDb, minApRatio, minBrightChange;
   };
-  for (const Want& k : {Want{"trumpet", 15.0, 0.75, 1.8, 0.10}, Want{"trombone", 12.0, 0.0, 0.0, 0.0},
+  // Step 24.2f retuned the brass and flute response (phrase_player.h:
+  // register-scaled breath sag, the tired-lip leak, the locked breath
+  // noise scaled with turbulence). Measured then (runs/pb24/fat, cur):
+  // trumpet -25 c, -4.0 dB, aperiodicity x4.6, brightness +28%;
+  // trombone -28 c, -1.4 dB, x11, +45%; flute -20 c, -3.4 dB, x1.4;
+  // clarinet -34 c, -3.4 dB; alto sax -37 c, -1.6 dB, x5.
+  for (const Want& k : {Want{"trumpet", 15.0, 2.0, 3.0, 0.15}, Want{"trombone", 15.0, 0.75, 4.0, 0.20},
                         Want{"clarinet", 20.0, 2.0, 3.0, 0.0}, Want{"alto_sax", 15.0, 1.5, 2.0, 0.0},
-                        Want{"flute", 12.0, 2.0, 0.0, 0.0}}) {
+                        Want{"flute", 12.0, 2.0, 1.15, 0.0}}) {
     INFO(k.key);
     PlayerRig r = builtInPlayer(instrumentOf(k.key));
     r.wind.fatigueRate = 1.0;
@@ -246,8 +252,7 @@ TEST_CASE("player fatigue: a tired wind drifts flat, sags and changes tone; a re
     for (std::size_t b = 3; b + 2 < 27; b += 3) CHECK(meanOf(p, b, b + 2, cents) <= meanOf(p, b - 3, b - 1, cents) + 3.0);
     // Weaker.
     if (k.minSagDb > 0.0) CHECK(meanOf(p, 0, 1, db) - meanOf(p, 25, 27, db) >= k.minSagDb);
-    // Noisier or a changed tone (the trombone and flute measured no
-    // change at tiredness 1: see the 24.2d report).
+    // Noisier and, on the brass, a changed tone.
     if (k.minApRatio > 0.0) CHECK(meanOf(p, 25, 27, ap) >= k.minApRatio * meanOf(p, 0, 1, ap));
     if (k.minBrightChange > 0.0)
       CHECK(std::fabs(meanOf(p, 25, 27, bright) / meanOf(p, 0, 1, bright) - 1.0) >= k.minBrightChange);

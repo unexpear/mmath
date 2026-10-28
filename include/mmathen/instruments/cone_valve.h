@@ -415,7 +415,7 @@ class ConeValveVoice final : public IVoice {
         radiated += valve_detail::reedApertureBreath(
             flowMean_, breathEnv_, noise_, breathState_, apertureFlow_, radiated,
             reedTurbulence_, density_, listener_, trip, rate_.value(), period,
-            /*sustain=*/!lip_, &lipLocked_, lockedBreath_);
+            /*sustain=*/!lip_ || lipLeak_ > 0.0, &lipLocked_, lip_ ? lipLeak_ : lockedBreath_);
       }
       out[i] = radiated;
       if (airway_ != nullptr) airway_->step(apertureFlow_);
@@ -694,8 +694,22 @@ class ConeValveVoice final : public IVoice {
   // scale, 1 = as built (a tired embouchure leaks more air).
   bool setTurbulenceScale(double scale) {
     if (!std::isfinite(scale) || scale < 0.0) return false;
-    if (!turbulenceBaseKept_) { turbulenceBase_ = reedTurbulence_; turbulenceBaseKept_ = true; }
+    if (!turbulenceBaseKept_) { turbulenceBase_ = reedTurbulence_; lockedBreathBase_ = lockedBreath_; turbulenceBaseKept_ = true; }
     reedTurbulence_ = std::min(1.0, turbulenceBase_ * scale);
+    // Step 24.2f: the locked breath (ValveBlow::lockedBreathFraction)
+    // leaks by the same factor (see BoreValveVoice::setTurbulenceScale).
+    if (lockedBreathBase_ >= 0.0) lockedBreath_ = std::min(1.0, lockedBreathBase_ * scale);
+    return true;
+  }
+
+  // Step 24.2f: a tired embouchure no longer seals around the buzzing
+  // lips and leaks air. Once the buzz is louder than the breath (the lip
+  // is locked), `fraction` of the lip jet's turbulence keeps sounding,
+  // x the tone's rms, as a reed's lockedBreathFraction does. 0 = sealed,
+  // as built (no sustained lip noise). Brass only.
+  bool setLipLeakFraction(double fraction) {
+    if (!lip_ || !std::isfinite(fraction) || fraction < 0.0 || fraction > 1.0) return false;
+    lipLeak_ = fraction;
     return true;
   }
 
@@ -1632,6 +1646,8 @@ class ConeValveVoice final : public IVoice {
   bool playingWallSaved_ = false;
   double reedTurbulence_ = 0.0;
   double lockedBreath_ = -1.0;
+  double lipLeak_ = 0.0;  // step 24.2f, setLipLeakFraction
+  double lockedBreathBase_ = -1.0;  // step 24.2f, setTurbulenceScale
   double brassiness_ = 0.0;
   double soundingLength_ = 0.0;
   BurgersLine burgers_;

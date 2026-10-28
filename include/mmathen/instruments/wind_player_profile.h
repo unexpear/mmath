@@ -153,6 +153,10 @@ struct WindPlayerProfile {
   // named profile keeps 0.
   double fatigueRate = 0.0;
   double fatigueRecovery = 1.0;
+  // Step 24.2f: begin the phrase already tired, as after
+  // kStartTiredSec of steady playing (phrase_player.h), so a short
+  // audition shows the tiredness. Needs fatigueRate > 0. Off by default.
+  bool startTired = false;
   std::uint64_t fatigueSeed = 1;
   // The instrument's middle register for the fatigue load, Hz (set by the
   // renderer per instrument; 0 = 440 Hz).

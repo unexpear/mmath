@@ -941,9 +941,15 @@ class BoreValveVoice final : public IVoice {
   // at the edge, m (ValveBlow::jetAimMeters).
   bool setTurbulenceScale(double scale) {
     if (!std::isfinite(scale) || scale < 0.0) return false;
-    if (!turbulenceBaseKept_) { turbulenceBase_ = reedTurbulence_; jetNoiseBase_ = jetNoise_; turbulenceBaseKept_ = true; }
+    if (!turbulenceBaseKept_) {
+      turbulenceBase_ = reedTurbulence_; jetNoiseBase_ = jetNoise_; lockedBreathBase_ = lockedBreath_; turbulenceBaseKept_ = true;
+    }
     reedTurbulence_ = std::min(1.0, turbulenceBase_ * scale);
     jetNoise_ = jetNoiseBase_ * scale;
+    // Step 24.2f: the breath that keeps sounding once the tone is locked
+    // (ValveBlow::lockedBreathFraction) leaks by the same factor; before,
+    // only the pre-lock jet grew and a tired flute got no airier.
+    if (lockedBreathBase_ >= 0.0) lockedBreath_ = std::min(1.0, lockedBreathBase_ * scale);
     return true;
   }
   bool setJetAimMeters(double meters) {
@@ -1472,6 +1478,7 @@ class BoreValveVoice final : public IVoice {
   double reedTurbulence_ = 0.0;
   double turbulenceBase_ = 0.0;
   double jetNoiseBase_ = 0.0;
+  double lockedBreathBase_ = -1.0;
   bool turbulenceBaseKept_ = false;
   double lockedBreath_ = -1.0;
   valve_detail::TripLoss wall_{};
