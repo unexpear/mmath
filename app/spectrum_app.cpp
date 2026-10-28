@@ -25,6 +25,12 @@
 //               [--linear] [--method psola|pv|pghi|hybrid] [--tab repair]
 //               [file.wav]
 //   mmathen_app --reference-demo reference-suite.tsv
+//   mmathen_app --builder [instrument-key] [--builder-play]   (step 23: opens
+//               the Player builder, e.g. --builder cello; --builder-play
+//               also renders and plays the phrase)
+//               [--players file.txt] [--builder-load [INSTRUMENT:]NAME]
+//               (another saved-players file; load a saved player, e.g.
+//               violin:Warm, or by name alone when only one has it)
 //   saves a PNG of the window after S seconds (after any background job has
 //   finished), plus out.png.txt with run statistics, and exits.
 
@@ -34,6 +40,7 @@
 #include "tuner_panel.h"
 #include "audio_output.h"
 #include "desktop_style.h"
+#include "player_builder_panel.h"
 
 #include <SDL3/SDL_main.h>
 #include <imgui.h>
@@ -320,6 +327,10 @@ struct App {
   app::PrecisionTuner streamingTuner;
   app::tuner::Panel tunerPanel;
   bool tunerView = false;
+  // Step 23: the Player builder view and its loop setting to restore.
+  app::builder::Panel builder;
+  bool builderView = false;
+  bool loopBeforeBuilder = true;
   int preset = 0;
   bool applyPreset = false;
   std::array<PBand, 8> pbands{};
@@ -535,7 +546,7 @@ struct App {
     p.deessOn = deessOn;
     p.mb = mb;
     p.mbOn = mbOn;
-    if (referenceView || tunerView) {
+    if (referenceView || tunerView || builderView) {
       // Reference playback uses the original signal; retain all user controls
       // so leaving this view restores their settings without changing them.
       p.eqOn = p.compOn = p.limOn = p.deessOn = p.mbOn = false;
@@ -2460,16 +2471,52 @@ struct App {
     }
   }
 
+  void openBuilder() {
+    if (!builderView) loopBeforeBuilder = loop;
+    builderView = true; referenceView = tunerView = false; paramsDirty = true;
+  }
+  void leaveBuilder() {
+    if (!builderView) return;
+    builderView = false;
+    if (loop != loopBeforeBuilder) {
+      loop = loopBeforeBuilder;
+      e().loop.store(loop);  // the audio thread applies it
+    }
+  }
+  // Builder phrases play once through the normal transport.
+  void drawBuilder() {
+    builder.draw();
+    if (builder.wantStop() && e().trackFrames > 0 && e().mode.load() == kFile) { setPlaying(false); seek(0); }
+    if (auto r = builder.takeAudio()) {
+      WavData w;
+      w.rate = SampleRateHz{app::audition::kRate};
+      w.channels = 1;
+      w.bitsPerSample = 32;
+      w.isFloat = true;
+      w.frames = r->mono.size();
+      w.samples = std::move(r->mono);
+      loop = false;
+      e().loop.store(false);
+      loadWav(w, r->name);
+      setPlaying(true);
+    }
+  }
+
   void drawHeader() {
     const float u = app::ui::unit();
     app::ui::heading("MMathEn", 22);
     ImGui::SameLine(170 * u);
-    if (app::ui::button("Analyzer", !referenceView && !tunerView)) { referenceView = tunerView = false; paramsDirty = true; }
+    if (app::ui::button("Analyzer", !referenceView && !tunerView && !builderView)) {
+      leaveBuilder(); referenceView = tunerView = false; paramsDirty = true;
+    }
     ImGui::SameLine();
-    if (app::ui::button("Music & tuner", tunerView)) { referenceView = false; tunerView = true; paramsDirty = true; }
+    if (app::ui::button("Music & tuner", tunerView)) { leaveBuilder(); referenceView = false; tunerView = true; paramsDirty = true; }
+    ImGui::SameLine();
+    if (app::ui::button("Player builder", builderView)) openBuilder();
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Make your own player: change how an instrument is played and hear it.");
     ImGui::SameLine();
     if (app::ui::button("Reference recordings", referenceView)) {
-      referenceView = true; tunerView = false; paramsDirty = true;
+      leaveBuilder(); referenceView = true; tunerView = false; paramsDirty = true;
       if (referenceDemo.entries.empty()) {
         const char* base = SDL_GetBasePath();
         const auto nearby = std::filesystem::path(base ? base : "") / "reference-suite.tsv";
@@ -2550,6 +2597,11 @@ struct App {
     drawHeader();
     if (referenceView) {
       drawReferenceDemo();
+      ImGui::End();
+      return;
+    }
+    if (builderView) {
+      drawBuilder();
       ImGui::End();
       return;
     }
@@ -2642,7 +2694,8 @@ struct App {
 }  // namespace
 
 int main(int argc, char* argv[]) {
-  std::string capturePath, openPath, matchPath, exportPath, referencePath;
+  std::string capturePath, openPath, matchPath, exportPath, referencePath, builderKey, playersArg, builderLoad;
+  bool builderArg = false, builderPlayArg = false;
   int referenceTrack = 0, instrumentArg=0;
   double captureSeconds = 3.0, seekAt = -1.0;
   bool mute = false, useMic = false, compArg = false, transformArg = false, flatArg = false, truePeakArg = false,
@@ -2695,6 +2748,16 @@ int main(int argc, char* argv[]) {
       compArg = true;
     } else if (a == "--mic") {
       useMic = true;
+    } else if (a == "--builder") {
+      builderArg = true;
+      if (more && argv[i + 1][0] != '-') builderKey = argv[++i];
+    } else if (a == "--builder-play") {
+      builderArg = builderPlayArg = true;
+    } else if (a == "--players" && more) {
+      playersArg = argv[++i];
+    } else if (a == "--builder-load" && more) {
+      builderArg = true;
+      builderLoad = argv[++i];
     } else if (a == "--tuner") {
       tunerArg = true;
     } else if (a == "--piano") {
@@ -2727,6 +2790,7 @@ int main(int argc, char* argv[]) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "mmathEn", SDL_GetError(), nullptr);
     return 1;
   }
+  a.builder.window = a.window;  // the builder's Export / Import dialogs
   a.renderer = SDL_CreateRenderer(a.window, nullptr);
   if (!a.renderer) {
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "mmathEn", SDL_GetError(), a.window);
@@ -2812,6 +2876,14 @@ int main(int argc, char* argv[]) {
     a.loadDemo();
   }
   if (!matchPath.empty()) a.startMatchAnalysis(matchPath);
+  if (builderArg) {
+    a.openBuilder();
+    mmathen::PlayerInstrument bi{};
+    if (!playersArg.empty()) a.builder.setPlayersPath(playersArg);
+    if (!builderKey.empty() && mmathen::playerInstrumentFromKey(builderKey, bi)) a.builder.select(bi);
+    if (!builderLoad.empty() && !a.builder.loadByName(builderLoad)) a.status = a.builder.loadError();
+    if (builderPlayArg) a.builder.play();
+  }
   bool transformPending = transformArg && !a.original.empty();
 
   double start = a.now(), last = start;
@@ -2821,9 +2893,14 @@ int main(int argc, char* argv[]) {
     SDL_Event ev;
     while (SDL_PollEvent(&ev)) {
       ImGui_ImplSDL3_ProcessEvent(&ev);
-      if (ev.type == SDL_EVENT_QUIT) running = false;
-      if (ev.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && ev.window.windowID == SDL_GetWindowID(a.window))
-        running = false;
+      // Step 24.2: unsaved players are asked about first (the builder shows
+      // the question; quitApproved() ends the loop once answered).
+      const bool quitAsked = ev.type == SDL_EVENT_QUIT ||
+                             (ev.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && ev.window.windowID == SDL_GetWindowID(a.window));
+      if (quitAsked) {
+        if (a.builder.requestQuit()) running = false;
+        else a.openBuilder();
+      }
       if (ev.type == SDL_EVENT_DROP_FILE && ev.drop.data) a.loadPath(ev.drop.data);
       if ((ev.type == SDL_EVENT_AUDIO_DEVICE_ADDED || ev.type == SDL_EVENT_AUDIO_DEVICE_REMOVED ||
            ev.type == SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED) && ev.adevice.recording) {
@@ -2852,7 +2929,7 @@ int main(int argc, char* argv[]) {
       a.seek(seekAt);
       seekDone = true;
     }
-    if (a.busy() || a.referenceDemo.busy()) start = t;  // captures wait for background jobs
+    if (a.busy() || a.referenceDemo.busy() || a.builder.busy()) start = t;  // captures wait for background jobs
 
     ImGui_ImplSDLRenderer3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
@@ -2864,7 +2941,8 @@ int main(int argc, char* argv[]) {
     SDL_RenderClear(a.renderer);
     ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), a.renderer);
 
-    if (!capturePath.empty() && !transformPending && exportPath.empty() && !a.busy() && !a.referenceDemo.busy() && t - start >= captureSeconds) {
+    if (!capturePath.empty() && !transformPending && exportPath.empty() && !a.busy() && !a.referenceDemo.busy() && !a.builder.busy() &&
+        t - start >= captureSeconds) {
       SDL_Surface* shot = SDL_RenderReadPixels(a.renderer, nullptr);
       const bool saved = shot && SDL_SavePNG(shot, capturePath.c_str());
       if (shot) SDL_DestroySurface(shot);
@@ -2886,7 +2964,7 @@ int main(int argc, char* argv[]) {
                      a.loudness ? a.loudness->momentaryLufs() : kLoudnessFloor,
                      a.loudness ? a.loudness->truePeakDbtp() : kLoudnessFloor);
         if (a.referenceView) SDL_IOprintf(f, "referenceTrack=%s\nreferenceReady=%d\nreferenceEngine=%s\nreferenceAccuracy=%.15f\nreferenceEligible=%.15f\nreferenceError=%s\n", a.referenceDemo.data.id.c_str(), a.referenceDemo.ready ? 1 : 0, a.referenceDemo.measured.engine.c_str(), a.referenceDemo.result.accuracy(), a.referenceDemo.result.eligible, a.referenceDemo.error.c_str());
-        SDL_IOprintf(f, "outputGain=%.6f\noutputMuted=%d\nsourceMode=%d\ntunerView=%d\n", SDL_GetAudioStreamGain(a.play), a.output.muted ? 1 : 0, a.e().mode.load(), a.tunerView ? 1 : 0);
+        SDL_IOprintf(f, "outputGain=%.6f\noutputMuted=%d\nsourceMode=%d\ntunerView=%d\nbuilderView=%d\n", SDL_GetAudioStreamGain(a.play), a.output.muted ? 1 : 0, a.e().mode.load(), a.tunerView ? 1 : 0, a.builderView ? 1 : 0);
         SDL_AudioSpec deviceSpec{};
         if (SDL_GetAudioDeviceFormat(SDL_GetAudioStreamDevice(a.play), &deviceSpec, nullptr))
           SDL_IOprintf(f, "outputFormat=%u\noutputChannels=%d\noutputRate=%d\n", static_cast<unsigned>(deviceSpec.format), deviceSpec.channels, deviceSpec.freq);
@@ -2895,6 +2973,7 @@ int main(int argc, char* argv[]) {
       rc = saved ? 0 : 2;
       running = false;
     }
+    if (a.builder.quitApproved()) running = false;
     SDL_RenderPresent(a.renderer);
   }
 

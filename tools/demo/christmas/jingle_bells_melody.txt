@@ -1,0 +1,114 @@
+# Jingle Bells: J. Pierpont.
+#   Verse: "The One Horse Open Sleigh" (1857), Project Gutenberg eBook #10535,
+#   prepared by Dave Maddock from the facsimile sheet music, Public Domain
+#   (https://www.gutenberg.org/files/10535/10535-ly/10535.ly), versemelody,
+#   Ab major 2/4, transposed down a semitone to G.
+#   Refrain: the familiar "Jingle bells, jingle bells, jingle all the way"
+#   tune, which replaced Pierpont's 1857 chorus in later use. Source:
+#   Wikimedia Commons File:Jingle_Bells_refrain_vector.svg, LilyPond source
+#   (soprano voice), G major, public domain
+#   (https://commons.wikimedia.org/wiki/File:Jingle_Bells_refrain_vector.svg).
+# Tempos are performance choices, UNSOURCED except the refrain's \tempo 4=100.
+# Part: melody, trumpet. quarter = 100. Verse then refrain.
+D4 293.66 0.3000 1 0 mf
+D4 293.66 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+A4 440.00 0.3000 1 0 mf
+G4 392.00 0.3000 1 0 mf
+D4 293.66 0.6000 1 0 mf
+rest 0 0.3000 0 0 mf
+D4 293.66 0.1500 1 0 mf
+D4 293.66 0.1500 1 0 mf
+D4 293.66 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+A4 440.00 0.3000 1 0 mf
+G4 392.00 0.3000 1 0 mf
+D4 293.66 1.2000 1 1 mf
+D4 293.66 0.3000 1 0 mf
+C5 523.25 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+A4 440.00 0.3000 1 0 mf
+F#4 369.99 1.2000 1 1 mf
+F#4 369.99 0.3000 1 0 mf
+E5 659.26 0.3000 1 0 mf
+D5 587.33 0.3000 1 0 mf
+C5 523.25 0.3000 1 0 mf
+B4 493.88 0.9000 1 0 mf
+D4 293.66 0.3000 1 0 mf
+D4 293.66 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+A4 440.00 0.3000 1 0 mf
+G4 392.00 0.3000 1 0 mf
+D4 293.66 1.2000 1 1 mf
+D4 293.66 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+A4 440.00 0.3000 1 0 mf
+G4 392.00 0.3000 1 0 mf
+E4 329.63 1.2000 1 1 mf
+E4 329.63 0.3000 1 0 mf
+C5 523.25 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+A4 440.00 0.3000 1 0 mf
+F#4 369.99 0.3000 1 0 mf
+D5 587.33 0.3000 1 0 mf
+C#5 554.37 0.3000 1 0 mf
+D5 587.33 0.3000 1 0 mf
+E5 659.26 0.3000 1 0 mf
+D5 587.33 0.3000 1 0 mf
+C5 523.25 0.3000 1 0 mf
+A4 440.00 0.3000 1 0 mf
+G4 392.00 1.2000 1 1 mf
+B4 493.88 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+B4 493.88 0.6000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+B4 493.88 0.6000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+D5 587.33 0.3000 1 0 mf
+G4 392.00 0.4500 1 0 mf
+A4 440.00 0.1500 1 0 mf
+B4 493.88 0.6000 1 0 mf
+rest 0 0.6000 0 0 mf
+C5 523.25 0.3000 1 0 mf
+C5 523.25 0.3000 1 0 mf
+C5 523.25 0.4500 1 0 mf
+C5 523.25 0.1500 1 0 mf
+C5 523.25 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+B4 493.88 0.1500 1 0 mf
+B4 493.88 0.1500 1 0 mf
+B4 493.88 0.3000 1 0 mf
+A4 440.00 0.3000 1 0 mf
+A4 440.00 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+A4 440.00 0.6000 1 0 mf
+D5 587.33 0.6000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+B4 493.88 0.6000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+B4 493.88 0.6000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+D5 587.33 0.3000 1 0 mf
+G4 392.00 0.4500 1 0 mf
+A4 440.00 0.1500 1 0 mf
+B4 493.88 0.6000 1 0 mf
+rest 0 0.6000 0 0 mf
+C5 523.25 0.3000 1 0 mf
+C5 523.25 0.3000 1 0 mf
+C5 523.25 0.4500 1 0 mf
+C5 523.25 0.1500 1 0 mf
+C5 523.25 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+B4 493.88 0.3000 1 0 mf
+B4 493.88 0.1500 1 0 mf
+B4 493.88 0.1500 1 0 mf
+D5 587.33 0.3000 1 0 mf
+D5 587.33 0.3000 1 0 mf
+C5 523.25 0.3000 1 0 mf
+A4 440.00 0.3000 1 0 mf
+G4 392.00 0.9000 1 1 mf
+rest 0 0.3000 0 0 mf

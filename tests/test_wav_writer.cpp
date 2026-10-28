@@ -10,6 +10,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <limits>
@@ -18,6 +20,7 @@
 #include <vector>
 
 #include <mmathen/sink/wav.h>
+#include <mmathen/sink/wav_path.h>
 #include <mmathen/sink/wav_reader.h>
 #include <mmathen/sink/wav_writer.h>
 
@@ -117,4 +120,80 @@ TEST_CASE("overloads are counted, short writes fail, bad configs refused",
             .error() == RenderError::InvalidConfig);
   CHECK(WavWriter::encode(1.0, 24) == 8388607);
   CHECK(WavWriter::encode(-1.0, 16) == -32767);
+}
+
+namespace {
+std::string currentWavDir() {
+#if defined(_MSC_VER)
+  char* buffer = nullptr;
+  std::size_t length = 0;
+  if (_dupenv_s(&buffer, &length, "MMATH_WAV_DIR") != 0 || buffer == nullptr)
+    return {};
+  std::string value(buffer);
+  std::free(buffer);
+  return value;
+#else
+  const char* value = std::getenv("MMATH_WAV_DIR");
+  if (value == nullptr) return {};
+  return std::string(value);
+#endif
+}
+
+void writeWavDir(const std::string& value) {
+#if defined(_MSC_VER)
+  _putenv_s("MMATH_WAV_DIR", value.c_str());
+#else
+  if (value.empty())
+    unsetenv("MMATH_WAV_DIR");
+  else
+    setenv("MMATH_WAV_DIR", value.c_str(), 1);
+#endif
+}
+
+struct WavDirGuard {
+  std::string previous;
+  explicit WavDirGuard(const std::string& next) : previous(currentWavDir()) {
+    writeWavDir(next);
+  }
+  ~WavDirGuard() { writeWavDir(previous); }
+};
+}  // namespace
+
+TEST_CASE("wav output follows the temp directory and MMATH_WAV_DIR", "[d32wav]") {
+  const auto fallback = std::filesystem::temp_directory_path();
+  {
+    WavDirGuard cleared("");
+    CHECK(wavOutputDirectory().lexically_normal() == fallback.lexically_normal());
+  }
+  CHECK(copyWavFile(std::filesystem::path("missing.wav"), {}));
+  const auto absent = artifactWavPath("mmath-path-probe.wav");
+  if (!absent.empty()) CHECK(absent.filename() == "mmath-path-probe.wav");
+
+  const auto overrideDir = fallback / "mmath-wav-dir-1201";
+  std::error_code error;
+  std::filesystem::create_directories(overrideDir, error);
+  REQUIRE(!error);
+  {
+    WavDirGuard overridden(overrideDir.string());
+    CHECK(wavOutputDirectory().lexically_normal() == overrideDir.lexically_normal());
+    const auto file = wavOutputPath("mmath-path-probe.wav");
+    CHECK(file.filename() == "mmath-path-probe.wav");
+    const double sample = 0.25;
+    auto opened =
+        unwrap(WavSink::open(file.string(), SampleRateHz{48000.0}, FrameCount{1}));
+    REQUIRE(opened.consume(&sample, FrameCount{1}));
+    REQUIRE(opened.close().ok());
+    const auto beside = overrideDir / "mmath-path-probe-copy.wav";
+    REQUIRE(copyWavFile(file, beside));
+    CHECK(std::filesystem::file_size(beside) == std::filesystem::file_size(file));
+    REQUIRE(copyWavToArtifacts(file, "mmath-path-probe.wav"));
+    const auto artifact = artifactWavPath("mmath-path-probe.wav");
+    if (!artifact.empty()) {
+      CHECK(std::filesystem::is_regular_file(artifact));
+      std::filesystem::remove(artifact, error);
+    }
+    std::filesystem::remove(file, error);
+    std::filesystem::remove(beside, error);
+  }
+  std::filesystem::remove(overrideDir, error);
 }

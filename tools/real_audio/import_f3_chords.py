@@ -2,9 +2,11 @@
 import hashlib
 import json
 from pathlib import Path
+import os
 import re
 
-source = Path("D:/dev/f3/guitar-tutor/features/chords/data/chords.ts")
+# Path to a local guitar-tutor (f3) checkout: env F3_GUITAR_TUTOR, default ../guitar-tutor.
+source = Path(os.environ.get("F3_GUITAR_TUTOR", "../guitar-tutor")) / "features/chords/data/chords.ts"
 project = Path(__file__).resolve().parents[2]
 text = source.read_text(encoding="utf-8")
 pattern = r"\{ name: '([^']+)', type: '[^']+', strings: \[([^\]]+)\], fingers: \[([^\]]+)\] \}"

@@ -51,6 +51,8 @@ struct Force {};
 struct LinearDensity {};
 struct Impedance {};
 struct Density {};
+struct SurfaceTension {};
+struct ArealDensity {};
 struct Humidity {};
 struct Attenuation {};
 struct Decibel {};
@@ -84,6 +86,12 @@ using LinearDensityKgPerM =
 using ImpedancePasPerMs =  // Pa*s/m (specific acoustic impedance, rayl)
     Quantity<double, DimImpedance, tags::Impedance>;
 using DensityKgPerM3 = Quantity<double, DimDensity, tags::Density>;
+// Membrane: tension per unit length (N/m) and mass per unit area (kg/m²).
+// Distinct from string tension (N) and linear density (kg/m).
+using SurfaceTensionNewtonsPerMeter =
+    Quantity<double, DimSurfaceTension, tags::SurfaceTension>;
+using ArealDensityKgPerSquareMeter =
+    Quantity<double, DimArealDensity, tags::ArealDensity>;
 // Relative humidity as a FRACTION in [0,1] (never percent: the ISO 9613
 // molar-concentration equations take mole percent, converted internally).
 using RelativeHumidity = Quantity<double, DimDimensionless, tags::Humidity>;

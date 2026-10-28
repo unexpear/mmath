@@ -132,7 +132,7 @@ the next candidate; do not repeatedly tune against them.
 
 Added only the offline `chroma_math_probe` target, the real-recording evaluation
 script, and this report. Neither rejected candidate changes the production engine,
-tuner or audio playback. The original `D:\dev\f3` is untouched.
+tuner or audio playback. The original f3 project is untouched.
 
 The probe builds with both GCC 16.2.0 and MSVC 19.43 under the project's
 warnings-as-errors policy. GCC release uses `-fno-fast-math -ffp-contract=off`.
@@ -152,7 +152,7 @@ Reproduce after preparing the existing real-audio environment:
 $env:PATH = 'C:\msys64\ucrt64\bin;' + $env:PATH
 cmake -S . -B build_math_gcc -G Ninja -DCMAKE_BUILD_TYPE=Release `
   -DCMAKE_CXX_COMPILER=C:/msys64/ucrt64/bin/g++.exe `
-  -DCMAKE_MAKE_PROGRAM=C:/Users/micha/AppData/Local/Microsoft/WinGet/Links/ninja.exe `
+  -DCMAKE_MAKE_PROGRAM=ninja `
   -DBUILD_TESTING=OFF -DMMATHEN_BUILD_EXAMPLES=OFF -DMMATHEN_BUILD_VALIDATION=ON
 cmake --build build_math_gcc --target chroma_math_probe --parallel 4
 build_real_audio/venv/Scripts/python.exe tools/real_audio/evaluate_chroma_math.py

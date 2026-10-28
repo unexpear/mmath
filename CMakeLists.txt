@@ -106,6 +106,18 @@ if(BUILD_TESTING)
     tests/test_time.cpp
     tests/test_signal.cpp
     tests/test_render.cpp
+    tests/test_voice_render.cpp
+    tests/test_plucked_string.cpp
+    tests/test_contact_voice.cpp
+    tests/test_band_voices.cpp
+    tests/test_cymbal_vk.cpp
+    tests/test_struck_bar.cpp
+    tests/test_wind_tone.cpp
+    tests/test_soundboard.cpp
+    tests/test_cavity_drum.cpp
+    tests/test_bore_network.cpp
+    tests/test_bessel_horn.cpp
+    tests/test_published_defaults.cpp
     tests/test_tuning.cpp
     tests/test_pitch.cpp
     tests/test_structures.cpp
@@ -136,6 +148,7 @@ if(BUILD_TESTING)
     tests/test_fdtd_box.cpp
     tests/test_fem1d.cpp
     tests/test_coupled_string.cpp
+    tests/test_instruments.cpp
     tests/test_hearing.cpp
     tests/test_spectrum.cpp
     tests/test_svg.cpp
@@ -161,6 +174,19 @@ if(BUILD_TESTING)
     tests/test_chords.cpp
     tests/test_realtime_io.cpp
     tests/test_desktop_tuner.cpp
+    tests/test_guitar_pluck.cpp
+    tests/test_sleigh_bell.cpp
+    tests/test_player_profile.cpp
+    tests/test_player_profile_more.cpp
+    tests/test_player_builder.cpp
+    tests/test_players_file.cpp
+    tests/test_player_library.cpp
+    tests/test_wind_cracks.cpp
+    tests/test_wind_scoops.cpp
+    tests/test_wind_falloffs.cpp
+    tests/test_player_fatigue.cpp
+    tests/test_wind_faults.cpp
+    tests/test_wind_tuning.cpp
     tests/headers/th_result.cpp
     tests/headers/th_scalar.cpp
     tests/headers/th_constants.cpp
@@ -177,7 +203,9 @@ if(BUILD_TESTING)
     tests/headers/th_signal_oscillator.cpp
     tests/headers/th_sink_sink.cpp
     tests/headers/th_sink_wav.cpp
+    tests/headers/th_sink_wav_path.cpp
     tests/headers/th_render_offline.cpp
+    tests/headers/th_render_voice.cpp
     tests/headers/th_music_tuning.cpp
     tests/headers/th_music_pitch.cpp
     tests/headers/th_music_structures.cpp
@@ -191,6 +219,7 @@ if(BUILD_TESTING)
     tests/headers/th_signal_inharmonic.cpp
     tests/headers/th_analysis_consonance.cpp
     tests/headers/th_physics_modes.cpp
+    tests/headers/th_physics_circular_plate.cpp
     tests/headers/th_physics_impedance.cpp
     tests/headers/th_physics_absorption.cpp
     tests/headers/th_music_pcset.cpp
@@ -216,6 +245,35 @@ if(BUILD_TESTING)
     tests/headers/th_physics_fdtd_box.cpp
     tests/headers/th_physics_fem1d.cpp
     tests/headers/th_physics_coupled_string.cpp
+    tests/headers/th_instruments_plucked_string.cpp
+    tests/headers/th_instruments_contact.cpp
+    tests/headers/th_instruments_instrument.cpp
+    tests/headers/th_instruments_violin.cpp
+    tests/headers/th_instruments_viola.cpp
+    tests/headers/th_instruments_cello.cpp
+    tests/headers/th_instruments_double_bass.cpp
+    tests/headers/th_instruments_bow.cpp
+    tests/headers/th_instruments_wound.cpp
+    tests/headers/th_instruments_body.cpp
+    tests/headers/th_instruments_hammer.cpp
+    tests/headers/th_instruments_reed.cpp
+    tests/headers/th_instruments_clarinet.cpp
+    tests/headers/th_instruments_bore_network.cpp
+    tests/headers/th_instruments_bessel_horn.cpp
+    tests/headers/th_instruments_flute.cpp
+    tests/headers/th_instruments_trumpet.cpp
+    tests/headers/th_instruments_saxophone.cpp
+    tests/headers/th_instruments_trombone.cpp
+    tests/headers/th_instruments_guitar.cpp
+    tests/headers/th_instruments_electric_guitar.cpp
+    tests/headers/th_instruments_piano.cpp
+    tests/headers/th_instruments_harp.cpp
+    tests/headers/th_instruments_harpsichord.cpp
+    tests/headers/th_instruments_drum.cpp
+    tests/headers/th_instruments_cymbal.cpp
+    tests/headers/th_instruments_cymbal_vk.cpp
+    tests/headers/th_instruments_player_profile.cpp
+    tests/headers/th_instruments_bowed_note.cpp
     tests/headers/th_hearing_loudness.cpp
     tests/headers/th_hearing_scales.cpp
     tests/headers/th_hearing_masking.cpp
@@ -327,6 +385,9 @@ if(MMATHEN_BUILD_EXAMPLES)
   foreach(example render_demo tuning_demo progression_demo timbre_demo
                   tempo_demo air_table stretch_demo modes_demo voice_demo
                   comma_demo dsp_demo wavetable_demo pm_demo
+                  instrument_voice_demo
+                  instrument_pluck_demo
+                  instrument_contact_demo
                    solver_demo loss_demo stiff_demo pitch_error_demo
                    hearing_demo objects_demo spectrum_demo)
     add_executable(${example} examples/${example}.cpp)
