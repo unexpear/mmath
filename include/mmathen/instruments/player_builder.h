@@ -598,7 +598,7 @@ inline PlayerField make(const char* key, const char* label, const char* tip, con
     // Step 24.2a: the onset embouchure error that lets the lips / reed / jet
     // lock onto a neighbouring resonance for a moment (phrase_player.h). No
     // measured player rate was found, so 0 = off for every named player.
-    v.push_back(make("crackSdCents", "Cracked notes", "How often a note cracks: the lips, reed or air jet catch the wrong note for a moment (0 = never).", "Mistakes",
+    v.push_back(make("crackSdCents", "Cracked notes", "How shaky the start of each note is: higher = more notes crack, and crack further (the lips, reed or air jet catch the wrong note for a moment). 0 = never.", "Mistakes",
                      0.0, 1200.0, "cents", 1.0, S::Unsourced, "onset embouchure error (Wolfe 2022; Velut et al. 2017); no measured rate, 0 = off",
                      [](const PlayerRig& r) { return r.wind.crackSdCents; }, [](PlayerRig& r, double x) { r.wind.crackSdCents = x; }));
     // Step 24.2b: scoops, a slide up into the note made by the embouchure

@@ -185,6 +185,7 @@ if(BUILD_TESTING)
     tests/test_wind_scoops.cpp
     tests/test_wind_falloffs.cpp
     tests/test_player_fatigue.cpp
+    tests/test_wind_faults.cpp
     tests/headers/th_result.cpp
     tests/headers/th_scalar.cpp
     tests/headers/th_constants.cpp
